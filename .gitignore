@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+out/
+coverage/
+.vite/
+
+# expo
+.expo/
+.web-build/
+
+# electron
+dist-electron/
+
+# env
+.env
+.env.*.local
+
+# logs
+*.log
+
+# macOS / editor
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
