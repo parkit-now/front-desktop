@@ -4,650 +4,650 @@
  */
 
 export interface paths {
-    "/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Exchange email + password for a session (email/password only)
-         * @description Calls Supabase Auth `signInWithPassword`.
-         *
-         *     **This endpoint is only for email/password login.** Social OAuth (Google/GitHub) is started client-side via Supabase SDK and does NOT call `POST /auth/login`.
-         */
-        post: operations["authLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  '/auth/login': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke the current session
-         * @description Revokes the refresh token bound to the bearer access token, so it can no longer be used to obtain new sessions.
-         *
-         *     **Note:** the access token itself stays valid until its short TTL expires — Supabase Auth doesn't blacklist JWTs. Clients should drop it locally on logout.
-         */
-        post: operations["authLogout"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Exchange email + password for a session (email/password only)
+     * @description Calls Supabase Auth `signInWithPassword`.
+     *
+     *     **This endpoint is only for email/password login.** Social OAuth (Google/GitHub) is started client-side via Supabase SDK and does NOT call `POST /auth/login`.
+     */
+    post: operations['authLogin'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/auth/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rotate a refresh token into a new session
-         * @description Calls Supabase Auth `refreshSession`. With refresh-token rotation enabled (default), the old `refreshToken` is single-use — store the new one returned here.
-         */
-        post: operations["authRefresh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Revoke the current session
+     * @description Revokes the refresh token bound to the bearer access token, so it can no longer be used to obtain new sessions.
+     *
+     *     **Note:** the access token itself stays valid until its short TTL expires — Supabase Auth doesn't blacklist JWTs. Clients should drop it locally on logout.
+     */
+    post: operations['authLogout'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/auth/refresh': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Register a new user and return a session
-         * @description Creates a Supabase Auth user, the matching row in `public.users`, then signs the user in and returns the tokens.
-         *
-         *     **Self-registrable roles:** `owner`, `operator`, `driver`. The `admin` role is rejected — platform admins are provisioned out-of-band.
-         *
-         *     **No tenant is attached at register.** A tenant equals a parking lot, and the new user has zero memberships. Owners create lots in a dedicated flow (one or many); operators are linked to lots via invitations; drivers and admins never have a tenant.
-         */
-        post: operations["authRegister"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Rotate a refresh token into a new session
+     * @description Calls Supabase Auth `refreshSession`. With refresh-token rotation enabled (default), the old `refreshToken` is single-use — store the new one returned here.
+     */
+    post: operations['authRefresh'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/auth/register': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Liveness + readiness probe with dependency status
-         * @description Aggregated health probe used by orchestrators (Docker, Kubernetes, load balancers) and uptime monitors. Pings every external dependency and reports a single status.
-         *
-         *     **Behavior:**
-         *     - Runs `SELECT 1` against PostgreSQL through Prisma, with a 2 s timeout per check.
-         *     - Returns `200 OK` when every entry under `checks` is `up`.
-         *     - Returns `503 Service Unavailable` when at least one check is `down`. The response body keeps the same shape, so callers do not need to branch on the HTTP status to read the result.
-         *     - The endpoint never throws; failures are reported in the body, not as a 5xx Problem Details.
-         *
-         *     **Auth required:** none (public endpoint, safe to expose to probes).
-         */
-        get: operations["healthCheck"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Register a new user and return a session
+     * @description Creates a Supabase Auth user, the matching row in `public.users`, then signs the user in and returns the tokens.
+     *
+     *     **Self-registrable roles:** `owner`, `operator`, `driver`. The `admin` role is rejected — platform admins are provisioned out-of-band.
+     *
+     *     **No tenant is attached at register.** A tenant equals a parking lot, and the new user has zero memberships. Owners create lots in a dedicated flow (one or many); operators are linked to lots via invitations; drivers and admins never have a tenant.
+     */
+    post: operations['authRegister'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/health': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/tenants/{tenantId}/entries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["EntriesController_findAll"];
-        put?: never;
-        post: operations["EntriesController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Liveness + readiness probe with dependency status
+     * @description Aggregated health probe used by orchestrators (Docker, Kubernetes, load balancers) and uptime monitors. Pings every external dependency and reports a single status.
+     *
+     *     **Behavior:**
+     *     - Runs `SELECT 1` against PostgreSQL through Prisma, with a 2 s timeout per check.
+     *     - Returns `200 OK` when every entry under `checks` is `up`.
+     *     - Returns `503 Service Unavailable` when at least one check is `down`. The response body keeps the same shape, so callers do not need to branch on the HTTP status to read the result.
+     *     - The endpoint never throws; failures are reported in the body, not as a 5xx Problem Details.
+     *
+     *     **Auth required:** none (public endpoint, safe to expose to probes).
+     */
+    get: operations['healthCheck'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/tenants/{tenantId}/entries': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/users/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the currently authenticated user
-         * @description Returns the public projection of the user identified by the `sub` claim of the Supabase bearer token.
-         *
-         *     **Behavior:**
-         *     - Reads the user from the database on every call — the response is always fresh, not just the JWT claims. A role change is reflected immediately even on previously issued tokens.
-         *     - If the Supabase Auth user has no row in our `users` table the request is rejected `401 Unauthorized` (the user has not been provisioned by an admin yet).
-         *
-         *     **Auth required:** valid `Authorization: Bearer <jwt>` header. The token must be a Supabase access token, signed with the project `SUPABASE_JWT_SECRET`.
-         */
-        get: operations["usersMe"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations['EntriesController_findAll'];
+    put?: never;
+    post: operations['EntriesController_create'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/users/me': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/vehicles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["VehiclesController_findAll"];
-        put?: never;
-        post: operations["VehiclesController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get the currently authenticated user
+     * @description Returns the public projection of the user identified by the `sub` claim of the Supabase bearer token.
+     *
+     *     **Behavior:**
+     *     - Reads the user from the database on every call — the response is always fresh, not just the JWT claims. A role change is reflected immediately even on previously issued tokens.
+     *     - If the Supabase Auth user has no row in our `users` table the request is rejected `401 Unauthorized` (the user has not been provisioned by an admin yet).
+     *
+     *     **Auth required:** valid `Authorization: Bearer <jwt>` header. The token must be a Supabase access token, signed with the project `SUPABASE_JWT_SECRET`.
+     */
+    get: operations['usersMe'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/vehicles': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    get: operations['VehiclesController_findAll'];
+    put?: never;
+    post: operations['VehiclesController_create'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        AuthSessionResponseDto: {
-            /** @description Tokens to use for subsequent calls. */
-            session: components["schemas"]["SessionDto"];
-            /** @description The authenticated user. */
-            user: components["schemas"]["UserDto"];
-        };
-        ConnectVehicleDto: Record<string, never>;
-        CreateEntryDto: {
-            /** Format: double */
-            amountPaid: number;
-            /** Format: date-time */
-            leftAt: string;
-        };
-        CreateEntryVehicleRelationInputDto: Record<string, never>;
-        CreateVehicleDto: Record<string, never>;
-        HealthCheckItemDto: {
-            /**
-             * @description Short human-readable error message. Present only when `status` is `down`. Never includes stack traces, credentials or query payloads.
-             * @example connect ECONNREFUSED 127.0.0.1:5432
-             */
-            error?: string;
-            /**
-             * @description Round-trip latency of the check, in milliseconds.
-             * @example 4
-             */
-            latencyMs: number;
-            /**
-             * @description Outcome of the check.
-             * @example up
-             * @enum {string}
-             */
-            status: "up" | "down";
-        };
-        HealthResponseDto: {
-            /**
-             * @description Per-dependency results. Currently only `database` (PostgreSQL via Prisma) is checked. New dependencies can be added here without breaking clients.
-             * @example {
-             *       "database": {
-             *         "status": "up",
-             *         "latencyMs": 4
-             *       }
-             *     }
-             */
-            checks: {
-                [key: string]: components["schemas"]["HealthCheckItemDto"];
-            };
-            /**
-             * @description Overall status. `ok` if every entry under `checks` is `up`, `error` if at least one check is `down`.
-             * @example ok
-             * @enum {string}
-             */
-            status: "ok" | "error";
-            /**
-             * Format: date-time
-             * @description Server-side ISO-8601 UTC timestamp at which the check was evaluated.
-             * @example 2026-05-04T12:34:56.789Z
-             */
-            timestamp: string;
-            /**
-             * @description Process uptime in seconds (resets on each container restart).
-             * @example 1234.56
-             */
-            uptime: number;
-        };
-        LoginDto: {
-            /**
-             * Format: email
-             * @description Email used at registration time.
-             * @example jane.doe@parkit.com
-             */
-            email: string;
-            /**
-             * @description Plaintext password.
-             * @example CorrectHorseBatteryStaple1!
-             */
-            password: string;
-        };
-        ProblemDetailsDto: {
-            /**
-             * @description A human-readable explanation specific to this occurrence of the problem.
-             * @example Email already registered
-             */
-            detail: string;
-            /**
-             * @description The request path that produced the error.
-             * @example /auth/register
-             */
-            instance: string;
-            /**
-             * @description The HTTP status code generated by the origin server. Mirrors the response status.
-             * @example 409
-             */
-            status: number;
-            /**
-             * @description A short, human-readable summary of the problem type. Stable across occurrences of the same error class.
-             * @example Conflict
-             */
-            title: string;
-        };
-        RefreshDto: {
-            /**
-             * @description Refresh token returned by `POST /auth/login` or `POST /auth/register`.
-             * @example v1:eyJhbGciOi...REFRESH...
-             */
-            refreshToken: string;
-        };
-        RegisterDto: {
-            /**
-             * Format: email
-             * @description Email address used for login. Must be unique platform-wide.
-             * @example jane.doe@parkit.com
-             */
-            email: string;
-            /**
-             * @description Password. Minimum 8 characters; the Supabase project may enforce stricter rules.
-             * @example CorrectHorseBatteryStaple1!
-             */
-            password: string;
-            /**
-             * @description Role to assign to the new user. `admin` is rejected — platform admins are provisioned manually.
-             * @example driver
-             * @enum {string}
-             */
-            role: "owner" | "operator" | "driver";
-        };
-        SessionDto: {
-            /** @description Short-lived JWT to put in `Authorization: Bearer <accessToken>` on every protected call. */
-            accessToken: string;
-            /**
-             * @description Unix timestamp (seconds) at which the access token expires.
-             * @example 1735689600
-             */
-            expiresAt: number;
-            /**
-             * @description Lifetime of the access token, in seconds.
-             * @example 3600
-             */
-            expiresIn: number;
-            /** @description Long-lived token used by `POST /auth/refresh` to obtain a fresh `accessToken`. */
-            refreshToken: string;
-            /**
-             * @description Token type. Always `bearer`.
-             * @example bearer
-             */
-            tokenType: string;
-        };
-        UserDto: {
-            /** Format: date-time */
-            createdAt: string;
-            /** @enum {string} */
-            role: "admin" | "owner" | "operator" | "driver";
-        };
-        ValidationFieldErrorDto: {
-            /**
-             * @description Name of the request body field that failed validation.
-             * @example password
-             */
-            field: string;
-            /**
-             * @description Reason the field failed validation (first matching constraint).
-             * @example password must be longer than or equal to 8 characters
-             */
-            reason: string;
-        };
-        ValidationProblemDetailsDto: {
-            /**
-             * @description A human-readable explanation specific to this occurrence of the problem.
-             * @example Email already registered
-             */
-            detail: string;
-            /**
-             * @description The request path that produced the error.
-             * @example /auth/register
-             */
-            instance: string;
-            /**
-             * @description The HTTP status code generated by the origin server. Mirrors the response status.
-             * @example 409
-             */
-            status: number;
-            /**
-             * @description A short, human-readable summary of the problem type. Stable across occurrences of the same error class.
-             * @example Conflict
-             */
-            title: string;
-            /** @description Field-level breakdown of the validation failures. */
-            validationsErrors: components["schemas"]["ValidationFieldErrorDto"][];
-        };
+  schemas: {
+    AuthSessionResponseDto: {
+      /** @description Tokens to use for subsequent calls. */
+      session: components['schemas']['SessionDto'];
+      /** @description The authenticated user. */
+      user: components['schemas']['UserDto'];
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    ConnectVehicleDto: Record<string, never>;
+    CreateEntryDto: {
+      /** Format: double */
+      amountPaid: number;
+      /** Format: date-time */
+      leftAt: string;
+    };
+    CreateEntryVehicleRelationInputDto: Record<string, never>;
+    CreateVehicleDto: Record<string, never>;
+    HealthCheckItemDto: {
+      /**
+       * @description Short human-readable error message. Present only when `status` is `down`. Never includes stack traces, credentials or query payloads.
+       * @example connect ECONNREFUSED 127.0.0.1:5432
+       */
+      error?: string;
+      /**
+       * @description Round-trip latency of the check, in milliseconds.
+       * @example 4
+       */
+      latencyMs: number;
+      /**
+       * @description Outcome of the check.
+       * @example up
+       * @enum {string}
+       */
+      status: 'up' | 'down';
+    };
+    HealthResponseDto: {
+      /**
+       * @description Per-dependency results. Currently only `database` (PostgreSQL via Prisma) is checked. New dependencies can be added here without breaking clients.
+       * @example {
+       *       "database": {
+       *         "status": "up",
+       *         "latencyMs": 4
+       *       }
+       *     }
+       */
+      checks: {
+        [key: string]: components['schemas']['HealthCheckItemDto'];
+      };
+      /**
+       * @description Overall status. `ok` if every entry under `checks` is `up`, `error` if at least one check is `down`.
+       * @example ok
+       * @enum {string}
+       */
+      status: 'ok' | 'error';
+      /**
+       * Format: date-time
+       * @description Server-side ISO-8601 UTC timestamp at which the check was evaluated.
+       * @example 2026-05-04T12:34:56.789Z
+       */
+      timestamp: string;
+      /**
+       * @description Process uptime in seconds (resets on each container restart).
+       * @example 1234.56
+       */
+      uptime: number;
+    };
+    LoginDto: {
+      /**
+       * Format: email
+       * @description Email used at registration time.
+       * @example jane.doe@parkit.com
+       */
+      email: string;
+      /**
+       * @description Plaintext password.
+       * @example CorrectHorseBatteryStaple1!
+       */
+      password: string;
+    };
+    ProblemDetailsDto: {
+      /**
+       * @description A human-readable explanation specific to this occurrence of the problem.
+       * @example Email already registered
+       */
+      detail: string;
+      /**
+       * @description The request path that produced the error.
+       * @example /auth/register
+       */
+      instance: string;
+      /**
+       * @description The HTTP status code generated by the origin server. Mirrors the response status.
+       * @example 409
+       */
+      status: number;
+      /**
+       * @description A short, human-readable summary of the problem type. Stable across occurrences of the same error class.
+       * @example Conflict
+       */
+      title: string;
+    };
+    RefreshDto: {
+      /**
+       * @description Refresh token returned by `POST /auth/login` or `POST /auth/register`.
+       * @example v1:eyJhbGciOi...REFRESH...
+       */
+      refreshToken: string;
+    };
+    RegisterDto: {
+      /**
+       * Format: email
+       * @description Email address used for login. Must be unique platform-wide.
+       * @example jane.doe@parkit.com
+       */
+      email: string;
+      /**
+       * @description Password. Minimum 8 characters; the Supabase project may enforce stricter rules.
+       * @example CorrectHorseBatteryStaple1!
+       */
+      password: string;
+      /**
+       * @description Role to assign to the new user. `admin` is rejected — platform admins are provisioned manually.
+       * @example driver
+       * @enum {string}
+       */
+      role: 'owner' | 'operator' | 'driver';
+    };
+    SessionDto: {
+      /** @description Short-lived JWT to put in `Authorization: Bearer <accessToken>` on every protected call. */
+      accessToken: string;
+      /**
+       * @description Unix timestamp (seconds) at which the access token expires.
+       * @example 1735689600
+       */
+      expiresAt: number;
+      /**
+       * @description Lifetime of the access token, in seconds.
+       * @example 3600
+       */
+      expiresIn: number;
+      /** @description Long-lived token used by `POST /auth/refresh` to obtain a fresh `accessToken`. */
+      refreshToken: string;
+      /**
+       * @description Token type. Always `bearer`.
+       * @example bearer
+       */
+      tokenType: string;
+    };
+    UserDto: {
+      /** Format: date-time */
+      createdAt: string;
+      /** @enum {string} */
+      role: 'admin' | 'owner' | 'operator' | 'driver';
+    };
+    ValidationFieldErrorDto: {
+      /**
+       * @description Name of the request body field that failed validation.
+       * @example password
+       */
+      field: string;
+      /**
+       * @description Reason the field failed validation (first matching constraint).
+       * @example password must be longer than or equal to 8 characters
+       */
+      reason: string;
+    };
+    ValidationProblemDetailsDto: {
+      /**
+       * @description A human-readable explanation specific to this occurrence of the problem.
+       * @example Email already registered
+       */
+      detail: string;
+      /**
+       * @description The request path that produced the error.
+       * @example /auth/register
+       */
+      instance: string;
+      /**
+       * @description The HTTP status code generated by the origin server. Mirrors the response status.
+       * @example 409
+       */
+      status: number;
+      /**
+       * @description A short, human-readable summary of the problem type. Stable across occurrences of the same error class.
+       * @example Conflict
+       */
+      title: string;
+      /** @description Field-level breakdown of the validation failures. */
+      validationsErrors: components['schemas']['ValidationFieldErrorDto'][];
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    authLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionDto"];
-                };
-            };
-            /** @description Email not found or password mismatch. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-        };
+  authLogin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    authLogout: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing, malformed, or expired bearer token. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['LoginDto'];
+      };
     };
-    authRefresh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefreshDto"];
-            };
+        content: {
+          'application/json': components['schemas']['SessionDto'];
         };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionDto"];
-                };
-            };
-            /** @description Refresh token is invalid, expired, or already used. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
+      };
+      /** @description Email not found or password mismatch. */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          'application/json': components['schemas']['ProblemDetailsDto'];
+        };
+      };
     };
-    authRegister: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthSessionResponseDto"];
-                };
-            };
-            /** @description Invalid payload (validation, weak password, etc.). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
-                };
-            };
-            /** @description A user with this email already exists. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-        };
+  };
+  authLogout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    healthCheck: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description All dependencies are reachable. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponseDto"];
-                };
-            };
-            /** @description At least one dependency is unreachable. Inspect `checks` to see which one. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponseDto"];
-                };
-            };
+        content?: never;
+      };
+      /** @description Missing, malformed, or expired bearer token. */
+      401: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          'application/json': components['schemas']['ProblemDetailsDto'];
+        };
+      };
     };
-    EntriesController_findAll: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The ID of the tenant (parking lot) */
-                tenantId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  authRefresh: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    EntriesController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The ID of the tenant (parking lot) */
-                tenantId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateEntryDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RefreshDto'];
+      };
     };
-    usersMe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description The authenticated user. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserDto"];
-                };
-            };
-            /** @description Bearer token is missing, malformed, expired, or the user is not provisioned. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
+        content: {
+          'application/json': components['schemas']['SessionDto'];
         };
+      };
+      /** @description Refresh token is invalid, expired, or already used. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProblemDetailsDto'];
+        };
+      };
     };
-    VehiclesController_findAll: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  authRegister: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    VehiclesController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateVehicleDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RegisterDto'];
+      };
     };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthSessionResponseDto'];
+        };
+      };
+      /** @description Invalid payload (validation, weak password, etc.). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ValidationProblemDetailsDto'];
+        };
+      };
+      /** @description A user with this email already exists. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProblemDetailsDto'];
+        };
+      };
+    };
+  };
+  healthCheck: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description All dependencies are reachable. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HealthResponseDto'];
+        };
+      };
+      /** @description At least one dependency is unreachable. Inspect `checks` to see which one. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HealthResponseDto'];
+        };
+      };
+    };
+  };
+  EntriesController_findAll: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The ID of the tenant (parking lot) */
+        tenantId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  EntriesController_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The ID of the tenant (parking lot) */
+        tenantId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateEntryDto'];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  usersMe: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The authenticated user. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UserDto'];
+        };
+      };
+      /** @description Bearer token is missing, malformed, expired, or the user is not provisioned. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProblemDetailsDto'];
+        };
+      };
+    };
+  };
+  VehiclesController_findAll: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  VehiclesController_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateVehicleDto'];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
 }
