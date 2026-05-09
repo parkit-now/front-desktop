@@ -66,3 +66,9 @@ make sync-types-check
 - No mezclar codigo de Electron dentro de componentes React.
 - No saltear preload y hablar directo con `ipcRenderer` desde cualquier modulo.
 - No cambiar puertos de dev sin actualizar scripts relacionados (`wait-on`, `VITE_DEV_SERVER_URL`).
+
+## Estilo compartido (obligatorio)
+
+- Seguir [SHARED_STYLE_GUIDE.md](./SHARED_STYLE_GUIDE.md) para colores, formas, espaciados y jerarquia visual.
+- En pantallas de login: usar botones OAuth con icono de proveedor y sin texto tecnico de debug.
+- No introducir variantes visuales fuera de la guia sin actualizar el documento en los 3 repos.
