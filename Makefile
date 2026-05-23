@@ -41,8 +41,9 @@ env-use-prod: ## Activar entorno produccion (copia .env.production → .env)
 dev: env-use-local ## Levantar app apuntando al backend LOCAL
 	@bun run dev
 
-prod: env-use-prod ## Build de produccion apuntando al backend PROD
+prod: env-use-prod ## Build de prod + abrir la app empaquetada con Electron
 	@bun run build
+	@bunx electron dist/main/main.js
 
 build: ## Build con el .env actual (sin tocar el entorno activo)
 	@bun run build
