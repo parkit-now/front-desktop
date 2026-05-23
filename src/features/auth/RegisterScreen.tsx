@@ -1,13 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { registerWithEmail } from '../../lib/supabase/session';
-import type { RegisterRole } from '../../lib/api/auth';
 import { getErrorMessage } from './errors';
-
-const ROLE_OPTIONS: Array<{ value: RegisterRole; label: string }> = [
-  { value: 'driver', label: 'Conductor' },
-  { value: 'operator', label: 'Operador' },
-  { value: 'owner', label: 'Dueno de playa' },
-];
 
 type Props = {
   onSwitchToLogin: () => void;
@@ -16,7 +9,6 @@ type Props = {
 export function RegisterScreen({ onSwitchToLogin }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<RegisterRole>('driver');
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -27,7 +19,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
     setMessage('');
     setPending(true);
     try {
-      await registerWithEmail(email, password, role);
+      await registerWithEmail(email, password);
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -38,7 +30,6 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
   return (
     <>
       <h2>Crear cuenta</h2>
-      <p className="muted">Completa tus datos para empezar.</p>
 
       <form
         className="auth-form"
@@ -46,51 +37,30 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
           void handleSubmit(event);
         }}
       >
-        <label className="form-field">
-          <span className="form-label">Email</span>
-          <input
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-            }}
-            required
-            placeholder="jane.doe@parkit.com"
-          />
-        </label>
+        <input
+          type="email"
+          aria-label="Email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+          }}
+          required
+          placeholder="Email"
+        />
 
-        <label className="form-field">
-          <span className="form-label">Contrasena</span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-            }}
-            required
-            minLength={8}
-            placeholder="Minimo 8 caracteres"
-          />
-        </label>
-
-        <label className="form-field">
-          <span className="form-label">Rol</span>
-          <select
-            value={role}
-            onChange={(event) => {
-              setRole(event.target.value as RegisterRole);
-            }}
-            required
-          >
-            {ROLE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <input
+          type="password"
+          aria-label="Contrasena"
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => {
+            setPassword(event.target.value);
+          }}
+          required
+          minLength={8}
+          placeholder="Contrasena"
+        />
 
         <button type="submit" className="primary-button" disabled={pending}>
           {pending ? 'Creando cuenta...' : 'Crear cuenta'}

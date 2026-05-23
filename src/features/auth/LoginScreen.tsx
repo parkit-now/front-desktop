@@ -60,7 +60,6 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
   return (
     <>
       <h2>Iniciar sesion</h2>
-      <p className="muted">Ingresa con tu correo o un proveedor.</p>
 
       <form
         className="auth-form"
@@ -68,34 +67,30 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
           void handleEmailSubmit(event);
         }}
       >
-        <label className="form-field">
-          <span className="form-label">Email</span>
-          <input
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-            }}
-            required
-            placeholder="jane.doe@parkit.com"
-          />
-        </label>
+        <input
+          type="email"
+          aria-label="Email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+          }}
+          required
+          placeholder="Email"
+        />
 
-        <label className="form-field">
-          <span className="form-label">Contrasena</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-            }}
-            required
-            minLength={8}
-            placeholder="Minimo 8 caracteres"
-          />
-        </label>
+        <input
+          type="password"
+          aria-label="Contrasena"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => {
+            setPassword(event.target.value);
+          }}
+          required
+          minLength={8}
+          placeholder="Contrasena"
+        />
 
         <button type="submit" className="primary-button" disabled={anyPending}>
           {pendingEmail ? 'Ingresando...' : 'Ingresar'}
@@ -115,7 +110,7 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
       </p>
 
       <div className="auth-divider" role="presentation">
-        <span>o continuar con</span>
+        <span>o</span>
       </div>
 
       <div className="oauth-list">

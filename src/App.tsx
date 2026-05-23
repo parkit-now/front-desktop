@@ -56,10 +56,7 @@ export function App() {
           <div className="brand-badge" aria-hidden="true">
             P
           </div>
-          <div>
-            <h1>Parkit</h1>
-            <p className="subtitle">Acceso seguro para tu operacion diaria</p>
-          </div>
+          <h1>Parkit</h1>
         </div>
 
         {loading ? (

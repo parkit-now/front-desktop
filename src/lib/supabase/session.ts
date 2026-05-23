@@ -4,7 +4,6 @@ import {
   loginWithPassword,
   refreshSessionTokens,
   registerWithPassword,
-  type RegisterRole,
   type SessionDto,
 } from '../api/auth';
 import { supabase } from './client';
@@ -90,9 +89,12 @@ export async function signInWithEmail(
 export async function registerWithEmail(
   email: string,
   password: string,
-  role: RegisterRole,
 ): Promise<Session> {
-  const result = await registerWithPassword({ email, password, role });
+  const result = await registerWithPassword({
+    email,
+    password,
+    role: 'driver',
+  });
   return applyBackendSession(result.session);
 }
 
