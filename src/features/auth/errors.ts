@@ -10,7 +10,7 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return 'Ocurrio un error inesperado.';
+  return 'Ocurrió un error inesperado.';
 }
 
 function mapBackendField(field: string): keyof FieldErrors | null {
@@ -49,7 +49,7 @@ export function mapAuthError(
     }
 
     if (error.status === 401 && context === 'login') {
-      return { toastMessage: 'Email o contrasena incorrectos.' };
+      return { toastMessage: 'Email o contraseña incorrectos.' };
     }
     if (error.status === 409 && context === 'register') {
       return { toastMessage: 'Ya existe una cuenta con ese email.' };

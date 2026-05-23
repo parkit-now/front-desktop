@@ -80,7 +80,7 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
 
   return (
     <>
-      <h2>Iniciar sesion</h2>
+      <h2>Iniciar sesión</h2>
 
       <form
         className="auth-form"
@@ -116,7 +116,7 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
         <div className="form-field">
           <input
             type="password"
-            aria-label="Contrasena"
+            aria-label="Contraseña"
             aria-invalid={errors.password ? true : undefined}
             aria-describedby={
               errors.password ? 'login-password-error' : undefined
@@ -129,7 +129,7 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
                 setErrors((prev) => ({ ...prev, password: undefined }));
               }
             }}
-            placeholder="Contrasena"
+            placeholder="Contraseña"
             className={errors.password ? 'input-error' : undefined}
           />
           {errors.password ? (
@@ -145,7 +145,7 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
       </form>
 
       <p className="form-helper">
-        No tenes cuenta?{' '}
+        ¿No tenés cuenta?{' '}
         <button
           type="button"
           className="link-button"

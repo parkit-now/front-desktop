@@ -34,7 +34,7 @@ export function SessionView({ session }: Props) {
         }}
         disabled={pendingSignOut}
       >
-        {pendingSignOut ? 'Cerrando...' : 'Cerrar sesion'}
+        {pendingSignOut ? 'Cerrando...' : 'Cerrar sesión'}
       </button>
     </>
   );

@@ -37,7 +37,7 @@ async function applyBackendSession(tokens: SessionDto): Promise<Session> {
   }
 
   if (!data.session) {
-    throw new Error('No se pudo establecer la sesion local.');
+    throw new Error('No se pudo establecer la sesión local.');
   }
 
   return data.session;
@@ -117,7 +117,7 @@ export async function signOut(): Promise<void> {
     try {
       await logoutBackend(accessToken);
     } catch {
-      // Backend revoke fallo: igual limpiamos sesion local para no dejar al usuario atrapado.
+      // Backend revoke falló: igual limpiamos sesión local para no dejar al usuario atrapado.
     }
   }
 

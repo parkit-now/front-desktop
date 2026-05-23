@@ -6,10 +6,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function validateEmail(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
-    return 'Ingresa tu email';
+    return 'Ingresá tu email';
   }
   if (!EMAIL_REGEX.test(trimmed)) {
-    return 'Email invalido';
+    return 'Email inválido';
   }
   return null;
 }
@@ -19,10 +19,10 @@ export function validatePassword(
   { isNew }: { isNew: boolean } = { isNew: false },
 ): string | null {
   if (!value) {
-    return 'Ingresa tu contrasena';
+    return 'Ingresá tu contraseña';
   }
   if (isNew && value.length < 8) {
-    return 'Minimo 8 caracteres';
+    return 'Mínimo 8 caracteres';
   }
   return null;
 }

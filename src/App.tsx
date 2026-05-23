@@ -61,7 +61,7 @@ export function App() {
         </div>
 
         {loading ? (
-          <p className="muted">Cargando sesion...</p>
+          <p className="muted">Cargando sesión...</p>
         ) : session ? (
           <SessionView session={session} />
         ) : view === 'register' ? (

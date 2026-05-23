@@ -87,7 +87,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
         <div className="form-field">
           <input
             type="password"
-            aria-label="Contrasena"
+            aria-label="Contraseña"
             aria-invalid={errors.password ? true : undefined}
             aria-describedby={
               errors.password ? 'register-password-error' : undefined
@@ -100,7 +100,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
                 setErrors((prev) => ({ ...prev, password: undefined }));
               }
             }}
-            placeholder="Contrasena (min. 8 caracteres)"
+            placeholder="Contraseña (mín. 8 caracteres)"
             className={errors.password ? 'input-error' : undefined}
           />
           {errors.password ? (
@@ -116,7 +116,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
       </form>
 
       <p className="form-helper">
-        Ya tenes cuenta?{' '}
+        ¿Ya tenés cuenta?{' '}
         <button
           type="button"
           className="link-button"
