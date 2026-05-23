@@ -261,7 +261,12 @@ export interface components {
         };
         ProblemDetailsDto: {
             /**
-             * @description A human-readable explanation specific to this occurrence of the problem.
+             * @description Stable, machine-readable identifier of the error class (SCREAMING_SNAKE_CASE). Independent of HTTP status and wording. Clients map this to a localized user-facing message.
+             * @example AUTH_EMAIL_ALREADY_EXISTS
+             */
+            code: string;
+            /**
+             * @description A human-readable explanation specific to this occurrence of the problem. English. Clients should not display this verbatim — use `code` to look up a localized message.
              * @example Email already registered
              */
             detail: string;
@@ -336,19 +341,29 @@ export interface components {
         };
         ValidationFieldErrorDto: {
             /**
+             * @description Stable, machine-readable identifier of the failed constraint (class-validator constraint name, camelCase). Examples: `isEmail`, `minLength`, `isNotEmpty`. Clients map this to a localized user-facing message.
+             * @example minLength
+             */
+            code: string;
+            /**
              * @description Name of the request body field that failed validation.
              * @example password
              */
             field: string;
             /**
-             * @description Reason the field failed validation (first matching constraint).
+             * @description Reason the field failed validation (first matching constraint). English; intended for logs.
              * @example password must be longer than or equal to 8 characters
              */
             reason: string;
         };
         ValidationProblemDetailsDto: {
             /**
-             * @description A human-readable explanation specific to this occurrence of the problem.
+             * @description Stable, machine-readable identifier of the error class (SCREAMING_SNAKE_CASE). Independent of HTTP status and wording. Clients map this to a localized user-facing message.
+             * @example AUTH_EMAIL_ALREADY_EXISTS
+             */
+            code: string;
+            /**
+             * @description A human-readable explanation specific to this occurrence of the problem. English. Clients should not display this verbatim — use `code` to look up a localized message.
              * @example Email already registered
              */
             detail: string;

@@ -1,7 +1,7 @@
 import { ApiError } from '../../lib/api/client';
 import {
   translateApiError,
-  translateValidationReason,
+  translateValidationCode,
   type EndpointKey,
 } from '../../lib/api/translate';
 import type { FieldErrors } from './validation';
@@ -41,7 +41,7 @@ export function mapAuthError(
     for (const item of error.problem.validationsErrors) {
       const key = mapBackendField(item.field);
       if (key) {
-        fieldErrors[key] = translateValidationReason(item.field);
+        fieldErrors[key] = translateValidationCode(item.field, item.code);
       }
     }
     if (Object.keys(fieldErrors).length > 0) {
