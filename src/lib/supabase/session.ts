@@ -1,4 +1,12 @@
 import { type Provider, type Session } from '@supabase/supabase-js';
+import {
+  logoutBackend,
+  loginWithPassword,
+  refreshSessionTokens,
+  registerWithPassword,
+  type RegisterRole,
+  type SessionDto,
+} from '../api/auth';
 import { supabase } from './client';
 
 function resolveRedirectUrl(): string | undefined {
@@ -17,6 +25,23 @@ function resolveRedirectUrl(): string | undefined {
   }
 
   return undefined;
+}
+
+async function applyBackendSession(tokens: SessionDto): Promise<Session> {
+  const { data, error } = await supabase.auth.setSession({
+    access_token: tokens.accessToken,
+    refresh_token: tokens.refreshToken,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data.session) {
+    throw new Error('No se pudo establecer la sesion local.');
+  }
+
+  return data.session;
 }
 
 export async function getSession(): Promise<Session | null> {
@@ -54,9 +79,47 @@ export async function signInWithProvider(provider: Provider): Promise<void> {
   }
 }
 
-export async function signOut(): Promise<void> {
-  const { error } = await supabase.auth.signOut();
+export async function signInWithEmail(
+  email: string,
+  password: string,
+): Promise<Session> {
+  const tokens = await loginWithPassword({ email, password });
+  return applyBackendSession(tokens);
+}
 
+export async function registerWithEmail(
+  email: string,
+  password: string,
+  role: RegisterRole,
+): Promise<Session> {
+  const result = await registerWithPassword({ email, password, role });
+  return applyBackendSession(result.session);
+}
+
+export async function refreshCurrentSession(): Promise<Session | null> {
+  const current = await getSession();
+  if (!current?.refresh_token) {
+    return null;
+  }
+  const tokens = await refreshSessionTokens({
+    refreshToken: current.refresh_token,
+  });
+  return applyBackendSession(tokens);
+}
+
+export async function signOut(): Promise<void> {
+  const current = await getSession();
+  const accessToken = current?.access_token;
+
+  if (accessToken) {
+    try {
+      await logoutBackend(accessToken);
+    } catch {
+      // Backend revoke fallo: igual limpiamos sesion local para no dejar al usuario atrapado.
+    }
+  }
+
+  const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;
   }

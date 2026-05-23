@@ -45,6 +45,9 @@ env-check: ## Validar variables mínimas de Supabase
 	if [ -z "$${VITE_SUPABASE_ANON_KEY:-}" ] && [ -z "$${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}" ]; then \
 		echo "✗ Falta ANON key: VITE_SUPABASE_ANON_KEY o EXPO_PUBLIC_SUPABASE_ANON_KEY"; exit 1; \
 	fi; \
+	if [ -z "$${VITE_API_URL:-}" ] && [ -z "$${EXPO_PUBLIC_API_URL:-}" ]; then \
+		echo "✗ Falta URL del backend: VITE_API_URL o EXPO_PUBLIC_API_URL"; exit 1; \
+	fi; \
 	if [ -z "$${OPENAPI_URL:-}" ]; then \
 		echo "⚠ OPENAPI_URL no seteada. Se usará http://localhost:3000/api-json"; \
 	fi
