@@ -4,15 +4,16 @@ import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { SessionView } from './features/auth/SessionView';
 import { getErrorMessage } from './features/auth/errors';
+import { useToast } from './lib/notifications/ToastProvider';
 import { getSession, onSessionChange } from './lib/supabase/session';
 
 type View = 'login' | 'register';
 
 export function App() {
+  const { showToast } = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('login');
-  const [bootError, setBootError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -25,7 +26,7 @@ export function App() {
         }
       } catch (error) {
         if (isMounted) {
-          setBootError(getErrorMessage(error));
+          showToast({ message: getErrorMessage(error), kind: 'error' });
         }
       } finally {
         if (isMounted) {
@@ -47,7 +48,7 @@ export function App() {
       isMounted = false;
       unsubscribe();
     };
-  }, []);
+  }, [showToast]);
 
   return (
     <main className="auth-page">
@@ -76,8 +77,6 @@ export function App() {
             }}
           />
         )}
-
-        {bootError ? <p className="error-banner">{bootError}</p> : null}
       </section>
     </main>
   );

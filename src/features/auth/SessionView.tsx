@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { useState } from 'react';
+import { useToast } from '../../lib/notifications/ToastProvider';
 import { signOut } from '../../lib/supabase/session';
 import { getErrorMessage } from './errors';
 
@@ -8,16 +9,15 @@ type Props = {
 };
 
 export function SessionView({ session }: Props) {
+  const { showToast } = useToast();
   const [pendingSignOut, setPendingSignOut] = useState(false);
-  const [message, setMessage] = useState('');
 
   async function handleSignOut() {
-    setMessage('');
     setPendingSignOut(true);
     try {
       await signOut();
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      showToast({ message: getErrorMessage(error), kind: 'error' });
     } finally {
       setPendingSignOut(false);
     }
@@ -36,7 +36,6 @@ export function SessionView({ session }: Props) {
       >
         {pendingSignOut ? 'Cerrando...' : 'Cerrar sesion'}
       </button>
-      {message ? <p className="error-banner">{message}</p> : null}
     </>
   );
 }

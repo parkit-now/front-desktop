@@ -1,10 +1,16 @@
 import { useState, type FormEvent } from 'react';
+import { useToast } from '../../lib/notifications/ToastProvider';
 import {
   signInWithEmail,
   signInWithProvider,
 } from '../../lib/supabase/session';
-import { getErrorMessage } from './errors';
+import { getErrorMessage, mapAuthError } from './errors';
 import { ProviderIcon, type SocialProvider } from './ProviderIcon';
+import {
+  validateEmail,
+  validatePassword,
+  type FieldErrors,
+} from './validation';
 
 type OAuthOption = {
   provider: SocialProvider;
@@ -21,36 +27,51 @@ type Props = {
 };
 
 export function LoginScreen({ onSwitchToRegister }: Props) {
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [pendingEmail, setPendingEmail] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<SocialProvider | null>(
     null,
   );
-  const [message, setMessage] = useState('');
 
   async function handleEmailSubmit(
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
     event.preventDefault();
-    setMessage('');
+    const next: FieldErrors = {};
+    const emailError = validateEmail(email);
+    if (emailError) next.email = emailError;
+    const passwordError = validatePassword(password);
+    if (passwordError) next.password = passwordError;
+    if (Object.keys(next).length > 0) {
+      setErrors(next);
+      return;
+    }
+    setErrors({});
     setPendingEmail(true);
     try {
       await signInWithEmail(email, password);
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      const mapped = mapAuthError(error, 'login');
+      if (mapped.fieldErrors) {
+        setErrors(mapped.fieldErrors);
+      }
+      if (mapped.toastMessage) {
+        showToast({ message: mapped.toastMessage, kind: 'error' });
+      }
     } finally {
       setPendingEmail(false);
     }
   }
 
   async function handleProvider(provider: SocialProvider) {
-    setMessage('');
     setPendingProvider(provider);
     try {
       await signInWithProvider(provider);
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      showToast({ message: getErrorMessage(error), kind: 'error' });
       setPendingProvider(null);
     }
   }
@@ -63,34 +84,60 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
 
       <form
         className="auth-form"
+        noValidate
         onSubmit={(event) => {
           void handleEmailSubmit(event);
         }}
       >
-        <input
-          type="email"
-          aria-label="Email"
-          autoComplete="email"
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value);
-          }}
-          required
-          placeholder="Email"
-        />
+        <div className="form-field">
+          <input
+            type="email"
+            aria-label="Email"
+            aria-invalid={errors.email ? true : undefined}
+            aria-describedby={errors.email ? 'login-email-error' : undefined}
+            autoComplete="email"
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              if (errors.email) {
+                setErrors((prev) => ({ ...prev, email: undefined }));
+              }
+            }}
+            placeholder="Email"
+            className={errors.email ? 'input-error' : undefined}
+          />
+          {errors.email ? (
+            <p id="login-email-error" className="field-error">
+              {errors.email}
+            </p>
+          ) : null}
+        </div>
 
-        <input
-          type="password"
-          aria-label="Contrasena"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value);
-          }}
-          required
-          minLength={8}
-          placeholder="Contrasena"
-        />
+        <div className="form-field">
+          <input
+            type="password"
+            aria-label="Contrasena"
+            aria-invalid={errors.password ? true : undefined}
+            aria-describedby={
+              errors.password ? 'login-password-error' : undefined
+            }
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              if (errors.password) {
+                setErrors((prev) => ({ ...prev, password: undefined }));
+              }
+            }}
+            placeholder="Contrasena"
+            className={errors.password ? 'input-error' : undefined}
+          />
+          {errors.password ? (
+            <p id="login-password-error" className="field-error">
+              {errors.password}
+            </p>
+          ) : null}
+        </div>
 
         <button type="submit" className="primary-button" disabled={anyPending}>
           {pendingEmail ? 'Ingresando...' : 'Ingresar'}
@@ -133,8 +180,6 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
           </button>
         ))}
       </div>
-
-      {message ? <p className="error-banner">{message}</p> : null}
     </>
   );
 }
