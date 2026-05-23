@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
+import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { SessionView } from './features/auth/SessionView';
@@ -7,7 +8,7 @@ import { getErrorMessage } from './features/auth/errors';
 import { useToast } from './lib/notifications/ToastProvider';
 import { getSession, onSessionChange } from './lib/supabase/session';
 
-type View = 'login' | 'register';
+type View = 'login' | 'register' | 'forgot';
 
 export function App() {
   const { showToast } = useToast();
@@ -70,10 +71,19 @@ export function App() {
               setView('login');
             }}
           />
+        ) : view === 'forgot' ? (
+          <ForgotPasswordScreen
+            onBackToLogin={() => {
+              setView('login');
+            }}
+          />
         ) : (
           <LoginScreen
             onSwitchToRegister={() => {
               setView('register');
+            }}
+            onForgotPassword={() => {
+              setView('forgot');
             }}
           />
         )}

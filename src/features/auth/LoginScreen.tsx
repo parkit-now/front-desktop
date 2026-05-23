@@ -24,9 +24,10 @@ const OAUTH_OPTIONS: OAuthOption[] = [
 
 type Props = {
   onSwitchToRegister: () => void;
+  onForgotPassword: () => void;
 };
 
-export function LoginScreen({ onSwitchToRegister }: Props) {
+export function LoginScreen({ onSwitchToRegister, onForgotPassword }: Props) {
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -143,6 +144,17 @@ export function LoginScreen({ onSwitchToRegister }: Props) {
           {pendingEmail ? 'Ingresando...' : 'Ingresar'}
         </button>
       </form>
+
+      <p className="form-helper">
+        <button
+          type="button"
+          className="link-button"
+          onClick={onForgotPassword}
+          disabled={anyPending}
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
+      </p>
 
       <p className="form-helper">
         ¿No tenés cuenta?{' '}
