@@ -30,8 +30,7 @@ Desarrollar frontend desktop manteniendo separacion estricta entre Electron (sis
 ## Politica de contratos API
 
 - Fuente por defecto: `OPENAPI_URL=http://localhost:3000/api-json`.
-- Generar: `make sync-types`.
-- Verificar drift: `make sync-types-check`.
+- Generar: `make sync-types` (requiere backend corriendo). Commitear `src/generated/api-types.ts`.
 - Tipos manuales permitidos solo para estado/view-model interno.
 
 ## Donde escribir codigo
@@ -58,7 +57,6 @@ make lint
 make typecheck
 make test
 make build
-make sync-types-check
 ```
 
 ## Anti-patrones

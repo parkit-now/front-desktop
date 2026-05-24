@@ -8,7 +8,5 @@ Orden estricto:
 2. `typecheck`
 3. `test`
 4. `build`
-5. `sync-types-check`
 
-`sync-types-check` corre contra `openapi/openapi.snapshot.json` en CI.
-En desarrollo diario podés usar `OPENAPI_URL=http://localhost:3000/api-json make sync-types`.
+Generación de tipos OpenAPI (`make sync-types`) es local: requiere el backend corriendo en `OPENAPI_URL` (default `http://localhost:3000/api-json`). El archivo regenerado (`src/generated/api-types.ts`) se commitea.

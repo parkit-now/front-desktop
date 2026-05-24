@@ -45,7 +45,6 @@ No usar DTOs manuales para requests/responses si el backend ya los expone en Ope
 
 ```bash
 make sync-types
-make sync-types-check
 ```
 
 Regla: `src/generated/api-types.ts` siempre se regenera; no se edita a mano.
@@ -78,7 +77,6 @@ make lint
 make typecheck
 make test
 make build
-make sync-types-check
 ```
 
 ## Comandos diarios

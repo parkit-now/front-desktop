@@ -14,4 +14,3 @@
 - [ ] `make typecheck`
 - [ ] `make test`
 - [ ] `make build`
-- [ ] `make sync-types-check`

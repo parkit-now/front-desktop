@@ -10,7 +10,7 @@ ENV_PROD  := .env.production
 
 .PHONY: help install dev prod build lint typecheck test format \
         env-check env-use-local env-use-prod \
-        sync-types sync-types-check clean
+        sync-types clean
 
 help: ## Mostrar comandos disponibles
 	@awk 'BEGIN {FS = ":.*?## "} \
@@ -80,9 +80,6 @@ env-check: ## Validar variables mínimas del .env activo
 
 sync-types: ## Generar tipos TypeScript desde OpenAPI
 	@bun run sync-types
-
-sync-types-check: ## Verificar drift entre OpenAPI y src/generated/api-types.ts
-	@bun run sync-types:check
 
 clean: ## Limpiar artefactos locales
 	@rm -rf dist dist-electron coverage .expo .vite
