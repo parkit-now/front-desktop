@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    "/auth/forgot-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a password reset flow by emailing a recovery link
+         * @description Always responds with 204 No Content, regardless of whether the email is registered, to prevent account enumeration.
+         *
+         *     When the email matches a registered user, a recovery link is generated via Supabase Auth and emailed to the user. The link redirects to the web panel `/reset-password` route carrying a single-use, short-lived token.
+         *
+         *     Rate-limited internally to 3 attempts per email per hour. Beyond that, the request is silently ignored.
+         */
+        post: operations["authForgotPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -86,6 +110,28 @@ export interface paths {
          *     **No tenant is attached at register.** A tenant equals a parking lot, and the new user has zero memberships. Owners create lots in a dedicated flow (one or many); operators are linked to lots via invitations; drivers and admins never have a tenant.
          */
         post: operations["authRegister"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password using a recovery token
+         * @description Validates the recovery token (issued by Supabase Auth) and replaces the user password if valid.
+         *
+         *     The token is single-use and short-lived; once consumed it cannot be reused.
+         */
+        post: operations["authResetPassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -197,6 +243,14 @@ export interface components {
         };
         CreateEntryVehicleRelationInputDto: Record<string, never>;
         CreateVehicleDto: Record<string, never>;
+        ForgotPasswordDto: {
+            /**
+             * Format: email
+             * @description Email of the account requesting a password reset.
+             * @example jane.doe@parkit.com
+             */
+            email: string;
+        };
         HealthCheckItemDto: {
             /**
              * @description Short human-readable error message. Present only when `status` is `down`. Never includes stack traces, credentials or query payloads.
@@ -312,6 +366,18 @@ export interface components {
              */
             role: "owner" | "operator" | "driver";
         };
+        ResetPasswordDto: {
+            /**
+             * @description New plaintext password.
+             * @example CorrectHorseBatteryStaple1!
+             */
+            password: string;
+            /**
+             * @description Recovery token delivered in the email link (query param `token`). Issued by Supabase Auth; single-use, short TTL.
+             * @example a1b2c3d4e5f6...
+             */
+            token: string;
+        };
         SessionDto: {
             /** @description Short-lived JWT to put in `Authorization: Bearer <accessToken>` on every protected call. */
             accessToken: string;
@@ -394,6 +460,36 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    authForgotPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPasswordDto"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid payload (e.g. malformed email). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+        };
+    };
     authLogin: {
         parameters: {
             query?: never;
@@ -516,6 +612,36 @@ export interface operations {
             };
             /** @description A user with this email already exists. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    authResetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordDto"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Token missing/invalid/expired, password too weak, or payload invalid. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
