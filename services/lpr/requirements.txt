@@ -7,6 +7,7 @@ python-multipart==0.0.20
 # CPU-only torch keeps the PyInstaller bundle lean.
 # For GPU: install torch with CUDA wheels before running lpr-install.
 ultralytics==8.3.40
+huggingface_hub>=0.24.0
 easyocr==1.7.2
 opencv-python-headless==4.10.0.84
 Pillow==11.0.0

@@ -1,5 +1,6 @@
 """YOLO-based license plate detection."""
 
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,10 +12,10 @@ from ultralytics import YOLO
 # Resolve the models dir whether running from source or a PyInstaller bundle.
 _BASE = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).parent
 MODELS_DIR = _BASE / "models"
-MODEL_FILE = MODELS_DIR / "plate_detector.pt"
+MODEL_FILE = MODELS_DIR / "best.pt"
 
-# Public HuggingFace checkpoint — downloaded once via lpr-download-models.
-_HF_MODEL = "keremberke/yolov8n-license-plate-detection"
+_HF_REPO = "koushik-ai/yolov8-license-plate-detection"
+_HF_FILENAME = "best.pt"
 
 
 @dataclass
@@ -22,6 +23,19 @@ class Detection:
     crop: np.ndarray           # BGR plate crop, ready for OCR
     confidence: float          # YOLO detection score [0, 1]
     bbox: tuple[int, int, int, int]  # x1, y1, x2, y2 in source image
+
+
+def _download_model(target: Path) -> None:
+    """Download weights from HuggingFace Hub and save to models/plate_detector.pt.
+
+    hf_hub_download handles auth, resumable downloads and local caching.
+    YOLO() only accepts local paths, so we must download the file first.
+    """
+    from huggingface_hub import hf_hub_download
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    cached = hf_hub_download(repo_id=_HF_REPO, filename=_HF_FILENAME)
+    shutil.copy(cached, target)
 
 
 class PlateDetector:
@@ -34,9 +48,7 @@ class PlateDetector:
     def __init__(self, model_path: Path | None = None) -> None:
         target = model_path or MODEL_FILE
         if not target.exists():
-            MODELS_DIR.mkdir(parents=True, exist_ok=True)
-            tmp = YOLO(_HF_MODEL)
-            tmp.save(str(target))
+            _download_model(target)
         self._model = YOLO(str(target))
 
     def detect(self, image: np.ndarray) -> list[Detection]:

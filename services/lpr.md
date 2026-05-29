@@ -8,14 +8,14 @@ proceso principal de Electron levanta automáticamente al iniciar la aplicación
 
 ## Archivos
 
-| Archivo | Descripción |
-|---|---|
-| `main.py` | Punto de entrada FastAPI. Define los endpoints `/health` y `/process`, gestiona el ciclo de vida del detector y arranca Uvicorn. |
-| `detector.py` | Wrapper de YOLOv8 (`ultralytics`). Descarga el modelo de HuggingFace en el primer arranque y lo guarda en `models/plate_detector.pt`. Devuelve recortes de patente ordenados por confianza. |
-| `ocr.py` | Wrapper de EasyOCR. Extrae el texto del recorte de patente, normaliza el resultado y aplica un factor de confianza según si el texto coincide con un formato de patente argentina válido. |
-| `requirements.txt` | Dependencias Python con versiones fijadas (FastAPI, Uvicorn, ultralytics, EasyOCR, OpenCV headless, PyInstaller). |
-| `build.spec` | Spec de PyInstaller. Empaqueta el código, los modelos (`models/`) y los imports ocultos de `ultralytics` y `easyocr` en un único binario `dist/lpr-service`. |
-| `Makefile` | Targets de desarrollo y build (ver sección Comandos). |
+| Archivo            | Descripción                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`          | Punto de entrada FastAPI. Define los endpoints `/health` y `/process`, gestiona el ciclo de vida del detector y arranca Uvicorn.                                                            |
+| `detector.py`      | Wrapper de YOLOv8 (`ultralytics`). Descarga el modelo de HuggingFace en el primer arranque y lo guarda en `models/plate_detector.pt`. Devuelve recortes de patente ordenados por confianza. |
+| `ocr.py`           | Wrapper de EasyOCR. Extrae el texto del recorte de patente, normaliza el resultado y aplica un factor de confianza según si el texto coincide con un formato de patente argentina válido.   |
+| `requirements.txt` | Dependencias Python con versiones fijadas (FastAPI, Uvicorn, ultralytics, EasyOCR, OpenCV headless, PyInstaller).                                                                           |
+| `build.spec`       | Spec de PyInstaller. Empaqueta el código, los modelos (`models/`) y los imports ocultos de `ultralytics` y `easyocr` en un único binario `dist/lpr-service`.                                |
+| `Makefile`         | Targets de desarrollo y build (ver sección Comandos).                                                                                                                                       |
 
 ---
 
@@ -35,11 +35,13 @@ verificar disponibilidad antes de habilitar la UI.
 Recibe una imagen en base64 y devuelve la patente detectada.
 
 **Request**
+
 ```json
 { "image": "<base64 JPG o PNG>" }
 ```
 
 **Response 200**
+
 ```json
 {
   "plate": "AB 123 CD",
@@ -48,10 +50,10 @@ Recibe una imagen en base64 y devuelve la patente detectada.
 }
 ```
 
-| Campo | Descripción |
-|---|---|
-| `plate` | Patente formateada con espacios canónicos. |
-| `text` | Texto normalizado (sin espacios, en mayúsculas). |
+| Campo        | Descripción                                                                               |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `plate`      | Patente formateada con espacios canónicos.                                                |
+| `text`       | Texto normalizado (sin espacios, en mayúsculas).                                          |
 | `confidence` | Score compuesto `[0, 1]`: confianza del detector × confianza del OCR × factor de formato. |
 
 **Errores**
@@ -64,10 +66,10 @@ Recibe una imagen en base64 y devuelve la patente detectada.
 
 ## Formatos de patente soportados
 
-| Formato | Ejemplo | Patrón |
-|---|---|---|
-| Antiguo (pre-2016) | `ABC 123` | 3 letras + 3 dígitos |
-| Mercosur (2016+) | `AB 123 CD` | 2 letras + 3 dígitos + 2 letras |
+| Formato            | Ejemplo     | Patrón                          |
+| ------------------ | ----------- | ------------------------------- |
+| Antiguo (pre-2016) | `ABC 123`   | 3 letras + 3 dígitos            |
+| Mercosur (2016+)   | `AB 123 CD` | 2 letras + 3 dígitos + 2 letras |
 
 Cuando el texto extraído coincide con alguno de estos formatos, la confianza recibe un
 **bonus del 15 %**. Si no coincide, recibe una **penalización del 30 %**.
@@ -137,20 +139,29 @@ Con el servicio corriendo (`make lpr-dev`):
 curl http://localhost:8765/health
 # → {"status":"ok"}
 
-# 2. Procesar una imagen
-IMAGE=$(base64 -w0 /ruta/a/patente.jpg)
-curl -s -X POST http://localhost:8765/process \
-  -H "Content-Type: application/json" \
-  -d "{\"image\":\"$IMAGE\"}" | python3 -m json.tool
+# 2. Procesar una imagen (Linux / macOS)
+# Usar -d @- para que curl lea el body desde stdin y evitar el límite
+# de tamaño de argumentos del shell (ARG_MAX).
+python3 -c "
+import base64, json
+with open('/ruta/a/patente.jpg', 'rb') as f:
+    img = base64.b64encode(f.read()).decode()
+print(json.dumps({'image': img}))
+" | curl -s -X POST http://localhost:8765/process \
+     -H "Content-Type: application/json" \
+     -d @- | python3 -m json.tool
 # → { "plate": "AB 123 CD", "text": "AB123CD", "confidence": 0.87 }
 ```
 
 > **Tip:** En Windows (PowerShell):
+>
 > ```powershell
-> $image = [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\patente.jpg"))
+> $bytes = [IO.File]::ReadAllBytes("C:\patente.jpg")
+> $image = [Convert]::ToBase64String($bytes)
+> $body  = @{ image = $image } | ConvertTo-Json
 > Invoke-RestMethod -Method POST -Uri http://localhost:8765/process `
 >   -ContentType "application/json" `
->   -Body "{`"image`":`"$image`"}"
+>   -Body $body
 > ```
 
 ---
