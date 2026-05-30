@@ -15,18 +15,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from detector import PlateDetector
-from ocr import extract as ocr_extract
+from recognizer import PlateRecognizer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 
-_detector: PlateDetector | None = None
+_recognizer: PlateRecognizer | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _detector
-    _detector = PlateDetector()
+    global _recognizer
+    _recognizer = PlateRecognizer()
+    _recognizer.warmup()  # load ONNX sessions up front so request #1 isn't slow
     yield
 
 
@@ -46,9 +46,10 @@ class ProcessRequest(BaseModel):
 
 
 class ProcessResponse(BaseModel):
-    plate: str        # display form, e.g. "AB 123 CD"
-    text: str         # normalised, e.g. "AB123CD"
-    confidence: float  # composite [0, 1]
+    plate: str                  # display form, e.g. "AB 123 CD"
+    text: str                   # normalised, e.g. "AB123CD"
+    confidence: float           # composite [0, 1]
+    bbox: list[int]             # [x1, y1, x2, y2] of the plate in the source image
 
 
 @app.get("/health")
@@ -71,21 +72,16 @@ def process_image(req: ProcessRequest):
     if image is None:
         raise HTTPException(status_code=422, detail="Could not decode image")
 
-    detections = _detector.detect(image)
-    if not detections:
-        raise HTTPException(status_code=404, detail="No license plate detected")
+    result = _recognizer.recognize(image)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No readable license plate detected")
 
-    # Try the top-3 detections; return the first successful OCR.
-    for detection in detections[:3]:
-        result = ocr_extract(detection.crop, detection.confidence)
-        if result is not None:
-            return ProcessResponse(
-                plate=result.plate,
-                text=result.text,
-                confidence=result.confidence,
-            )
-
-    raise HTTPException(status_code=404, detail="Could not extract text from plate")
+    return ProcessResponse(
+        plate=result.plate,
+        text=result.text,
+        confidence=result.confidence,
+        bbox=list(result.bbox),
+    )
 
 
 if __name__ == "__main__":
