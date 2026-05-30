@@ -33,6 +33,26 @@ Desarrollar frontend desktop manteniendo separacion estricta entre Electron (sis
 - Generar: `make sync-types` (requiere backend corriendo). Commitear `src/generated/api-types.ts`.
 - Tipos manuales permitidos solo para estado/view-model interno.
 
+## Servicio LPR (`services/lpr/`)
+
+Microservicio Python (FastAPI) de reconocimiento de patentes que corre **local**
+junto a la app. Electron lo levanta como binario standalone al iniciar.
+
+- Stack: `fast-alpr` (ONNX, **sin PyTorch**) = detector YOLO-v9 (`open-image-models`)
+  - OCR CCT (`fast-plate-ocr`). Optimizado para **CPU**; **no se asume GPU**.
+- OCR default: **`cct-s-v2-global-model`** (CCT global, cubre AR Mercosur `AB123CD`
+  y viejo `ABC123`). Los modelos AR-específicos (`argentinian-plates-cnn-*`) están
+  **deprecados** por upstream: más lentos y menos precisos. No volver a ellos sin
+  benchmark que lo justifique (`LPR_OCR_MODEL=...` para probar).
+- **Debe correr offline**: los modelos se descargan una sola vez (build/install) y
+  se hornean en el binario; `recognizer._seed_offline_cache()` los restaura al
+  arrancar. No introducir dependencias que requieran red en runtime.
+- API: `GET /health`, `POST /process` (imagen base64 → `{plate, text, confidence, bbox}`)
+  en `127.0.0.1:8765`.
+- Reglas de trabajo: **siempre `make`** (`lpr-install`, `lpr-dev`, `lpr-up`/`lpr-down`,
+  `lpr-test FILE=...`, `lpr-build`), nunca `pip`/`python` a mano. Config vía env vars,
+  no hardcodear. Doc completa: [`services/lpr/README.md`](./services/lpr/README.md).
+
 ## Donde escribir codigo
 
 - UI/features: `src/features/<feature>/`.
