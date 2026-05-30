@@ -5,11 +5,14 @@ SHELL := bash
 CYAN  := \033[36m
 RESET := \033[0m
 
-VENV   := .venv
-PYTHON := $(VENV)/bin/python
-PIP    := $(VENV)/bin/pip
+VENV    := .venv
+PYTHON  := $(VENV)/bin/python
+PIP     := $(VENV)/bin/pip
+PORT    ?= 8765
+PIDFILE := .lpr.pid
+LOGFILE := .lpr.log
 
-.PHONY: help lpr-install lpr-download-models lpr-dev lpr-build clean
+.PHONY: help lpr-install lpr-download-models lpr-dev lpr-up lpr-down lpr-logs lpr-test lpr-build clean
 
 help: ## Mostrar comandos disponibles
 	@awk 'BEGIN {FS = ":.*?## "} \
@@ -27,17 +30,55 @@ lpr-install: $(VENV)/bin/activate ## Crear venv e instalar dependencias Python
 
 # ── Model download ────────────────────────────────────────────────────────────
 
-lpr-download-models: lpr-install ## Descargar pesos YOLO y modelos EasyOCR a models/
-	@echo "→ Descargando detector YOLO..."
-	@$(PYTHON) -c "from detector import PlateDetector; PlateDetector()"
-	@echo "→ Descargando modelos EasyOCR..."
-	@$(PYTHON) -c "from ocr import _get_reader; _get_reader()"
-	@echo "✓ Modelos listos en models/"
+lpr-download-models: lpr-install ## Descargar modelos ONNX (detector + OCR) a la cache de fast-alpr
+	@echo "→ Descargando detector + OCR ONNX (fast-alpr)..."
+	@$(PYTHON) -c "from recognizer import PlateRecognizer; PlateRecognizer()"
+	@echo "✓ Modelos ONNX cacheados"
 
 # ── Development ───────────────────────────────────────────────────────────────
 
-lpr-dev: lpr-install ## Levantar el servicio en modo desarrollo (puerto 8765)
-	@$(PYTHON) main.py
+lpr-dev: lpr-install ## Levantar el servicio en primer plano (logs en vivo, Ctrl+C para frenar)
+	@$(PYTHON) main.py $(PORT)
+
+lpr-up: lpr-install ## Levantar el servicio en background (PID en .lpr.pid)
+	@if [ -f $(PIDFILE) ] && kill -0 "$$(cat $(PIDFILE))" 2>/dev/null; then \
+		echo "✓ Ya está corriendo (PID $$(cat $(PIDFILE))) en :$(PORT)"; \
+	else \
+		nohup $(PYTHON) main.py $(PORT) > $(LOGFILE) 2>&1 < /dev/null & echo $$! > $(PIDFILE); \
+		echo "→ Arrancando en :$(PORT) (PID $$(cat $(PIDFILE)))..."; \
+		curl -s --retry 30 --retry-delay 1 --retry-all-errors --retry-connrefused http://127.0.0.1:$(PORT)/health >/dev/null \
+			&& echo "✓ Listo en http://127.0.0.1:$(PORT) — logs: $(LOGFILE)" \
+			|| { echo "✗ No respondió. Revisá $(LOGFILE)"; exit 1; }; \
+	fi
+
+lpr-down: ## Detener el servicio levantado con lpr-up
+	@if [ -f $(PIDFILE) ]; then \
+		PID=$$(cat $(PIDFILE)); \
+		if kill "$$PID" 2>/dev/null; then \
+			timeout 5 tail --pid="$$PID" -f /dev/null 2>/dev/null || true; \
+			echo "✓ Servicio detenido (PID $$PID)"; \
+		else \
+			echo "⚠ El proceso (PID $$PID) ya no estaba vivo"; \
+		fi; \
+		rm -f $(PIDFILE); \
+	else \
+		echo "⚠ No hay $(PIDFILE). El servicio no fue levantado con lpr-up (o ya está detenido)."; \
+	fi
+
+lpr-logs: ## Ver los logs del servicio en background (tail -f)
+	@test -f $(LOGFILE) || { echo "✗ No hay $(LOGFILE). Levantá el servicio con: make lpr-up"; exit 1; }
+	@tail -f $(LOGFILE)
+
+# ── Test ──────────────────────────────────────────────────────────────────────
+
+lpr-test: ## Probar /process con una imagen: make lpr-test FILE=/ruta/abs/patente.jpg
+	@test -n "$(FILE)" || { echo "✗ Falta FILE. Uso: make lpr-test FILE=/ruta/abs/patente.jpg"; exit 1; }
+	@test -f "$(FILE)" || { echo "✗ No existe el archivo: $(FILE)"; exit 1; }
+	@curl -sf http://127.0.0.1:$(PORT)/health >/dev/null \
+		|| { echo "✗ El servicio no responde en :$(PORT). Levantalo con: make lpr-dev"; exit 1; }
+	@$(PYTHON) -c "import base64, json, sys; print(json.dumps({'image': base64.b64encode(open(sys.argv[1], 'rb').read()).decode()}))" "$(FILE)" \
+		| curl -s -X POST http://127.0.0.1:$(PORT)/process -H "Content-Type: application/json" -d @- \
+		| $(PYTHON) -m json.tool
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
@@ -48,5 +89,5 @@ lpr-build: lpr-download-models ## Empaquetar el servicio con PyInstaller → dis
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 
 clean: ## Eliminar artefactos de build y venv
-	@rm -rf .build dist __pycache__ $(VENV)
+	@rm -rf .build dist __pycache__ $(VENV) $(PIDFILE) $(LOGFILE)
 	@echo "✓ Limpieza completa"

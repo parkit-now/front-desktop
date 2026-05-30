@@ -34,4 +34,4 @@ services/lpr/__pycache__/
 services/lpr/.build/
 services/lpr/.venv/
 services/lpr/dist/
-services/lpr/models/easyocr/
+services/lpr/.lpr.pid
