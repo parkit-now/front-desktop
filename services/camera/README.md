@@ -10,14 +10,14 @@ detectada.
 
 ## Prerrequisitos del sistema
 
-| Requisito      | Versión         | Notas                                                                 |
-| -------------- | --------------- | --------------------------------------------------------------------- |
-| **Python**     | 3.10 o superior | Probado con 3.12.                                                     |
-| **pip + venv** | —               | En Debian/Ubuntu: `sudo apt install python3-pip python3-venv`.        |
-| **make**       | GNU Make 4.x    | Ver nota de Windows más abajo.                                        |
-| **LPR service**| corriendo       | El camera-service le delega la inferencia. Puerto default: 8765.      |
-| **macOS**      | cámara FaceTime | Requiere permiso en *System Settings → Privacy → Camera* para el terminal. |
-| **Linux**      | V4L2            | El usuario debe pertenecer al grupo `video` (`sudo usermod -aG video $USER`). |
+| Requisito       | Versión         | Notas                                                                         |
+| --------------- | --------------- | ----------------------------------------------------------------------------- |
+| **Python**      | 3.10 o superior | Probado con 3.12.                                                             |
+| **pip + venv**  | —               | En Debian/Ubuntu: `sudo apt install python3-pip python3-venv`.                |
+| **make**        | GNU Make 4.x    | Ver nota de Windows más abajo.                                                |
+| **LPR service** | corriendo       | El camera-service le delega la inferencia. Puerto default: 8765.              |
+| **macOS**       | cámara FaceTime | Requiere permiso en _System Settings → Privacy → Camera_ para el terminal.    |
+| **Linux**       | V4L2            | El usuario debe pertenecer al grupo `video` (`sudo usermod -aG video $USER`). |
 
 ---
 
@@ -77,17 +77,17 @@ Python ni ningún setup adicional.
 
 ## Comandos disponibles
 
-| Comando                  | Qué hace                                                  |
-| ------------------------ | --------------------------------------------------------- |
-| `make help`              | Lista los targets disponibles.                            |
-| `make camera-install`    | Crea el venv e instala dependencias.                      |
-| `make camera-dev`        | Levanta el servicio en primer plano (logs en vivo).       |
-| `make camera-up`         | Levanta el servicio en background (PID en `.camera.pid`). |
-| `make camera-down`       | Detiene el servicio levantado con `camera-up`.            |
-| `make camera-logs`       | Sigue los logs del servicio en background (`tail -f`).    |
-| `make camera-test`       | Verifica `/health` y `/stream/status`.                    |
-| `make camera-build`      | Empaqueta el binario standalone con PyInstaller.          |
-| `make clean`             | Borra `.venv`, `.build`, `dist` y `__pycache__`.          |
+| Comando               | Qué hace                                                  |
+| --------------------- | --------------------------------------------------------- |
+| `make help`           | Lista los targets disponibles.                            |
+| `make camera-install` | Crea el venv e instala dependencias.                      |
+| `make camera-dev`     | Levanta el servicio en primer plano (logs en vivo).       |
+| `make camera-up`      | Levanta el servicio en background (PID en `.camera.pid`). |
+| `make camera-down`    | Detiene el servicio levantado con `camera-up`.            |
+| `make camera-logs`    | Sigue los logs del servicio en background (`tail -f`).    |
+| `make camera-test`    | Verifica `/health` y `/stream/status`.                    |
+| `make camera-build`   | Empaqueta el binario standalone con PyInstaller.          |
+| `make clean`          | Borra `.venv`, `.build`, `dist` y `__pycache__`.          |
 
 ---
 
@@ -109,37 +109,38 @@ camera-service
 
 ### Archivos
 
-| Archivo          | Descripción                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------------ |
-| `main.py`        | Punto de entrada FastAPI. Config, lifespan, loop de captura, endpoints.                          |
-| `capture.py`     | Hilo de captura continua via `cv2.VideoCapture`. Soporta USB (índice) y RTSP (URL).             |
-| `storage.py`     | Persiste imágenes en `images/<tenantId>/<fecha>/` y metadata en SQLite (modo WAL).              |
-| `watchdog.py`    | Detecta ausencia de frames y dispara reconexión con backoff exponencial (1→2→4→8→30 s).         |
-| `lpr_client.py`  | Codifica el frame en base64 y hace POST al LPR service. Devuelve `None` ante cualquier falla.   |
-| `requirements.txt` | Dependencias con versiones fijadas.                                                            |
-| `build.spec`     | Spec de PyInstaller para generar el binario standalone.                                          |
-| `Makefile`       | Targets de desarrollo y build.                                                                   |
+| Archivo            | Descripción                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `main.py`          | Punto de entrada FastAPI. Config, lifespan, loop de captura, endpoints.                       |
+| `capture.py`       | Hilo de captura continua via `cv2.VideoCapture`. Soporta USB (índice) y RTSP (URL).           |
+| `storage.py`       | Persiste imágenes en `images/<tenantId>/<fecha>/` y metadata en SQLite (modo WAL).            |
+| `watchdog.py`      | Detecta ausencia de frames y dispara reconexión con backoff exponencial (1→2→4→8→30 s).       |
+| `lpr_client.py`    | Codifica el frame en base64 y hace POST al LPR service. Devuelve `None` ante cualquier falla. |
+| `requirements.txt` | Dependencias con versiones fijadas.                                                           |
+| `build.spec`       | Spec de PyInstaller para generar el binario standalone.                                       |
+| `Makefile`         | Targets de desarrollo y build.                                                                |
 
 ### Variables de entorno
 
-| Variable                   | Default                      | Descripción                                                   |
-| -------------------------- | ---------------------------- | ------------------------------------------------------------- |
-| `CAMERA_SOURCE`            | `0`                          | Índice USB (`0`, `1`, ...) o URL RTSP.                        |
-| `CAMERA_FPS`               | `10`                         | FPS objetivo de captura.                                      |
-| `CAMERA_WIDTH`             | `1280`                       | Ancho del frame en píxeles.                                   |
-| `CAMERA_HEIGHT`            | `720`                        | Alto del frame en píxeles.                                    |
-| `CAMERA_ID`                | `cam-01`                     | Identificador lógico de la cámara (guardado en metadata).     |
-| `CAMERA_TENANT_ID`         | `default`                    | ID del tenant para el path de imágenes y la DB.               |
-| `CAMERA_LOCATION`          | `entrada`                    | `entrada` o `salida` — guardado en metadata de cada captura.  |
-| `CAMERA_CAPTURE_INTERVAL`  | `2`                          | Segundos entre llamadas al LPR.                               |
-| `CAMERA_DB_PATH`           | `./camera.db`                | Path del archivo SQLite local.                                |
-| `CAMERA_IMAGES_DIR`        | `./images`                   | Directorio base para las imágenes.                            |
-| `CAMERA_WATCHDOG_TIMEOUT`  | `5`                          | Segundos sin frames antes de declarar la cámara caída.        |
-| `LPR_URL`                  | `http://127.0.0.1:8765`      | URL base del LPR service.                                     |
+| Variable                  | Default                 | Descripción                                                  |
+| ------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `CAMERA_SOURCE`           | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP.                       |
+| `CAMERA_FPS`              | `10`                    | FPS objetivo de captura.                                     |
+| `CAMERA_WIDTH`            | `1280`                  | Ancho del frame en píxeles.                                  |
+| `CAMERA_HEIGHT`           | `720`                   | Alto del frame en píxeles.                                   |
+| `CAMERA_ID`               | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).    |
+| `CAMERA_TENANT_ID`        | `default`               | ID del tenant para el path de imágenes y la DB.              |
+| `CAMERA_LOCATION`         | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura. |
+| `CAMERA_CAPTURE_INTERVAL` | `2`                     | Segundos entre llamadas al LPR.                              |
+| `CAMERA_DB_PATH`          | `./camera.db`           | Path del archivo SQLite local.                               |
+| `CAMERA_IMAGES_DIR`       | `./images`              | Directorio base para las imágenes.                           |
+| `CAMERA_WATCHDOG_TIMEOUT` | `5`                     | Segundos sin frames antes de declarar la cámara caída.       |
+| `LPR_URL`                 | `http://127.0.0.1:8765` | URL base del LPR service.                                    |
 
 ### Endpoints
 
 #### `GET /health`
+
 Indica que el servicio está corriendo. Electron lo sondea al iniciar.
 
 ```json
@@ -147,6 +148,7 @@ Indica que el servicio está corriendo. Electron lo sondea al iniciar.
 ```
 
 #### `GET /stream/status`
+
 Estado actual de la cámara. Electron lo usa para mostrar alertas en la UI
 cuando la cámara lleva más de 1 minuto caída.
 
@@ -159,6 +161,7 @@ cuando la cámara lleva más de 1 minuto caída.
 ```
 
 #### `GET /detection/latest`
+
 Última patente detectada desde que el servicio arrancó. La UI Electron
 la consulta para pre-completar el formulario de ingreso al operario.
 Devuelve `404` si todavía no hubo ninguna detección.
@@ -166,17 +169,18 @@ Devuelve `404` si todavía no hubo ninguna detección.
 ```json
 {
   "capture_id": "3f2a1b...",
-  "plate":      "AB 123 CD",
-  "text":       "AB123CD",
+  "plate": "AB 123 CD",
+  "text": "AB123CD",
   "confidence": 0.91,
-  "location":   "entrada",
-  "camera_id":  "cam-01"
+  "location": "entrada",
+  "camera_id": "cam-01"
 }
 ```
 
 ### Storage local
 
 **Disco:**
+
 ```
 images/
   <tenantId>/
@@ -185,6 +189,7 @@ images/
 ```
 
 **SQLite** (`camera.db`, modo WAL):
+
 ```sql
 captures(
   id          TEXT PRIMARY KEY,   -- uuid, coincide con el nombre del archivo
@@ -215,6 +220,7 @@ Al recuperar frames, resetea el contador y marca la cámara como `ok`.
 ## Nota para Windows
 
 `make` no viene de fábrica en Windows. Opciones:
+
 - Instalarlo (`choco install make` o vía Git Bash / WSL), **o**
 - Correr los comandos equivalentes dentro de `services/camera`:
 
