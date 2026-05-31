@@ -57,9 +57,13 @@ _capture:  CameraCapture  | None = None
 _storage:  LocalStorage   | None = None
 _watchdog: CameraWatchdog | None = None
 
+# Last successful detection — read by GET /detection/latest.
+_last_detection: dict | None = None
+
 
 async def _process_loop() -> None:
     """Grab the latest frame every CAPTURE_INTERVAL seconds, call LPR, persist."""
+    global _last_detection
     loop = asyncio.get_event_loop()
     while True:
         await asyncio.sleep(CAPTURE_INTERVAL)
@@ -71,7 +75,15 @@ async def _process_loop() -> None:
         # so it doesn't stall the asyncio event loop.
         result = await loop.run_in_executor(None, lpr_client.recognize, img)
         if result is not None:
-            _storage.save(img, CAMERA_ID, CAMERA_LOCATION, lpr_result=result)
+            capture_id = _storage.save(img, CAMERA_ID, CAMERA_LOCATION, lpr_result=result)
+            _last_detection = {
+                "capture_id": capture_id,
+                "plate":      result["plate"],
+                "text":       result["text"],
+                "confidence": result["confidence"],
+                "location":   CAMERA_LOCATION,
+                "camera_id":  CAMERA_ID,
+            }
 
 
 @asynccontextmanager
@@ -119,6 +131,15 @@ def stream_status():
     if _watchdog is None:
         return {"camera": "initializing", "down_since": None, "reconnect_attempts": 0}
     return _watchdog.status()
+
+
+@app.get("/detection/latest")
+def detection_latest():
+    """Return the last plate detected, or 404 if none since service started."""
+    if _last_detection is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="No plate detected yet")
+    return _last_detection
 
 
 if __name__ == "__main__":
