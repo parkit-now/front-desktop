@@ -12,6 +12,17 @@ PORT    ?= 8766
 PIDFILE := .camera.pid
 LOGFILE := .camera.log
 
+# macOS: OpenCV's AVFoundation backend requires this flag to skip the
+# authorization dialog (which can't be shown from a background thread).
+# On Linux the variable is ignored — V4L2 handles permissions via the
+# video group, no env var needed.
+UNAME := $(shell uname)
+ifeq ($(UNAME), Darwin)
+  OPENCV_ENV := OPENCV_AVFOUNDATION_SKIP_AUTH=1
+else
+  OPENCV_ENV :=
+endif
+
 .PHONY: help camera-install camera-dev camera-up camera-down camera-logs camera-test camera-build clean
 
 help: ## Mostrar comandos disponibles
@@ -31,13 +42,13 @@ camera-install: $(VENV)/bin/activate ## Crear venv e instalar dependencias Pytho
 # ── Development ───────────────────────────────────────────────────────────────
 
 camera-dev: camera-install ## Levantar el servicio en primer plano (logs en vivo, Ctrl+C para frenar)
-	@$(PYTHON) main.py $(PORT)
+	@$(OPENCV_ENV) $(PYTHON) main.py $(PORT)
 
 camera-up: camera-install ## Levantar el servicio en background (PID en .camera.pid)
 	@if [ -f $(PIDFILE) ] && kill -0 "$$(cat $(PIDFILE))" 2>/dev/null; then \
 		echo "✓ Ya está corriendo (PID $$(cat $(PIDFILE))) en :$(PORT)"; \
 	else \
-		nohup $(PYTHON) main.py $(PORT) > $(LOGFILE) 2>&1 < /dev/null & echo $$! > $(PIDFILE); \
+		nohup $(OPENCV_ENV) $(PYTHON) main.py $(PORT) > $(LOGFILE) 2>&1 < /dev/null & echo $$! > $(PIDFILE); \
 		echo "→ Arrancando en :$(PORT) (PID $$(cat $(PIDFILE)))..."; \
 		curl -s --retry 30 --retry-delay 1 --retry-all-errors --retry-connrefused http://127.0.0.1:$(PORT)/health >/dev/null \
 			&& echo "✓ Listo en http://127.0.0.1:$(PORT) — logs: $(LOGFILE)" \
