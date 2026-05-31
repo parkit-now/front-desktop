@@ -35,3 +35,6 @@ services/lpr/.build/
 services/lpr/.venv/
 services/lpr/dist/
 services/lpr/.lpr.pid
+services/camera/__pycache__/
+services/camera/.build/
+services/camera/.venv/
