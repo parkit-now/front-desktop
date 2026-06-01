@@ -614,32 +614,6 @@ export interface paths {
         patch: operations["zonesUpdate"];
         trace?: never;
     };
-    "/users/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the currently authenticated user
-         * @description Returns the public projection of the user identified by the `sub` claim of the Supabase bearer token.
-         *
-         *     **Behavior:**
-         *     - Reads the user from the database on every call — the response is always fresh, not just the JWT claims. A role change is reflected immediately even on previously issued tokens.
-         *     - If the Supabase Auth user has no row in our `users` table the request is rejected `401 Unauthorized` (the user has not been provisioned by an admin yet).
-         *
-         *     **Auth required:** valid `Authorization: Bearer <jwt>` header. The token must be a Supabase access token, signed with the project `SUPABASE_JWT_SECRET`.
-         */
-        get: operations["usersMe"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/vehicles": {
         parameters: {
             query?: never;
@@ -2954,35 +2928,6 @@ export interface operations {
             };
             /** @description No zone with `:id` exists within the `:tenantId` parking lot (`ZONE_NOT_FOUND`). */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-        };
-    };
-    usersMe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The authenticated user. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserDto"];
-                };
-            };
-            /** @description Bearer token is missing, malformed, expired, or the user is not provisioned. */
-            401: {
                 headers: {
                     [name: string]: unknown;
                 };
