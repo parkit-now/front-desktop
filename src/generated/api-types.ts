@@ -4,6 +4,107 @@
  */
 
 export interface paths {
+    "/admin/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List parking-lot onboarding applications (Ops review queue)
+         * @description Returns the PARKIT Ops review queue: parking-lot onboarding applications submitted by owners, newest first.
+         *
+         *     Each row is a denormalized summary (legal name, owner email, CUIT, declared-branch count, uploaded-document count, status and timestamps) — enough to triage without opening the detail.
+         *
+         *     **Status mapping.** The optional `status` query uses the external contract `pending | approved | rejected`. The internal `pending_review` state surfaces as `pending`. Applications still in `draft` (never submitted) are never part of the queue.
+         *
+         *     **No filter** returns every submitted application (`pending_review`, `approved`, `rejected`) and still excludes drafts.
+         */
+        get: operations["adminApplicationsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a single onboarding application with full review detail
+         * @description Returns the full detail an Ops reviewer needs to make a decision: the summary fields plus the declared entity data (name, address, legal data and per-vehicle spot counts), the uploaded documents and, when already reviewed, the rejection reason and review timestamp.
+         *
+         *     This is the screen the reviewer opens before approving or rejecting an application.
+         */
+        get: operations["adminApplicationsGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/applications/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an onboarding application and provision the entity
+         * @description Approves a submitted application and atomically provisions the entity (tenant). In a single transaction it:
+         *
+         *     - materializes the declared entity as a real parking lot (tenant), with an initial `General` zone carrying the declared car/motorcycle/bicycle spot counts;
+         *     - grants the applicant an `owner` membership on the created entity;
+         *     - creates the system payment methods (`mp_transfer` as default, `cash`), which are non-deletable but can be disabled;
+         *     - marks the application `approved` (linking the created `tenantId`) and records the audit trail.
+         *
+         *     The entity-level role (`owner`) lives on the membership; the applicant global role stays `user`, so no JWT claim is changed.
+         *
+         *     **Only `pending_review` applications can be approved.** Returns the updated application summary.
+         */
+        post: operations["adminApplicationsApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/applications/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject an onboarding application with a reason
+         * @description Marks a submitted application as `rejected`, storing the reviewer-provided `reason` (kept in the application history) and recording the audit trail.
+         *
+         *     Rejection is not terminal: the owner can fix the issues called out in the reason and resubmit.
+         *
+         *     **Only `pending_review` applications can be rejected.** Returns the updated application summary.
+         */
+        post: operations["adminApplicationsReject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -72,6 +173,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current user identity and entity memberships
+         * @description Returns the authenticated caller: id, email, GLOBAL role (`admin | user`) and the list of entities (tenants) they belong to, each with the per-entity role (`owner | operator`).
+         *
+         *     This is how clients discover which lots a `user` can act on and whether they manage (`owner`) or only operate (`operator`) — the entity role is NOT carried in the JWT. Admins return an empty `memberships` array (they bypass membership).
+         */
+        get: operations["authMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/refresh": {
         parameters: {
             query?: never;
@@ -105,9 +228,9 @@ export interface paths {
          * Register a new user and return a session
          * @description Creates a Supabase Auth user, the matching row in `public.users`, then signs the user in and returns the tokens.
          *
-         *     **Self-registrable roles:** `owner`, `operator`, `driver`. The `admin` role is rejected — platform admins are provisioned out-of-band.
+         *     **No role is accepted.** Every self-registered user gets the GLOBAL role `user`. Platform admins are provisioned out-of-band.
          *
-         *     **No tenant is attached at register.** A tenant equals a parking lot, and the new user has zero memberships. Owners create lots in a dedicated flow (one or many); operators are linked to lots via invitations; drivers and admins never have a tenant.
+         *     **No tenant is attached at register.** A tenant equals a parking lot, and the new user has zero memberships. Applicants gain an `owner` membership when their onboarding application is approved; operators are linked to lots via invitations.
          */
         post: operations["authRegister"];
         delete?: never;
@@ -166,6 +289,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/onboarding/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the applications of the authenticated user
+         * @description Returns every onboarding application created by the caller, newest first.
+         */
+        get: operations["onboardingListApplications"];
+        put?: never;
+        /**
+         * Create a draft onboarding application
+         * @description Creates a draft `OnboardingApplication` for the authenticated user declaring ONE entity (parking lot): `name`, `address`, `legalName`, `cuit`, `email`, `phone` and optional spot counts.
+         *
+         *     The application starts in `draft`. Subsequent steps attach documents and submit it for PARKIT Ops review.
+         */
+        post: operations["onboardingCreateApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one of the applications of the authenticated user
+         * @description Returns a single onboarding application owned by the caller.
+         */
+        get: operations["onboardingGetApplication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit the declared entity of a draft or rejected application
+         * @description Patches the declared-entity data of an application that is still editable.
+         *
+         *     **Editable states only:** `draft` and `rejected`. An application in `pending_review` or `approved` can no longer be edited. Editing a rejected application is how an applicant fixes the issues raised by PARKIT Ops before resubmitting.
+         *
+         *     All fields are optional (partial update); the provided fields are merged into the declared entity.
+         */
+        patch: operations["onboardingUpdateApplication"];
+        trace?: never;
+    };
+    "/onboarding/applications/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register document metadata for an application
+         * @description Registers the metadata of a supporting document attached to the application.
+         *
+         *     **The binary is uploaded out-of-band.** The client uploads the file directly to Supabase Storage; this endpoint only persists its metadata (`name`, `storagePath`, optional `mimeType`).
+         */
+        post: operations["onboardingAddDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/applications/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit an application for review
+         * @description Transitions the application from `draft` or `rejected` to `pending_review` and stamps `submittedAt`, handing it over to PARKIT Ops for review.
+         *
+         *     Resubmitting a previously rejected application clears its `rejectionReason`.
+         */
+        post: operations["onboardingSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the entity profile
+         * @description Returns the profile of the `:tenantId` entity (parking lot): its contact/legal data, operational status and a summary of its configured payment methods.
+         *
+         *     Available to any member of the entity.
+         */
+        get: operations["entitiesGetProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update the entity profile
+         * @description Edits the editable fields of the entity profile (`name`, `legalName`, `cuit`, `email`, `phone`, `address`).
+         *
+         *     Every change is written to the audit trail. Requires the caller to be an `owner` of the entity (platform admins bypass the role check).
+         */
+        patch: operations["entitiesUpdateProfile"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the entity audit trail
+         * @description Returns the audit events recorded for the `:tenantId` entity (profile edits, payment-method changes, approval, etc.), most recent first.
+         *
+         *     Supports optional filtering by `severity` and capping the number of returned events with `limit` (defaults to 100). Available to any member of the entity.
+         */
+        get: operations["entitiesListAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries": {
         parameters: {
             query?: never;
@@ -180,6 +451,167 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/payment-methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the entity payment methods
+         * @description Returns every payment method configured for the `:tenantId` entity, oldest first.
+         *
+         *     System methods (`mp_transfer`, `cash`) are flagged with `isSystem: true` — they can be enabled or disabled but never deleted. Available to any member of the entity.
+         */
+        get: operations["entitiesListPaymentMethods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/payment-methods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Enable/disable or set-default a payment method
+         * @description Toggles a payment method via the `enabled` and/or `isDefault` flags.
+         *
+         *     System methods (`mp_transfer`, `cash`) can be disabled but never deleted. Setting `isDefault: true` clears the previous default. The change is recorded in the audit trail. Requires the caller to be an `owner` of the entity (platform admins bypass the role check).
+         */
+        patch: operations["entitiesTogglePaymentMethod"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List rates in the active tenant */
+        get: operations["RatesController_findAll"];
+        put?: never;
+        /** Create a new rate in the active tenant */
+        post: operations["RatesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/rates/{rateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Soft delete a rate using optimistic locking (expectedVersion) */
+        delete: operations["RatesController_remove"];
+        options?: never;
+        head?: never;
+        /** Update a rate using optimistic locking (expectedVersion) */
+        patch: operations["RatesController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/rates/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental changes for offline sync */
+        get: operations["RatesController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the zones of a parking lot
+         * @description Returns every zone configured for the `:tenantId` parking lot, ordered by creation date.
+         *
+         *     A **zone** groups parking spot counts by vehicle type (`carSpots`, `motorcycleSpots`, `bicycleSpots`) inside a single parking lot. It models configuration only — the individual operational spot is out of scope here.
+         *
+         *     **Tenant isolation:** the response only contains zones of parking lots the caller belongs to; zones of other lots are never returned.
+         */
+        get: operations["zonesList"];
+        put?: never;
+        /**
+         * Create a zone in a parking lot
+         * @description Creates a new zone in the `:tenantId` parking lot with its per-vehicle-type spot counts (`carSpots`, `motorcycleSpots`, `bicycleSpots`). Any count omitted from the payload defaults to `0`.
+         *
+         *     A **zone** is configuration only: it declares how many spots of each vehicle type the lot offers, not the individual operational spots.
+         *
+         *     **Tenant isolation:** the zone is bound to the `:tenantId` the caller is operating on; the tenant is injected automatically and is never part of the request body.
+         */
+        post: operations["zonesCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/zones/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a zone of a parking lot
+         * @description Deletes a zone from the `:tenantId` parking lot and returns the `id` of the removed zone.
+         *
+         *     A **zone** is configuration only — removing it drops the per-vehicle-type spot counts it grouped, without touching individual operational spots.
+         *
+         *     **Tenant isolation:** only zones belonging to a parking lot the caller is a member of can be deleted; zones of other lots are reported as not found.
+         */
+        delete: operations["zonesRemove"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a zone of a parking lot
+         * @description Partially updates a zone of the `:tenantId` parking lot. Only the provided fields are changed; the `name` and the per-vehicle-type spot counts (`carSpots`, `motorcycleSpots`, `bicycleSpots`) can be adjusted.
+         *
+         *     A **zone** is configuration only — it groups spot counts by vehicle type and does not model individual operational spots.
+         *
+         *     **Tenant isolation:** only zones belonging to a parking lot the caller is a member of can be updated; zones of other lots are reported as not found.
+         */
+        patch: operations["zonesUpdate"];
         trace?: never;
     };
     "/users/me": {
@@ -228,6 +660,192 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ApplicationDetailDto: {
+            /**
+             * @description Declared postal address. `null` when not provided.
+             * @example Av. Corrientes 1234, CABA
+             */
+            address: string | null;
+            /**
+             * @description Email of the applicant user (no display name exists yet).
+             * @example applicant@example.com
+             */
+            applicantEmail: string;
+            /**
+             * Format: date-time
+             * @description When the application record was created (ISO-8601 UTC).
+             * @example 2026-05-18T09:15:00.000Z
+             */
+            createdAt: string;
+            /**
+             * @description Declared Argentine tax id (CUIT).
+             * @example 30712345679
+             */
+            cuit: string;
+            /** @description Declared entity snapshot captured at submission time (name, address, legal data and per-vehicle spot counts). Materialized as a real parking lot on approval. */
+            declaredEntity: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Number of supporting documents uploaded by the applicant.
+             * @example 3
+             */
+            docsCount: number;
+            /** @description Supporting documents uploaded by the applicant. */
+            documents: components["schemas"]["ApplicationDocumentDto"][];
+            /**
+             * @description Declared contact email of the entity.
+             * @example contacto@estacionamiento.com
+             */
+            email: string;
+            /**
+             * Format: uuid
+             * @description Onboarding application id.
+             * @example 3f1d2c4b-5e6a-7b8c-9d0e-1f2a3b4c5d6e
+             */
+            id: string;
+            /**
+             * @description Declared legal name of the entity.
+             * @example Estacionamientos del Centro S.A.
+             */
+            legalName: string;
+            /**
+             * @description Declared display name of the parking lot.
+             * @example Estacionamiento del Centro
+             */
+            name: string;
+            /**
+             * @description Declared contact phone number. `null` when not provided.
+             * @example +54 11 5555-5555
+             */
+            phone: string | null;
+            /**
+             * @description Reviewer-provided reason set when the application was rejected. `null` unless `status` is `rejected`.
+             * @example Missing proof of property ownership.
+             */
+            rejectionReason: string | null;
+            /**
+             * Format: date-time
+             * @description When an Ops reviewer approved or rejected the application (ISO-8601 UTC). `null` while still pending.
+             * @example 2026-05-21T10:00:00.000Z
+             */
+            reviewedAt: string | null;
+            /**
+             * @description External review status. The internal `pending_review` state surfaces as `pending`; drafts never appear in the queue.
+             * @example pending
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /**
+             * Format: date-time
+             * @description When the applicant submitted the application for review (ISO-8601 UTC). `null` while still a draft.
+             * @example 2026-05-20T14:30:00.000Z
+             */
+            submittedAt: string | null;
+            /**
+             * Format: uuid
+             * @description Id of the entity (tenant) created on approval, or `null` until approved.
+             * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
+             */
+            tenantId: string | null;
+        };
+        ApplicationDocumentDto: {
+            /**
+             * @description ISO-8601 UTC timestamp of creation.
+             * @example 2026-05-19T11:05:00.000Z
+             */
+            createdAt: string;
+            /**
+             * Format: uuid
+             * @description Document metadata record id (UUID).
+             * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
+             */
+            id: string;
+            /**
+             * @description MIME type of the document, or `null` if not provided.
+             * @example application/pdf
+             */
+            mimeType: string | null;
+            /**
+             * @description Human-readable document name.
+             * @example Habilitacion municipal.pdf
+             */
+            name: string;
+            /**
+             * @description Object key of the binary in Supabase Storage.
+             * @example applications/3f2504e0/docs/habilitacion.pdf
+             */
+            storagePath: string;
+        };
+        ApplicationDto: {
+            /**
+             * @description Email of the applicant user (no display name exists yet).
+             * @example applicant@example.com
+             */
+            applicantEmail: string;
+            /**
+             * Format: date-time
+             * @description When the application record was created (ISO-8601 UTC).
+             * @example 2026-05-18T09:15:00.000Z
+             */
+            createdAt: string;
+            /**
+             * @description Declared Argentine tax id (CUIT).
+             * @example 30712345679
+             */
+            cuit: string;
+            /**
+             * @description Number of supporting documents uploaded by the applicant.
+             * @example 3
+             */
+            docsCount: number;
+            /**
+             * @description Declared contact email of the entity.
+             * @example contacto@estacionamiento.com
+             */
+            email: string;
+            /**
+             * Format: uuid
+             * @description Onboarding application id.
+             * @example 3f1d2c4b-5e6a-7b8c-9d0e-1f2a3b4c5d6e
+             */
+            id: string;
+            /**
+             * @description Declared legal name of the entity.
+             * @example Estacionamientos del Centro S.A.
+             */
+            legalName: string;
+            /**
+             * @description Declared display name of the parking lot.
+             * @example Estacionamiento del Centro
+             */
+            name: string;
+            /**
+             * @description External review status. The internal `pending_review` state surfaces as `pending`; drafts never appear in the queue.
+             * @example pending
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /**
+             * Format: date-time
+             * @description When the applicant submitted the application for review (ISO-8601 UTC). `null` while still a draft.
+             * @example 2026-05-20T14:30:00.000Z
+             */
+            submittedAt: string | null;
+        };
+        AuditEventDto: {
+            /** @description Recorded action, e.g. "entity.approved" */
+            action: string;
+            /** @description Actor email (null when emitted by the system) */
+            actorName: string | null;
+            /** @description ISO-8601 UTC */
+            createdAt: string;
+            entityId: string | null;
+            entityType: string;
+            id: string;
+            /** @enum {string} */
+            severity: "info" | "warn" | "crit";
+        };
         AuthSessionResponseDto: {
             /** @description Tokens to use for subsequent calls. */
             session: components["schemas"]["SessionDto"];
@@ -235,6 +853,54 @@ export interface components {
             user: components["schemas"]["UserDto"];
         };
         ConnectVehicleDto: Record<string, never>;
+        CreateApplicationDto: {
+            /**
+             * @description Address of the parking lot.
+             * @example Av. Corrientes 1234, CABA
+             */
+            address: string;
+            /**
+             * @description Declared bicycle spots (materialized into the initial zone).
+             * @example 10
+             */
+            bicycleSpots?: number;
+            /**
+             * @description Declared car spots (materialized into the initial zone).
+             * @example 80
+             */
+            carSpots?: number;
+            /**
+             * @description CUIT, 11 digits
+             * @example 30123456789
+             */
+            cuit: string;
+            /**
+             * Format: email
+             * @description Contact email of the entity.
+             * @example contacto@estacionamiento.com
+             */
+            email: string;
+            /**
+             * @description Registered legal name of the entity.
+             * @example Estacionamientos del Centro S.A.
+             */
+            legalName: string;
+            /**
+             * @description Declared motorcycle spots (materialized into the initial zone).
+             * @example 20
+             */
+            motorcycleSpots?: number;
+            /**
+             * @description Display name of the parking lot.
+             * @example Estacionamiento del Centro
+             */
+            name: string;
+            /**
+             * @description Contact phone of the entity.
+             * @example +541145678900
+             */
+            phone: string;
+        };
         CreateEntryDto: {
             /** Format: double */
             amountPaid: number;
@@ -242,7 +908,109 @@ export interface components {
             leftAt: string;
         };
         CreateEntryVehicleRelationInputDto: Record<string, never>;
+        CreateRateDto: {
+            /**
+             * @description Precio de la fraccion en ARS.
+             * @example 300
+             */
+            fractionPriceArs: number;
+            /**
+             * @description Precio de la hora en ARS.
+             * @example 3600
+             */
+            hourPriceArs: number;
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline-first sync.
+             * @example 018f44f7-9a96-7f75-9e9c-44ed9432fc12
+             */
+            id: string;
+            /** @example DIA AUTO */
+            name: string;
+            /**
+             * @description Precio de la estadia en ARS.
+             * @example 8000
+             */
+            stayPriceArs: number;
+        };
         CreateVehicleDto: Record<string, never>;
+        CreateZoneDto: {
+            /**
+             * @description Number of bicycle spots configured for this zone.
+             * @default 0
+             * @example 6
+             */
+            bicycleSpots: number;
+            /**
+             * @description Number of car spots configured for this zone.
+             * @default 0
+             * @example 40
+             */
+            carSpots: number;
+            /**
+             * @description Number of motorcycle spots configured for this zone.
+             * @default 0
+             * @example 10
+             */
+            motorcycleSpots: number;
+            /**
+             * @description Human-readable name of the zone within the parking lot.
+             * @example Ground floor
+             */
+            name: string;
+        };
+        EntityProfileDto: {
+            /**
+             * @description Address, or `null` if not provided.
+             * @example Av. Corrientes 1234, CABA
+             */
+            address: string | null;
+            /**
+             * @description ISO-8601 UTC timestamp of creation.
+             * @example 2026-05-19T11:00:00.000Z
+             */
+            createdAt: string;
+            /**
+             * @description CUIT (Argentine tax id), or `null` if not provided.
+             * @example 30123456789
+             */
+            cuit: string | null;
+            /**
+             * Format: email
+             * @description Contact email, or `null` if not provided.
+             * @example contacto@estacionamiento.com
+             */
+            email: string | null;
+            /**
+             * Format: uuid
+             * @description Entity (tenant) id (UUID).
+             * @example 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+             */
+            id: string;
+            /**
+             * @description Registered legal name, or `null` if not provided.
+             * @example Estacionamientos del Centro S.A.
+             */
+            legalName: string | null;
+            /**
+             * @description Display name of the entity (parking lot).
+             * @example Estacionamiento del Centro
+             */
+            name: string;
+            /** @description Payment methods configured for this entity. */
+            paymentMethods: components["schemas"]["PaymentMethodSummaryDto"][];
+            /**
+             * @description Contact phone, or `null` if not provided.
+             * @example +541145678900
+             */
+            phone: string | null;
+            /**
+             * @description Operational status of the entity.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "maintenance";
+        };
         ForgotPasswordDto: {
             /**
              * Format: email
@@ -313,6 +1081,117 @@ export interface components {
              */
             password: string;
         };
+        MeMembershipDto: {
+            /**
+             * @description Per-entity role of the caller in this tenant.
+             * @enum {string}
+             */
+            role: "owner" | "operator";
+            /**
+             * Format: uuid
+             * @description Entity (tenant) id.
+             */
+            tenantId: string;
+            /** @description Entity (tenant) display name. */
+            tenantName: string;
+        };
+        MeResponseDto: {
+            /** Format: email */
+            email: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Entities the caller belongs to, with their per-entity role. */
+            memberships: components["schemas"]["MeMembershipDto"][];
+            /**
+             * @description GLOBAL platform role (`admin | user`).
+             * @enum {string}
+             */
+            role: "admin" | "user";
+        };
+        Object: Record<string, never>;
+        OnboardingApplicationDto: {
+            /**
+             * @description ISO-8601 UTC timestamp of creation.
+             * @example 2026-05-19T11:00:00.000Z
+             */
+            createdAt: string;
+            /** @description Declared entity snapshot: `name`, `address`, `legalName`, `cuit`, `email`, `phone` and spot counts. On approval it is materialized as a real parking lot (tenant). */
+            declaredEntity: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Number of document metadata records attached to the application.
+             * @example 3
+             */
+            docsCount: number;
+            /**
+             * Format: uuid
+             * @description Onboarding application id (UUID).
+             * @example 3f2504e0-4f89-41d3-9a0c-0305e82c3301
+             */
+            id: string;
+            /**
+             * @description Reason provided by PARKIT Ops when the application was rejected, or `null` otherwise.
+             * @example CUIT does not match the declared legal name.
+             */
+            rejectionReason: string | null;
+            /**
+             * @description ISO-8601 UTC timestamp of the PARKIT Ops review, or `null` if not yet reviewed.
+             * @example 2026-05-21T09:10:00.000Z
+             */
+            reviewedAt: string | null;
+            /**
+             * @description Lifecycle state of the application. Flows `draft` → `pending_review` → `approved`/`rejected`; `rejected` can be edited and resubmitted.
+             * @example draft
+             * @enum {string}
+             */
+            status: "draft" | "pending_review" | "approved" | "rejected";
+            /**
+             * @description ISO-8601 UTC timestamp of the last submission, or `null` while still in `draft` and never submitted.
+             * @example 2026-05-20T14:32:00.000Z
+             */
+            submittedAt: string | null;
+            /**
+             * Format: uuid
+             * @description Id of the entity (tenant) created on approval, or `null` until approved.
+             * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
+             */
+            tenantId: string | null;
+        };
+        PaymentMethodSummaryDto: {
+            /**
+             * @description Whether the method is currently enabled for the entity.
+             * @example true
+             */
+            enabled: boolean;
+            /**
+             * Format: uuid
+             * @description Payment method identifier.
+             * @example 2a1b3c4d-5e6f-4a1b-8c9d-0e1f2a3b4c5d
+             */
+            id: string;
+            /**
+             * @description Whether this is the default payment method of the entity.
+             * @example false
+             */
+            isDefault: boolean;
+            /**
+             * @description Whether this is a system method (`mp_transfer` / `cash`). System methods can be disabled but never deleted.
+             * @example true
+             */
+            isSystem: boolean;
+            /**
+             * @description Display name of the payment method.
+             * @example Cash
+             */
+            name: string;
+            /**
+             * @description Payment method type. `mp_transfer` and `cash` are system methods; `other` is custom.
+             * @example cash
+             * @enum {string}
+             */
+            type: "mp_transfer" | "cash" | "other";
+        };
         ProblemDetailsDto: {
             /**
              * @description Stable, machine-readable identifier of the error class (SCREAMING_SNAKE_CASE). Independent of HTTP status and wording. Clients map this to a localized user-facing message.
@@ -340,12 +1219,42 @@ export interface components {
              */
             title: string;
         };
+        RateChangesResponseDto: {
+            items: components["schemas"]["RateDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        RateDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            deletedAt: string | null;
+            fractionPriceArs: number;
+            hourPriceArs: number;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            name: string;
+            stayPriceArs: number;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
         RefreshDto: {
             /**
              * @description Refresh token returned by `POST /auth/login` or `POST /auth/register`.
              * @example v1:eyJhbGciOi...REFRESH...
              */
             refreshToken: string;
+        };
+        RegisterDocumentDto: {
+            mimeType?: string;
+            name: string;
+            /** @description Object key in Supabase Storage */
+            storagePath: string;
         };
         RegisterDto: {
             /**
@@ -359,12 +1268,13 @@ export interface components {
              * @example CorrectHorseBatteryStaple1!
              */
             password: string;
+        };
+        RejectApplicationDto: {
             /**
-             * @description Role to assign to the new user. `admin` is rejected — platform admins are provisioned manually.
-             * @example driver
-             * @enum {string}
+             * @description Reason for rejecting the application. Stored in the application history and surfaced to the owner, who can fix the issues and resubmit.
+             * @example Missing proof of property ownership for branch #2.
              */
-            role: "owner" | "operator" | "driver";
+            reason: string;
         };
         ResetPasswordDto: {
             /**
@@ -399,11 +1309,150 @@ export interface components {
              */
             tokenType: string;
         };
+        TogglePaymentMethodDto: {
+            /**
+             * @description Whether the payment method should be enabled (true) or disabled (false).
+             * @example true
+             */
+            enabled?: boolean;
+            /**
+             * @description Whether this method becomes the default for the entity.
+             * @example true
+             */
+            isDefault?: boolean;
+        };
+        UpdateApplicationDto: {
+            /**
+             * @description Address of the parking lot.
+             * @example Av. Corrientes 1234, CABA
+             */
+            address?: string;
+            /**
+             * @description Declared bicycle spots (materialized into the initial zone).
+             * @example 10
+             */
+            bicycleSpots?: number;
+            /**
+             * @description Declared car spots (materialized into the initial zone).
+             * @example 80
+             */
+            carSpots?: number;
+            /**
+             * @description CUIT, 11 digits
+             * @example 30123456789
+             */
+            cuit?: string;
+            /**
+             * Format: email
+             * @description Contact email of the entity.
+             * @example contacto@estacionamiento.com
+             */
+            email?: string;
+            /**
+             * @description Registered legal name of the entity.
+             * @example Estacionamientos del Centro S.A.
+             */
+            legalName?: string;
+            /**
+             * @description Declared motorcycle spots (materialized into the initial zone).
+             * @example 20
+             */
+            motorcycleSpots?: number;
+            /**
+             * @description Display name of the parking lot.
+             * @example Estacionamiento del Centro
+             */
+            name?: string;
+            /**
+             * @description Contact phone of the entity.
+             * @example +541145678900
+             */
+            phone?: string;
+        };
+        UpdateEntityProfileDto: {
+            /**
+             * @description New address of the entity.
+             * @example Av. Corrientes 1000, Buenos Aires
+             */
+            address?: string;
+            /**
+             * @description New CUIT (Argentine tax id), 11 digits.
+             * @example 30123456789
+             */
+            cuit?: string;
+            /**
+             * Format: email
+             * @description New contact email of the entity.
+             * @example contact@parkit.com
+             */
+            email?: string;
+            /**
+             * @description New legal name of the entity.
+             * @example Estacionamientos del Centro S.A.
+             */
+            legalName?: string;
+            /**
+             * @description New display name of the entity.
+             * @example Estacionamiento del Centro
+             */
+            name?: string;
+            /**
+             * @description New contact phone number of the entity.
+             * @example +54 11 5555-1234
+             */
+            phone?: string;
+        };
+        UpdateRateDto: {
+            /**
+             * @description Precio de la fraccion en ARS.
+             * @example 325
+             */
+            fractionPriceArs?: number;
+            /**
+             * @description Precio de la hora en ARS.
+             * @example 3900
+             */
+            hourPriceArs?: number;
+            /**
+             * @description Permite activar/desactivar una tarifa.
+             * @example true
+             */
+            isActive?: boolean;
+            /** @example NOCHE AUTO */
+            name?: string;
+            /**
+             * @description Precio de la estadia en ARS.
+             * @example 9000
+             */
+            stayPriceArs?: number;
+        };
+        UpdateZoneDto: {
+            /**
+             * @description New number of bicycle spots for this zone.
+             * @example 6
+             */
+            bicycleSpots?: number;
+            /**
+             * @description New number of car spots for this zone.
+             * @example 40
+             */
+            carSpots?: number;
+            /**
+             * @description New number of motorcycle spots for this zone.
+             * @example 10
+             */
+            motorcycleSpots?: number;
+            /**
+             * @description New name for the zone.
+             * @example Ground floor
+             */
+            name?: string;
+        };
         UserDto: {
             /** Format: date-time */
             createdAt: string;
             /** @enum {string} */
-            role: "admin" | "owner" | "operator" | "driver";
+            role: "admin" | "user";
         };
         ValidationFieldErrorDto: {
             /**
@@ -451,6 +1500,18 @@ export interface components {
             /** @description Field-level breakdown of the validation failures. */
             validationsErrors: components["schemas"]["ValidationFieldErrorDto"][];
         };
+        ZoneDto: {
+            /** Format: int32 */
+            bicycleSpots: number;
+            /** Format: int32 */
+            carSpots: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            motorcycleSpots: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -460,6 +1521,233 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    adminApplicationsList: {
+        parameters: {
+            query?: {
+                /** @description Filter by external status. Omit to return all submitted applications (drafts are always excluded). `pending` maps to the internal `pending_review` state. */
+                status?: "pending" | "approved" | "rejected";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDto"][];
+                };
+            };
+            /** @description Invalid `status` query value. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    adminApplicationsGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Onboarding application id (uuid). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDetailDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No onboarding application exists for the given id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    adminApplicationsApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Onboarding application id (uuid). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No onboarding application exists for the given id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Application is not in `pending_review` (already approved/rejected or still a draft) and cannot be reviewed (`ONBOARDING_INVALID_STATE`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    adminApplicationsReject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Onboarding application id (uuid). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectApplicationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDto"];
+                };
+            };
+            /** @description Invalid payload (missing or empty `reason`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No onboarding application exists for the given id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Application is not in `pending_review` (already approved/rejected or still a draft) and cannot be reviewed (`ONBOARDING_INVALID_STATE`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     authForgotPassword: {
         parameters: {
             query?: never;
@@ -536,6 +1824,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    authMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponseDto"];
+                };
             };
             /** @description Missing, malformed, or expired bearer token. */
             401: {
@@ -680,6 +1996,480 @@ export interface operations {
             };
         };
     };
+    onboardingListApplications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationDto"][];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    onboardingCreateApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApplicationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationDto"];
+                };
+            };
+            /** @description Invalid payload (validation: missing fields, malformed CUIT/email, etc.). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    onboardingGetApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The onboarding application id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is not the applicant (`ENTITY_NOT_OWNER`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No application exists for the given id (`ONBOARDING_APPLICATION_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    onboardingUpdateApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The onboarding application id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateApplicationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationDto"];
+                };
+            };
+            /** @description Invalid payload (validation failed). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is not the applicant (`ENTITY_NOT_OWNER`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No application exists for the given id (`ONBOARDING_APPLICATION_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The application is not in an editable state (`ONBOARDING_INVALID_STATE`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    onboardingAddDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The onboarding application id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterDocumentDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDocumentDto"];
+                };
+            };
+            /** @description Invalid payload (validation: missing `name`/`storagePath`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is not the applicant (`ENTITY_NOT_OWNER`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No application exists for the given id (`ONBOARDING_APPLICATION_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    onboardingSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The onboarding application id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is not the applicant (`ENTITY_NOT_OWNER`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No application exists for the given id (`ONBOARDING_APPLICATION_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The application is not in a submittable state (`ONBOARDING_INVALID_STATE`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesGetProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityProfileDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No entity matches the given id (ENTITY_NOT_FOUND). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesUpdateProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEntityProfileDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityProfileDto"];
+                };
+            };
+            /** @description Invalid payload (validation failed). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No entity matches the given id (ENTITY_NOT_FOUND). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesListAudit: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of audit events to return. */
+                limit?: number;
+                /** @description Filter events by severity. Returns all severities when omitted. */
+                severity?: "info" | "warn" | "crit";
+            };
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventDto"][];
+                };
+            };
+            /** @description Invalid query parameters (validation failed). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     EntriesController_findAll: {
         parameters: {
             query?: never;
@@ -721,6 +2511,455 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    entitiesListPaymentMethods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodSummaryDto"][];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesTogglePaymentMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the payment method to toggle. */
+                id: string;
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TogglePaymentMethodDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodSummaryDto"];
+                };
+            };
+            /** @description Invalid payload (validation failed). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No payment method matches the given id in this entity (PAYMENT_METHOD_NOT_FOUND). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    RatesController_findAll: {
+        parameters: {
+            query?: {
+                /** @description Include soft-deleted rates in the response. */
+                includeDeleted?: boolean;
+                /** @description Include disabled rates in the response. */
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateDto"][];
+                };
+            };
+        };
+    };
+    RatesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateDto"];
+                };
+            };
+        };
+    };
+    RatesController_remove: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                rateId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateDto"];
+                };
+            };
+        };
+    };
+    RatesController_update: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                rateId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateDto"];
+                };
+            };
+        };
+    };
+    RatesController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Include deleted rows in the changes feed. */
+                includeDeleted?: boolean;
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateChangesResponseDto"];
+                };
+            };
+        };
+    };
+    zonesList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the parking lot (tenant) the zone belongs to. */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneDto"][];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` parking lot, so its zones are out of reach. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    zonesCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the parking lot (tenant) the zone belongs to. */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateZoneDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneDto"];
+                };
+            };
+            /** @description Invalid payload (missing name, negative or non-integer spot counts, etc.). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` parking lot, so its zones are out of reach. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    zonesRemove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the zone to delete. */
+                id: string;
+                /** @description ID of the parking lot (tenant) the zone belongs to. */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The zone was deleted; the response carries the deleted zone `id`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` parking lot, so its zones are out of reach. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No zone with `:id` exists within the `:tenantId` parking lot (`ZONE_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    zonesUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the zone to update. */
+                id: string;
+                /** @description ID of the parking lot (tenant) the zone belongs to. */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateZoneDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneDto"];
+                };
+            };
+            /** @description Invalid payload (negative or non-integer spot counts, etc.). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` parking lot, so its zones are out of reach. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No zone with `:id` exists within the `:tenantId` parking lot (`ZONE_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
             };
         };
     };
