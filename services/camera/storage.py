@@ -83,3 +83,15 @@ class LocalStorage:
             extra={"id": capture_id, "plate": plate, "confidence": confidence},
         )
         return capture_id
+
+    def list_recent(self, limit: int = 20) -> list[dict]:
+        """Return the most recent captures ordered by timestamp descending."""
+        cur = self._conn.execute(
+            """SELECT id, path, timestamp, camera_id, location, plate, confidence, event_id
+               FROM captures
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]

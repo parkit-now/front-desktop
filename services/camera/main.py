@@ -221,13 +221,28 @@ def stream_status():
     return _watchdog.status()
 
 
+@app.get("/detections")
+def detections_list(limit: int = 20):
+    """Return the last `limit` detections from local storage (max 100)."""
+    if _storage is None:
+        return []
+    return _storage.list_recent(min(limit, 100))
+
+
 @app.get("/detection/latest")
 def detection_latest():
-    """Return the last plate detected, or 404 if none since service started."""
+    """Return the last plate detected in memory, or 404 if none since service started."""
     if _last_detection is None:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="No plate detected yet")
     return _last_detection
+
+
+@app.delete("/detection/latest", status_code=204)
+def detection_latest_clear():
+    """Clear the in-memory last detection (call after the operator confirms the entry)."""
+    global _last_detection
+    _last_detection = None
 
 
 if __name__ == "__main__":

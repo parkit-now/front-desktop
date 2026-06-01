@@ -162,9 +162,29 @@ cuando la cámara lleva más de 1 minuto caída.
 }
 ```
 
+#### `GET /detections?limit=20`
+
+Historial de las últimas `limit` detecciones persistidas en SQLite (máximo 100).
+Útil para que la UI muestre un log reciente de accesos.
+
+```json
+[
+  {
+    "id": "3f2a1b...",
+    "path": "/abs/path/images/default/2026-05-31/3f2a1b....jpg",
+    "timestamp": "2026-05-31T21:00:00+00:00",
+    "camera_id": "cam-01",
+    "location": "entrada",
+    "plate": "AB123CD",
+    "confidence": 0.91,
+    "event_id": null
+  }
+]
+```
+
 #### `GET /detection/latest`
 
-Última patente detectada desde que el servicio arrancó. La UI Electron
+Última patente detectada en memoria desde que el servicio arrancó. La UI
 la consulta para pre-completar el formulario de ingreso al operario.
 Devuelve `404` si todavía no hubo ninguna detección.
 
@@ -178,6 +198,13 @@ Devuelve `404` si todavía no hubo ninguna detección.
   "camera_id": "cam-01"
 }
 ```
+
+#### `DELETE /detection/latest`
+
+Limpia la detección en memoria. La UI debe llamar a este endpoint después
+de que el operario confirme el ingreso, para que el formulario no se
+pre-complete con una patente vieja en el próximo acceso.
+Devuelve `204 No Content`.
 
 ### Storage local
 
