@@ -47,7 +47,9 @@ export class ServiceManager {
       );
 
       this.processes.push(proc);
-      console.log(`[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid})`);
+      console.log(
+        `[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid})`,
+      );
     }
   }
 
