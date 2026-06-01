@@ -132,6 +132,8 @@ camera-service
 | `CAMERA_TENANT_ID`        | `default`               | ID del tenant para el path de imágenes y la DB.              |
 | `CAMERA_LOCATION`         | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura. |
 | `CAMERA_CAPTURE_INTERVAL` | `2`                     | Segundos entre llamadas al LPR.                              |
+| `CAMERA_MIN_CONFIDENCE`   | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.         |
+| `CAMERA_COOLDOWN`         | `5`                     | Segundos entre guardados de la misma patente (dedup).        |
 | `CAMERA_DB_PATH`          | `./camera.db`           | Path del archivo SQLite local.                               |
 | `CAMERA_IMAGES_DIR`       | `./images`              | Directorio base para las imágenes.                           |
 | `CAMERA_WATCHDOG_TIMEOUT` | `5`                     | Segundos sin frames antes de declarar la cámara caída.       |
