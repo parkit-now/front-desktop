@@ -8,13 +8,11 @@ export type RateChangesResponseDto =
   components['schemas']['RateChangesResponseDto'];
 
 type RateListQuery = {
-  includeDeleted?: boolean;
   includeInactive?: boolean;
 };
 
 type RateChangesQuery = {
   afterSeq?: number;
-  includeDeleted?: boolean;
   limit?: number;
 };
 
@@ -40,7 +38,6 @@ export function listRates(input: {
 }): Promise<RateDto[]> {
   const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/rates`;
   const path = withQuery(basePath, {
-    includeDeleted: input.query?.includeDeleted,
     includeInactive: input.query?.includeInactive,
   });
 
@@ -59,7 +56,6 @@ export function pullRateChanges(input: {
   const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/rates/changes`;
   const path = withQuery(basePath, {
     afterSeq: input.query?.afterSeq,
-    includeDeleted: input.query?.includeDeleted,
     limit: input.query?.limit,
   });
 
@@ -108,13 +104,13 @@ export function deactivateRate(input: {
   rateId: string;
   expectedVersion: number;
   bearer: string;
-}): Promise<RateDto> {
+}): Promise<void> {
   const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/rates/${encodeURIComponent(input.rateId)}`;
   const path = withQuery(basePath, {
     expectedVersion: input.expectedVersion,
   });
 
-  return apiRequest<RateDto>({
+  return apiRequest<void>({
     method: 'DELETE',
     path,
     bearer: input.bearer,

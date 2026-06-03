@@ -1508,8 +1508,6 @@ export interface components {
         RateDto: {
             /** Format: date-time */
             createdAt: string;
-            /** Format: date-time */
-            deletedAt: string | null;
             fractionPriceArs: number;
             hourPriceArs: number;
             /** Format: uuid */

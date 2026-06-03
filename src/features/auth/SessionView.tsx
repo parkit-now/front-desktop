@@ -1,4 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
+import { DollarSign, Home } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { RatesPanel } from '../rates/RatesPanel';
 import {
@@ -100,11 +101,6 @@ function canManageRates(
   return profile?.role === 'admin' || membership?.role === 'owner';
 }
 
-function selectedMembershipLabel(membership: MeMembershipDto | null): string {
-  if (!membership) return 'Sin estacionamiento asignado';
-  return `${membership.tenantName} · ${translateRole(membership.role)}`;
-}
-
 function membershipOptionLabel(membership: MeMembershipDto): string {
   return `${membership.tenantName} (${translateRole(membership.role)})`;
 }
@@ -132,15 +128,11 @@ function sameMemberships(a: MeMembershipDto[], b: MeMembershipDto[]): boolean {
 export function SessionView({ session }: Props) {
   const { showToast } = useToast();
   const [pendingSignOut, setPendingSignOut] = useState(false);
-  const [pendingProfile, setPendingProfile] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('dashboard');
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
   );
-  const [profileFromCache, setProfileFromCache] = useState(() => {
-    return readCachedProfile(session.user.id) !== null;
-  });
   const [activeTenantId, setActiveTenantId] = useState<string | null>(() => {
     return readStoredValue(tenantStorageKey(session.user.id));
   });
@@ -174,7 +166,6 @@ export function SessionView({ session }: Props) {
   useEffect(() => {
     const cachedProfile = readCachedProfile(session.user.id);
     setProfile(cachedProfile);
-    setProfileFromCache(cachedProfile !== null);
     setActiveTenantId(readStoredValue(tenantKey));
   }, [session.user.id, tenantKey]);
 
@@ -204,7 +195,6 @@ export function SessionView({ session }: Props) {
     let isMounted = true;
 
     async function loadProfile(): Promise<void> {
-      setPendingProfile(true);
       try {
         const nextProfile = await fetchMe(session.access_token);
         if (isMounted) {
@@ -219,7 +209,6 @@ export function SessionView({ session }: Props) {
             }
             return nextProfile;
           });
-          setProfileFromCache(false);
           writeCachedProfile(session.user.id, nextProfile);
         }
       } catch (error) {
@@ -227,7 +216,6 @@ export function SessionView({ session }: Props) {
           const cachedProfile = readCachedProfile(session.user.id);
           if (cachedProfile) {
             setProfile(cachedProfile);
-            setProfileFromCache(true);
             showToast({
               message:
                 'Sin conexión con el servidor. Usamos el perfil guardado en este equipo.',
@@ -239,10 +227,6 @@ export function SessionView({ session }: Props) {
               kind: 'error',
             });
           }
-        }
-      } finally {
-        if (isMounted) {
-          setPendingProfile(false);
         }
       }
     }
@@ -368,9 +352,7 @@ export function SessionView({ session }: Props) {
               setSection('dashboard');
             }}
           >
-            <span className="nav-icon" aria-hidden="true">
-              □
-            </span>
+            <Home size={18} aria-hidden="true" />
             {!sidebarCollapsed ? <span>Inicio</span> : null}
           </button>
 
@@ -382,9 +364,7 @@ export function SessionView({ session }: Props) {
                 setSection('rates');
               }}
             >
-              <span className="nav-icon" aria-hidden="true">
-                $
-              </span>
+              <DollarSign size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Tasas</span> : null}
             </button>
           ) : null}
@@ -418,17 +398,22 @@ export function SessionView({ session }: Props) {
 
       <section className="app-main">
         <header className="workspace-header">
+          <div className="workspace-header-icon">
+            {section === 'rates' ? (
+              <DollarSign size={20} aria-hidden />
+            ) : (
+              <Home size={20} aria-hidden />
+            )}
+          </div>
           <div>
             <h1>
               {section === 'rates' ? 'Gestión de Tasas' : 'Panel Operativo'}
             </h1>
-            <p className="muted">
-              {pendingProfile
-                ? 'Cargando perfil...'
-                : profileFromCache
-                  ? `${selectedMembershipLabel(activeMembership)} · perfil local`
-                  : selectedMembershipLabel(activeMembership)}
-            </p>
+            {activeMembership ? (
+              <p className="workspace-header-parking">
+                {activeMembership.tenantName}
+              </p>
+            ) : null}
           </div>
         </header>
 
@@ -453,8 +438,8 @@ export function SessionView({ session }: Props) {
               <RatesPanel
                 accessToken={session.access_token}
                 tenantId={activeTenantId}
+                userId={session.user.id}
                 canManage={ratesManageAllowed}
-                entityName={activeMembership?.tenantName}
               />
             ) : (
               <section className="dashboard-card warning">
