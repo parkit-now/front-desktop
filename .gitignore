@@ -28,3 +28,7 @@ dist-electron/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+
+# Skills
+skills/
