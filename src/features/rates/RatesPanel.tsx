@@ -1,24 +1,27 @@
 import type { ColumnDef } from '@tanstack/react-table';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import {
   createRate,
-  deactivateRate as deleteRate,
-  listRates,
+  deactivateRate as deleteRateApi,
   type CreateRateDto,
   type RateDto,
   type UpdateRateDto,
   updateRate,
 } from '../../lib/api/rates';
 import { translateApiError } from '../../lib/api/translate';
+import { localDb, type LocalRate } from '../../lib/db/localDb';
 import {
   formatArgentinaDateTime,
   formatArs,
   toMoneyInputString,
   toMoneyNumber,
 } from '../../lib/format/argentina';
+import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
+import { useSync } from '../../lib/sync/SyncContext';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 
 type Props = {
@@ -56,6 +59,38 @@ const STATUS_FILTER_OPTIONS: DataTableFilterOption[] = [
 
 function rateStatus(rate: RateDto): 'Activa' | 'Inactiva' {
   return rate.isActive ? 'Activa' : 'Inactiva';
+}
+
+function localToDisplay(r: LocalRate): RateDto {
+  return {
+    id: r.id,
+    tenantId: r.tenantId,
+    name: r.name,
+    hourPriceArs: parseFloat(r.hourPriceArs),
+    stayPriceArs: parseFloat(r.stayPriceArs),
+    fractionPriceArs: parseFloat(r.fractionPriceArs),
+    isActive: r.isActive,
+    version: r.version,
+    syncSeq: r.syncSeq,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
+function apiToLocal(r: RateDto): LocalRate {
+  return {
+    id: r.id,
+    tenantId: r.tenantId,
+    name: r.name,
+    hourPriceArs: String(r.hourPriceArs),
+    stayPriceArs: String(r.stayPriceArs),
+    fractionPriceArs: String(r.fractionPriceArs),
+    isActive: r.isActive,
+    version: r.version,
+    syncSeq: r.syncSeq,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
 }
 
 function validateMoney(raw: string): { value?: number; error?: string } {
@@ -127,8 +162,8 @@ export function RatesPanel({
   canManage,
 }: Props) {
   const { showToast } = useToast();
-  const [rates, setRates] = useState<RateDto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { isOnline } = useNetwork();
+  const { triggerSync, isSyncing } = useSync();
   const [saving, setSaving] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<EditorMode>('create');
@@ -139,30 +174,18 @@ export function RatesPanel({
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [errors, setErrors] = useState<FormErrors>({});
 
-  async function loadRates(): Promise<void> {
-    setLoading(true);
-    try {
-      const response = await listRates({
-        tenantId,
-        bearer: accessToken,
-        query: {
-          includeInactive: true,
-        },
-      });
-      setRates(response);
-    } catch (error) {
-      showToast({
-        message: translateApiError(error),
-        kind: 'error',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Local-first: rates come from IndexedDB, updated reactively via Dexie
+  const localRates = useLiveQuery(
+    () => localDb.rates.where('tenantId').equals(tenantId).sortBy('name'),
+    [tenantId],
+  );
 
-  useEffect(() => {
-    void loadRates();
-  }, [accessToken, tenantId]);
+  const rates: RateDto[] = useMemo(
+    () => (localRates ?? []).map(localToDisplay),
+    [localRates],
+  );
+
+  const loading = localRates === undefined || isSyncing;
 
   useEffect(() => {
     if (!editorOpen) return;
@@ -271,21 +294,61 @@ export function RatesPanel({
 
     try {
       if (editorMode === 'create') {
+        const id = generateUuidV7();
+        const now = new Date().toISOString();
         const body: CreateRateDto = {
-          id: generateUuidV7(),
+          id,
           name: payload.name,
           hourPriceArs: payload.hourPriceArs,
           stayPriceArs: payload.stayPriceArs,
           fractionPriceArs: payload.fractionPriceArs,
         };
 
-        await createRate({
-          tenantId,
-          bearer: accessToken,
-          body,
-        });
+        if (isOnline) {
+          const result = await createRate({
+            tenantId,
+            bearer: accessToken,
+            body,
+          });
+          await localDb.rates.put(apiToLocal(result));
+        } else {
+          const localRate: LocalRate = {
+            id,
+            tenantId,
+            name: payload.name,
+            hourPriceArs: String(payload.hourPriceArs),
+            stayPriceArs: String(payload.stayPriceArs),
+            fractionPriceArs: String(payload.fractionPriceArs),
+            isActive: true,
+            version: 1,
+            syncSeq: 0,
+            createdAt: now,
+            updatedAt: now,
+          };
+          await localDb.transaction(
+            'rw',
+            localDb.rates,
+            localDb.pendingOps,
+            async () => {
+              await localDb.rates.put(localRate);
+              await localDb.pendingOps.add({
+                entityType: 'rate',
+                operation: 'create',
+                tenantId,
+                entityId: id,
+                payload: body,
+                status: 'pending',
+                createdAt: Date.now(),
+                retryCount: 0,
+              });
+            },
+          );
+        }
 
-        showToast({ message: 'Tasa creada.', kind: 'success' });
+        showToast({
+          message: isOnline ? 'Tasa creada.' : 'Tasa guardada localmente.',
+          kind: 'success',
+        });
       } else if (editingRate) {
         const body: UpdateRateDto = {};
         const currentHourPrice = toMoneyNumber(editingRate.hourPriceArs);
@@ -308,18 +371,59 @@ export function RatesPanel({
           return;
         }
 
-        await updateRate({
-          tenantId,
-          rateId: editingRate.id,
-          expectedVersion: editingRate.version,
-          bearer: accessToken,
-          body,
-        });
+        if (isOnline) {
+          const result = await updateRate({
+            tenantId,
+            rateId: editingRate.id,
+            expectedVersion: editingRate.version,
+            bearer: accessToken,
+            body,
+          });
+          await localDb.rates.put(apiToLocal(result));
+        } else {
+          await localDb.transaction(
+            'rw',
+            localDb.rates,
+            localDb.pendingOps,
+            async () => {
+              await localDb.rates.update(editingRate.id, {
+                ...body,
+                hourPriceArs:
+                  body.hourPriceArs !== undefined
+                    ? String(body.hourPriceArs)
+                    : undefined,
+                stayPriceArs:
+                  body.stayPriceArs !== undefined
+                    ? String(body.stayPriceArs)
+                    : undefined,
+                fractionPriceArs:
+                  body.fractionPriceArs !== undefined
+                    ? String(body.fractionPriceArs)
+                    : undefined,
+                updatedAt: new Date().toISOString(),
+              });
+              await localDb.pendingOps.add({
+                entityType: 'rate',
+                operation: 'update',
+                tenantId,
+                entityId: editingRate.id,
+                payload: { expectedVersion: editingRate.version, body },
+                status: 'pending',
+                createdAt: Date.now(),
+                retryCount: 0,
+              });
+            },
+          );
+        }
 
-        showToast({ message: 'Tasa actualizada.', kind: 'success' });
+        showToast({
+          message: isOnline
+            ? 'Tasa actualizada.'
+            : 'Cambios guardados localmente.',
+          kind: 'success',
+        });
       }
 
-      await loadRates();
       setEditorOpen(false);
       resetEditor();
     } catch (error) {
@@ -335,35 +439,113 @@ export function RatesPanel({
     setSaving(true);
     try {
       if (confirmAction.kind === 'deactivate') {
-        await updateRate({
-          tenantId,
-          rateId: confirmAction.rate.id,
-          expectedVersion: confirmAction.rate.version,
-          bearer: accessToken,
-          body: { isActive: false },
+        if (isOnline) {
+          const result = await updateRate({
+            tenantId,
+            rateId: confirmAction.rate.id,
+            expectedVersion: confirmAction.rate.version,
+            bearer: accessToken,
+            body: { isActive: false },
+          });
+          await localDb.rates.put(apiToLocal(result));
+        } else {
+          await localDb.transaction(
+            'rw',
+            localDb.rates,
+            localDb.pendingOps,
+            async () => {
+              await localDb.rates.update(confirmAction.rate.id, {
+                isActive: false,
+                updatedAt: new Date().toISOString(),
+              });
+              await localDb.pendingOps.add({
+                entityType: 'rate',
+                operation: 'update',
+                tenantId,
+                entityId: confirmAction.rate.id,
+                payload: {
+                  expectedVersion: confirmAction.rate.version,
+                  body: { isActive: false },
+                },
+                status: 'pending',
+                createdAt: Date.now(),
+                retryCount: 0,
+              });
+            },
+          );
+        }
+        showToast({
+          message: isOnline ? 'Tasa desactivada.' : 'Desactivada localmente.',
+          kind: 'success',
         });
-        showToast({ message: 'Tasa desactivada.', kind: 'success' });
       } else if (confirmAction.kind === 'activate') {
-        await updateRate({
-          tenantId,
-          rateId: confirmAction.rate.id,
-          expectedVersion: confirmAction.rate.version,
-          bearer: accessToken,
-          body: { isActive: true },
+        if (isOnline) {
+          const result = await updateRate({
+            tenantId,
+            rateId: confirmAction.rate.id,
+            expectedVersion: confirmAction.rate.version,
+            bearer: accessToken,
+            body: { isActive: true },
+          });
+          await localDb.rates.put(apiToLocal(result));
+        } else {
+          await localDb.transaction(
+            'rw',
+            localDb.rates,
+            localDb.pendingOps,
+            async () => {
+              await localDb.rates.update(confirmAction.rate.id, {
+                isActive: true,
+                updatedAt: new Date().toISOString(),
+              });
+              await localDb.pendingOps.add({
+                entityType: 'rate',
+                operation: 'update',
+                tenantId,
+                entityId: confirmAction.rate.id,
+                payload: {
+                  expectedVersion: confirmAction.rate.version,
+                  body: { isActive: true },
+                },
+                status: 'pending',
+                createdAt: Date.now(),
+                retryCount: 0,
+              });
+            },
+          );
+        }
+        showToast({
+          message: isOnline ? 'Tasa reactivada.' : 'Reactivada localmente.',
+          kind: 'success',
         });
-        showToast({ message: 'Tasa reactivada.', kind: 'success' });
       } else {
-        await deleteRate({
-          tenantId,
-          rateId: confirmAction.rate.id,
-          expectedVersion: confirmAction.rate.version,
-          bearer: accessToken,
+        if (isOnline) {
+          await deleteRateApi({
+            tenantId,
+            rateId: confirmAction.rate.id,
+            expectedVersion: confirmAction.rate.version,
+            bearer: accessToken,
+          });
+        } else {
+          await localDb.pendingOps.add({
+            entityType: 'rate',
+            operation: 'delete',
+            tenantId,
+            entityId: confirmAction.rate.id,
+            payload: { expectedVersion: confirmAction.rate.version },
+            status: 'pending',
+            createdAt: Date.now(),
+            retryCount: 0,
+          });
+        }
+        await localDb.rates.delete(confirmAction.rate.id);
+        showToast({
+          message: isOnline ? 'Tasa eliminada.' : 'Eliminada localmente.',
+          kind: 'success',
         });
-        showToast({ message: 'Tasa eliminada.', kind: 'success' });
       }
 
       setConfirmAction(null);
-      await loadRates();
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
@@ -530,9 +712,9 @@ export function RatesPanel({
             initialPageSize={10}
             templateScope={{ userId, tenantId, tableKey: 'rates' }}
             onRefresh={() => {
-              void loadRates();
+              if (isOnline) void triggerSync();
             }}
-            refreshDisabled={loading || saving}
+            refreshDisabled={loading || saving || !isOnline}
             headerAction={
               !canManage ? (
                 <span className="status-badge status-muted">Solo lectura</span>

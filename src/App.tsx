@@ -39,6 +39,11 @@ export function App() {
     void initializeSession();
 
     const unsubscribe = onSessionChange((nextSession) => {
+      if (!nextSession && !navigator.onLine) {
+        // Token expired while offline — keep the cached session alive so the
+        // user is not logged out. The refresh will be retried on reconnect.
+        return;
+      }
       setSession(nextSession);
       if (!nextSession) {
         setView('login');

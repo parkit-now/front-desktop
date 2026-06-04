@@ -1,7 +1,12 @@
 import type { Session } from '@supabase/supabase-js';
-import { DollarSign, Home } from 'lucide-react';
+import { Car, DollarSign, Home } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { ActiveVehiclesPanel } from '../entries/ActiveVehiclesPanel';
+import { EntryForm } from '../entries/EntryForm';
+import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { RatesPanel } from '../rates/RatesPanel';
+import { OfflineBanner } from '../sync/OfflineBanner';
+import { SyncButton } from '../sync/SyncButton';
 import {
   fetchMe,
   type AppRole,
@@ -10,7 +15,9 @@ import {
   type MeResponseDto,
 } from '../../lib/api/auth';
 import { translateApiError, translateRole } from '../../lib/api/translate';
+import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
+import { SyncProvider } from '../../lib/sync/SyncContext';
 import { signOut } from '../../lib/supabase/session';
 import { getErrorMessage } from './errors';
 
@@ -18,7 +25,7 @@ type Props = {
   session: Session;
 };
 
-type WorkspaceSection = 'dashboard' | 'rates';
+type WorkspaceSection = 'dashboard' | 'rates' | 'operativo' | 'historial';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -127,9 +134,10 @@ function sameMemberships(a: MeMembershipDto[], b: MeMembershipDto[]): boolean {
 
 export function SessionView({ session }: Props) {
   const { showToast } = useToast();
+  const { isOnline } = useNetwork();
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [section, setSection] = useState<WorkspaceSection>('dashboard');
+  const [section, setSection] = useState<WorkspaceSection>('operativo');
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
   );
@@ -187,7 +195,7 @@ export function SessionView({ session }: Props) {
 
   useEffect(() => {
     if (!ratesAllowed && section === 'rates') {
-      setSection('dashboard');
+      setSection('operativo');
     }
   }, [ratesAllowed, section]);
 
@@ -321,145 +329,201 @@ export function SessionView({ session }: Props) {
     </div>
   ) : null;
 
+  const sectionTitle: Record<WorkspaceSection, string> = {
+    dashboard: 'Panel Operativo',
+    operativo: 'Panel Operativo',
+    historial: 'Historial',
+    rates: 'Gestión de Tasas',
+  };
+
+  const sectionIcon = (s: WorkspaceSection) => {
+    if (s === 'rates') return <DollarSign size={20} aria-hidden />;
+    if (s === 'historial') return <Car size={20} aria-hidden />;
+    return <Home size={20} aria-hidden />;
+  };
+
   return (
-    <div className="app-shell">
-      <aside className={`app-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-top">
-          <div className="brand-lockup compact">
-            <div className="brand-badge" aria-hidden="true">
-              P
+    <SyncProvider tenantId={activeTenantId} accessToken={session.access_token}>
+      <div className="app-shell">
+        <aside className={`app-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+          <div className="sidebar-top">
+            <div className="brand-lockup compact">
+              <div className="brand-badge" aria-hidden="true">
+                P
+              </div>
+              {!sidebarCollapsed ? <h2>Parkit</h2> : null}
             </div>
-            {!sidebarCollapsed ? <h2>Parkit</h2> : null}
-          </div>
 
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => {
-              setSidebarCollapsed((prev) => !prev);
-            }}
-            aria-label={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-          >
-            {sidebarCollapsed ? '»' : '«'}
-          </button>
-        </div>
-
-        <nav className="sidebar-nav" aria-label="Navegación principal">
-          <button
-            type="button"
-            className={`nav-item ${section === 'dashboard' ? 'active' : ''}`}
-            onClick={() => {
-              setSection('dashboard');
-            }}
-          >
-            <Home size={18} aria-hidden="true" />
-            {!sidebarCollapsed ? <span>Inicio</span> : null}
-          </button>
-
-          {canShowRatesNav ? (
             <button
               type="button"
-              className={`nav-item ${section === 'rates' ? 'active' : ''}`}
+              className="icon-button"
               onClick={() => {
-                setSection('rates');
+                setSidebarCollapsed((prev) => !prev);
               }}
+              aria-label={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
             >
-              <DollarSign size={18} aria-hidden="true" />
-              {!sidebarCollapsed ? <span>Tasas</span> : null}
+              {sidebarCollapsed ? '»' : '«'}
             </button>
-          ) : null}
-        </nav>
-
-        <div className="sidebar-foot">
-          {!sidebarCollapsed ? (
-            <div className="sidebar-user">
-              <p className="muted mini">
-                {session.user.email ?? session.user.id}
-              </p>
-              <p className="role-pill">
-                {activeRole ? translateRole(activeRole) : 'Sin establecimiento'}
-              </p>
-            </div>
-          ) : null}
-
-          {entitySwitcher}
-
-          <button
-            className="signout-button compact"
-            onClick={() => {
-              void handleSignOut();
-            }}
-            disabled={pendingSignOut}
-          >
-            {pendingSignOut ? 'Cerrando...' : 'Salir'}
-          </button>
-        </div>
-      </aside>
-
-      <section className="app-main">
-        <header className="workspace-header">
-          <div className="workspace-header-icon">
-            {section === 'rates' ? (
-              <DollarSign size={20} aria-hidden />
-            ) : (
-              <Home size={20} aria-hidden />
-            )}
           </div>
-          <div>
-            <h1>
-              {section === 'rates' ? 'Gestión de Tasas' : 'Panel Operativo'}
-            </h1>
-            {activeMembership ? (
-              <p className="workspace-header-parking">
-                {activeMembership.tenantName}
-              </p>
-            ) : null}
-          </div>
-        </header>
 
-        <div className="workspace-content">
-          {section === 'dashboard' ? (
-            <section
-              className={`dashboard-card ${hasMemberships ? '' : 'warning'}`}
+          <nav className="sidebar-nav" aria-label="Navegación principal">
+            <button
+              type="button"
+              className={`nav-item ${section === 'operativo' ? 'active' : ''}`}
+              onClick={() => setSection('operativo')}
             >
-              <h2>
-                {hasMemberships
-                  ? (activeMembership?.tenantName ?? 'Estacionamiento activo')
-                  : 'Sin estacionamientos asignados'}
-              </h2>
-              <p className="muted">
-                {hasMemberships
-                  ? `Rol: ${activeRole ? translateRole(activeRole) : 'Sin rol'}`
-                  : 'Tu usuario no tiene una relación owner/operator con un estacionamiento.'}
-              </p>
-            </section>
-          ) : ratesAllowed ? (
-            activeTenantId ? (
-              <RatesPanel
-                accessToken={session.access_token}
-                tenantId={activeTenantId}
-                userId={session.user.id}
-                canManage={ratesManageAllowed}
-              />
-            ) : (
-              <section className="dashboard-card warning">
-                <h2>Falta estacionamiento activo</h2>
+              <Home size={18} aria-hidden="true" />
+              {!sidebarCollapsed ? <span>Operativo</span> : null}
+            </button>
+
+            <button
+              type="button"
+              className={`nav-item ${section === 'historial' ? 'active' : ''}`}
+              onClick={() => setSection('historial')}
+            >
+              <Car size={18} aria-hidden="true" />
+              {!sidebarCollapsed ? <span>Historial</span> : null}
+            </button>
+
+            {canShowRatesNav ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'rates' ? 'active' : ''}`}
+                onClick={() => setSection('rates')}
+              >
+                <DollarSign size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Tasas</span> : null}
+              </button>
+            ) : null}
+          </nav>
+
+          <div className="sidebar-foot">
+            <SyncButton collapsed={sidebarCollapsed} />
+
+            {!sidebarCollapsed ? (
+              <div className="sidebar-user">
+                <p className="muted mini">
+                  {session.user.email ?? session.user.id}
+                </p>
+                <p className="role-pill">
+                  {activeRole
+                    ? translateRole(activeRole)
+                    : 'Sin establecimiento'}
+                </p>
+              </div>
+            ) : null}
+
+            {entitySwitcher}
+
+            <button
+              className="signout-button compact"
+              onClick={() => void handleSignOut()}
+              disabled={pendingSignOut}
+            >
+              {pendingSignOut ? 'Cerrando...' : 'Salir'}
+            </button>
+          </div>
+        </aside>
+
+        <section className="app-main">
+          {!isOnline && <OfflineBanner />}
+
+          <header className="workspace-header">
+            <div className="workspace-header-icon">{sectionIcon(section)}</div>
+            <div>
+              <h1>{sectionTitle[section]}</h1>
+              {activeMembership ? (
+                <p className="workspace-header-parking">
+                  {activeMembership.tenantName}
+                </p>
+              ) : null}
+            </div>
+          </header>
+
+          <div className="workspace-content">
+            {section === 'operativo' ? (
+              activeTenantId ? (
+                <div className="operativo-layout">
+                  <EntryForm
+                    tenantId={activeTenantId}
+                    accessToken={session.access_token}
+                  />
+                  <ActiveVehiclesPanel
+                    tenantId={activeTenantId}
+                    accessToken={session.access_token}
+                  />
+                </div>
+              ) : (
+                <section
+                  className={`dashboard-card ${hasMemberships ? '' : 'warning'}`}
+                >
+                  <h2>
+                    {hasMemberships
+                      ? (activeMembership?.tenantName ??
+                        'Estacionamiento activo')
+                      : 'Sin estacionamientos asignados'}
+                  </h2>
+                  <p className="muted">
+                    {hasMemberships
+                      ? `Seleccioná un estacionamiento para operar.`
+                      : 'Tu usuario no tiene una relación owner/operator con un estacionamiento.'}
+                  </p>
+                </section>
+              )
+            ) : section === 'historial' ? (
+              activeTenantId ? (
+                <EntryHistoryPanel tenantId={activeTenantId} />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para ver el historial.
+                  </p>
+                </section>
+              )
+            ) : section === 'dashboard' ? (
+              <section
+                className={`dashboard-card ${hasMemberships ? '' : 'warning'}`}
+              >
+                <h2>
+                  {hasMemberships
+                    ? (activeMembership?.tenantName ?? 'Estacionamiento activo')
+                    : 'Sin estacionamientos asignados'}
+                </h2>
                 <p className="muted">
-                  Seleccioná un estacionamiento para consultar sus tasas.
+                  {hasMemberships
+                    ? `Rol: ${activeRole ? translateRole(activeRole) : 'Sin rol'}`
+                    : 'Tu usuario no tiene una relación owner/operator con un estacionamiento.'}
                 </p>
               </section>
-            )
-          ) : (
-            <section className="dashboard-card warning">
-              <h2>Acceso restringido</h2>
-              <p className="muted">
-                Solo usuarios vinculados a este estacionamiento pueden acceder
-                al módulo de tasas.
-              </p>
-            </section>
-          )}
-        </div>
-      </section>
-    </div>
+            ) : ratesAllowed ? (
+              activeTenantId ? (
+                <RatesPanel
+                  accessToken={session.access_token}
+                  tenantId={activeTenantId}
+                  userId={session.user.id}
+                  canManage={ratesManageAllowed}
+                />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para consultar sus tasas.
+                  </p>
+                </section>
+              )
+            ) : (
+              <section className="dashboard-card warning">
+                <h2>Acceso restringido</h2>
+                <p className="muted">
+                  Solo usuarios vinculados a este estacionamiento pueden acceder
+                  al módulo de tasas.
+                </p>
+              </section>
+            )}
+          </div>
+        </section>
+      </div>
+    </SyncProvider>
   );
 }

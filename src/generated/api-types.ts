@@ -638,6 +638,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EntriesController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/entries/{entryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["EntriesController_close"];
+        trace?: never;
+    };
     "/tenants/{tenantId}/payment-methods": {
         parameters: {
             query?: never;
@@ -1058,13 +1090,60 @@ export interface components {
              */
             phone: string;
         };
-        CreateEntryDto: {
-            /** Format: double */
-            amountPaid: number;
+        CloseEntryDto: {
             /** Format: date-time */
-            leftAt: string;
+            leftAt?: string;
+            /** Format: double */
+            amountPaid?: number;
+            /** Format: uuid */
+            paymentMethodId?: string;
         };
-        CreateEntryVehicleRelationInputDto: Record<string, never>;
+        CreateEntryDto: {
+            /** @description Client-generated UUIDv7 for offline-first sync. Format: uuid */
+            id: string;
+            plate: string;
+            color?: string;
+            /** Format: date-time */
+            enteredAt: string;
+            /** Format: uuid */
+            vehicleId: string;
+            /** Format: uuid */
+            rateId?: string;
+            rateSnapshotName?: string;
+            rateSnapshotHourPriceArs?: number;
+            rateSnapshotStayPriceArs?: number;
+            rateSnapshotFractionPriceArs?: number;
+        };
+        EntryChangesResponseDto: {
+            items: components["schemas"]["EntryDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        EntryDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            plate: string;
+            color: string | null;
+            /** Format: date-time */
+            enteredAt: string;
+            /** Format: date-time */
+            leftAt: string | null;
+            amountPaid: number | null;
+            /** Format: uuid */
+            vehicleId: string;
+            /** Format: uuid */
+            rateId: string | null;
+            rateSnapshotName: string | null;
+            rateSnapshotHourPriceArs: number | null;
+            rateSnapshotStayPriceArs: number | null;
+            rateSnapshotFractionPriceArs: number | null;
+            version: number;
+            syncSeq: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         CreateMembershipDto: {
             /**
              * Format: uuid
@@ -3541,18 +3620,17 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The ID of the tenant (parking lot) */
-                tenantId: unknown;
+                tenantId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             200: {
-                headers: {
-                    [name: string]: unknown;
+                headers: { [name: string]: unknown };
+                content: {
+                    "application/json": components["schemas"]["EntryDto"][];
                 };
-                content?: never;
             };
         };
     };
@@ -3561,8 +3639,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The ID of the tenant (parking lot) */
-                tenantId: unknown;
+                tenantId: string;
             };
             cookie?: never;
         };
@@ -3572,11 +3649,59 @@ export interface operations {
             };
         };
         responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
+            200: {
+                headers: { [name: string]: unknown };
+                content: {
+                    "application/json": components["schemas"]["EntryDto"];
                 };
-                content?: never;
+            };
+        };
+    };
+    EntriesController_pullChanges: {
+        parameters: {
+            query?: {
+                afterSeq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: { [name: string]: unknown };
+                content: {
+                    "application/json": components["schemas"]["EntryChangesResponseDto"];
+                };
+            };
+        };
+    };
+    EntriesController_close: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                tenantId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseEntryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: { [name: string]: unknown };
+                content: {
+                    "application/json": components["schemas"]["EntryDto"];
+                };
             };
         };
     };
