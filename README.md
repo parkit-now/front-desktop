@@ -104,6 +104,10 @@ bun run pack   # app sin installer → dist-electron/<Parkit>-unpacked/  (rápid
 bun run dist   # instalador completo → dist-electron/*.dmg / *.exe / *.AppImage
 ```
 
+> `prepack` y `predist` ejecutan `scripts/check-services.mjs` automáticamente.
+> Si los binarios Python no existen, el comando falla con un mensaje claro
+> antes de que electron-builder arranque.
+
 Los binarios `lpr-service[.exe]` y `camera-service[.exe]` se copian desde
 `services/*/dist/` a `resources/` dentro del bundle via `extraResources`.
 Electron los lee desde `process.resourcesPath` al arrancar.
@@ -172,16 +176,32 @@ bun run pack
 
 ### P1-3 — Health IPC visible en devtools
 
-```bash
-# Iniciar la app sin haber levantado el LPR service:
-make dev
-# En DevTools (Ctrl+Shift+I) → Console:
-#   [services:failed] ["lpr-service"]  ← evento IPC enviado desde main
+> **Nota:** el health check y los eventos IPC solo se activan en la app
+> **empaquetada** (`app.isPackaged === true`). En `make dev` el `ServiceManager`
+> es un no-op y `getFailedServices()` devuelve siempre `[]`.
 
-# Verificar también la API de consulta:
-# En DevTools → Console:
+Para probar, usar la app empaquetada con un servicio faltante:
+
+```bash
+# 1. Compilar solo el camera-service (omitir lpr-build para simular binario faltante)
+cd services/camera && make camera-build && cd ../..
+
+# 2. Empaquetar (prepack detectará que falta lpr-service y abortará — correcto)
+#    Para forzar el empaquetado sin el binario, comentar temporalmente prepack en package.json
+bun run pack
+
+# 3. Ejecutar el binario generado y abrir DevTools (Ctrl+Shift+I) → Console:
 await window.parkitDesktop.getFailedServices()
-# → ["lpr-service"]  (o [] si todos están ok)
+# → ["lpr-service"]  ← timeout de 30 s al no encontrar /health en :8765
+```
+
+Para probar crashes post-arranque, escuchar el evento:
+
+```javascript
+// En DevTools → Console:
+window.parkitDesktop.onServiceCrashed((name) => console.warn('crashed:', name));
+// Luego matar el proceso manualmente: kill <pid del lpr-service>
+// → crashed: lpr-service
 ```
 
 ## Checklist antes de PR
