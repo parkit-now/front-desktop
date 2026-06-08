@@ -111,11 +111,11 @@ Electron los lee desde `process.resourcesPath` al arrancar.
 La base de datos SQLite y las imágenes se guardan en el directorio de datos
 del usuario (no en el bundle, que puede ser read-only):
 
-| SO      | Ruta userData                                           |
-| ------- | ------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/Parkit/`                 |
-| Windows | `%APPDATA%\Parkit\`                                     |
-| Linux   | `~/.config/Parkit/`                                     |
+| SO      | Ruta userData                           |
+| ------- | --------------------------------------- |
+| macOS   | `~/Library/Application Support/Parkit/` |
+| Windows | `%APPDATA%\Parkit\`                     |
+| Linux   | `~/.config/Parkit/`                     |
 
 ## Cómo probar los cambios recientes
 
