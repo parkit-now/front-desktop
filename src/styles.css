@@ -331,3 +331,30 @@ h2 {
   height: 1px;
   background: var(--color-border);
 }
+
+.camera-alert {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  border-bottom: 1px solid var(--color-danger-border);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.camera-alert__icon {
+  flex: none;
+  font-size: 16px;
+}
+
+.camera-alert__message {
+  margin: 0;
+  flex: 1;
+}

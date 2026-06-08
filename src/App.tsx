@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
+import { CameraAlert } from './features/camera/CameraAlert';
 import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
@@ -64,7 +65,10 @@ export function App() {
         {loading ? (
           <p className="muted">Cargando sesión...</p>
         ) : session ? (
-          <SessionView session={session} />
+          <>
+            <CameraAlert />
+            <SessionView session={session} />
+          </>
         ) : view === 'register' ? (
           <RegisterScreen
             onSwitchToLogin={() => {
