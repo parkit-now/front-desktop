@@ -49,19 +49,19 @@ class CameraCapture(threading.Thread):
     # ── Thread entry ──────────────────────────────────────────────────────────
 
     def run(self) -> None:
-        if not self._open():
-            return
+        self._open()
 
         while not self._stop_event.is_set():
             if self._reconnect_requested:
                 self._reconnect_requested = False
                 if self._cap:
                     self._cap.release()
-                time.sleep(0.5)
+                    self._cap = None
                 self._open()
                 continue
 
             if self._cap is None:
+                # Camera not available yet; wait for watchdog to signal restart.
                 time.sleep(0.1)
                 continue
 
