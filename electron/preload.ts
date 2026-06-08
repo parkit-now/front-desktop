@@ -20,4 +20,14 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
    */
   getFailedServices: (): Promise<string[]> =>
     ipcRenderer.invoke('services:getFailed'),
+
+  /**
+   * Subscribe to post-startup service crashes. Called each time a previously
+   * healthy service exits unexpectedly so the UI can alert the operator.
+   */
+  onServiceCrashed: (callback: (name: string) => void) => {
+    ipcRenderer.on('services:crashed', (_event, name: string) =>
+      callback(name),
+    );
+  },
 });

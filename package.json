@@ -19,7 +19,9 @@
     "test:watch": "vitest",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,html}\"",
     "sync-types": "node scripts/sync-types.mjs",
+    "prepack": "node scripts/check-services.mjs",
     "pack": "bun run build && electron-builder --dir",
+    "predist": "node scripts/check-services.mjs",
     "dist": "bun run build && electron-builder"
   },
   "build": {

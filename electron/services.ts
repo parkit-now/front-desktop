@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 
@@ -24,6 +24,7 @@ const HEALTH_POLL_MS = 500;
 export class ServiceManager {
   private readonly processes: ChildProcess[] = [];
   private readonly failed: string[] = [];
+  private readonly healthy = new Set<string>();
 
   constructor(private readonly services: ServiceConfig[]) {}
 
@@ -45,9 +46,27 @@ export class ServiceManager {
       proc.stderr?.on('data', (d: Buffer) =>
         process.stderr.write(`[${svc.name}] ${d.toString()}`),
       );
-      proc.on('exit', (code) =>
-        console.log(`[${svc.name}] exited with code ${code}`),
-      );
+
+      // Catch ENOENT (binary missing) and other OS-level spawn failures so they
+      // don't surface as an unhandled 'error' event and crash the main process.
+      proc.on('error', (err) => {
+        console.error(`[${svc.name}] spawn error: ${err.message}`);
+      });
+
+      proc.on('exit', (code) => {
+        if (code !== 0 && code !== null) {
+          console.error(`[${svc.name}] exited unexpectedly with code ${code}`);
+          // Only notify the renderer for services that were previously healthy —
+          // startup failures are already surfaced via waitAllHealthy / services:failed.
+          if (this.healthy.has(svc.name)) {
+            BrowserWindow.getAllWindows().forEach((win) =>
+              win.webContents.send('services:crashed', svc.name),
+            );
+          }
+        } else {
+          console.log(`[${svc.name}] exited with code ${code}`);
+        }
+      });
 
       this.processes.push(proc);
       console.log(
@@ -70,7 +89,10 @@ export class ServiceManager {
         while (Date.now() < deadline) {
           try {
             const res = await fetch(url);
-            if (res.ok) return;
+            if (res.ok) {
+              this.healthy.add(svc.name);
+              return;
+            }
           } catch {
             // service not ready yet — keep polling
           }
