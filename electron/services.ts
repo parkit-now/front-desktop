@@ -5,6 +5,8 @@ import path from 'node:path';
 export interface ServiceConfig {
   name: string;
   port: number;
+  /** Extra env vars merged into the child process environment. */
+  env?: Record<string, string>;
 }
 
 const HEALTH_TIMEOUT_MS = 30_000;
@@ -21,6 +23,7 @@ const HEALTH_POLL_MS = 500;
  */
 export class ServiceManager {
   private readonly processes: ChildProcess[] = [];
+  private readonly failed: string[] = [];
 
   constructor(private readonly services: ServiceConfig[]) {}
 
@@ -33,7 +36,7 @@ export class ServiceManager {
 
       const proc = spawn(bin, [String(svc.port)], {
         stdio: 'pipe',
-        env: { ...process.env },
+        env: { ...process.env, ...(svc.env ?? {}) },
       });
 
       proc.stdout?.on('data', (d: Buffer) =>
@@ -53,7 +56,12 @@ export class ServiceManager {
     }
   }
 
-  async waitAllHealthy(): Promise<void> {
+  /**
+   * Polls each service's /health endpoint until it responds 200 or the
+   * timeout expires. Returns the names of services that failed to become
+   * healthy so the caller can surface them to the user.
+   */
+  async waitAllHealthy(): Promise<string[]> {
     await Promise.all(
       this.services.map(async (svc) => {
         const url = `http://127.0.0.1:${svc.port}/health`;
@@ -69,9 +77,11 @@ export class ServiceManager {
           await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
         }
 
-        console.warn(`[main] ${svc.name} did not become healthy in time`);
+        console.error(`[main] ${svc.name} did not become healthy in time`);
+        this.failed.push(svc.name);
       }),
     );
+    return [...this.failed];
   }
 
   stopAll(): void {
