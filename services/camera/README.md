@@ -107,12 +107,42 @@ camera-service
    └── lpr_client             — llama al lpr-service para reconocer patentes
 ```
 
+### Pipeline de detección
+
+```
+CameraCapture thread (10 FPS)
+    │  cv2.VideoCapture → deque(maxlen=1)
+    ▼
+MotionDetector.check(frame)          ← cada 100 ms desde el asyncio loop
+    │  absdiff sobre ROI configurable
+    │  descarta warmup inicial (10 frames) y cooldown entre triggers (3 s)
+    │  retorna snapshot capturado en el instante exacto del trigger
+    ▼ (solo si hay movimiento significativo)
+LPR inference — run_in_executor(pool_size=1)
+    │  snapshot → base64 → POST /process al lpr-service
+    │  descarta si lpr_busy (como máximo 1 inferencia simultánea)
+    ▼
+Filtros de calidad
+    │  confianza < MIN_CONFIDENCE → descarta
+    │  misma patente dentro de COOLDOWN s → actualiza _last_detection sin guardar
+    ▼
+LocalStorage.save(snapshot, ...)
+    │  JPEG a disco → INSERT en SQLite (valida imwrite antes del INSERT)
+    ▼
+_last_detection actualizado → UI lo consulta por GET /detection/latest
+
+Fallback (cada FALLBACK_INTERVAL = 300 s)
+    Fuerza un scan LPR aunque no haya habido movimiento detectado.
+    Cubre vehículos presentes al iniciar el servicio o durante gaps de detección.
+```
+
 ### Archivos
 
 | Archivo            | Descripción                                                                                   |
 | ------------------ | --------------------------------------------------------------------------------------------- |
-| `main.py`          | Punto de entrada FastAPI. Config, lifespan, loop de captura, endpoints.                       |
+| `main.py`          | Punto de entrada FastAPI. Config, lifespan, pipeline de detección, endpoints.                 |
 | `capture.py`       | Hilo de captura continua via `cv2.VideoCapture`. Soporta USB (índice) y RTSP (URL).           |
+| `motion.py`        | Detector de movimiento por absdiff. ROI configurable, cooldown propio, warmup de startup.     |
 | `storage.py`       | Persiste imágenes en `images/<tenantId>/<fecha>/` y metadata en SQLite (modo WAL).            |
 | `watchdog.py`      | Detecta ausencia de frames y dispara reconexión con backoff exponencial (1→2→4→8→30 s).       |
 | `lpr_client.py`    | Codifica el frame en base64 y hace POST al LPR service. Devuelve `None` ante cualquier falla. |
@@ -122,22 +152,25 @@ camera-service
 
 ### Variables de entorno
 
-| Variable                  | Default                 | Descripción                                                  |
-| ------------------------- | ----------------------- | ------------------------------------------------------------ |
-| `CAMERA_SOURCE`           | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP.                       |
-| `CAMERA_FPS`              | `10`                    | FPS objetivo de captura.                                     |
-| `CAMERA_WIDTH`            | `1280`                  | Ancho del frame en píxeles.                                  |
-| `CAMERA_HEIGHT`           | `720`                   | Alto del frame en píxeles.                                   |
-| `CAMERA_ID`               | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).    |
-| `CAMERA_TENANT_ID`        | `default`               | ID del tenant para el path de imágenes y la DB.              |
-| `CAMERA_LOCATION`         | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura. |
-| `CAMERA_CAPTURE_INTERVAL` | `2`                     | Segundos entre llamadas al LPR.                              |
-| `CAMERA_MIN_CONFIDENCE`   | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.         |
-| `CAMERA_COOLDOWN`         | `5`                     | Segundos entre guardados de la misma patente (dedup).        |
-| `CAMERA_DB_PATH`          | `./camera.db`           | Path del archivo SQLite local.                               |
-| `CAMERA_IMAGES_DIR`       | `./images`              | Directorio base para las imágenes.                           |
-| `CAMERA_WATCHDOG_TIMEOUT` | `5`                     | Segundos sin frames antes de declarar la cámara caída.       |
-| `LPR_URL`                 | `http://127.0.0.1:8765` | URL base del LPR service.                                    |
+| Variable                   | Default                 | Descripción                                                              |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `CAMERA_SOURCE`            | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP.                                   |
+| `CAMERA_FPS`               | `10`                    | FPS objetivo de captura.                                                 |
+| `CAMERA_WIDTH`             | `1280`                  | Ancho del frame en píxeles.                                              |
+| `CAMERA_HEIGHT`            | `720`                   | Alto del frame en píxeles.                                               |
+| `CAMERA_ID`                | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).                |
+| `CAMERA_TENANT_ID`         | `default`               | ID del tenant para el path de imágenes y la DB.                          |
+| `CAMERA_LOCATION`          | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura.             |
+| `CAMERA_MOTION_THRESHOLD`  | `1.5`                   | Diferencia media de píxeles `[0–255]` para detectar movimiento.          |
+| `CAMERA_MOTION_COOLDOWN`   | `3.0`                   | Segundos mínimos entre disparos de LPR por movimiento.                   |
+| `CAMERA_ROI`               | `""`                    | Región de interés `"x1,y1,x2,y2"`. Vacío = frame completo.               |
+| `CAMERA_FALLBACK_INTERVAL` | `300`                   | Segundos entre scans de respaldo (captura vehículos sin movimiento).     |
+| `CAMERA_MIN_CONFIDENCE`    | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.                     |
+| `CAMERA_COOLDOWN`          | `5`                     | Segundos entre guardados de la misma patente (dedup a nivel de patente). |
+| `CAMERA_DB_PATH`           | `./camera.db`           | Path del archivo SQLite local.                                           |
+| `CAMERA_IMAGES_DIR`        | `./images`              | Directorio base para las imágenes.                                       |
+| `CAMERA_WATCHDOG_TIMEOUT`  | `5`                     | Segundos sin frames antes de declarar la cámara caída.                   |
+| `LPR_URL`                  | `http://127.0.0.1:8765` | URL base del LPR service.                                                |
 
 ### Endpoints
 
