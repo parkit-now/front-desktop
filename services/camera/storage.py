@@ -52,10 +52,13 @@ class LocalStorage:
         camera_id: str,
         location: str,
         lpr_result: dict | None = None,
+        event_id: str | None = None,
     ) -> str:
         """Persist a frame to disk and its metadata to SQLite.
 
-        Returns the capture UUID that can be used as event_id downstream.
+        Returns the capture UUID. Raises IOError if the JPEG write fails so the
+        caller knows the capture was not actually stored — no SQLite row is
+        inserted in that case.
         """
         capture_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
@@ -66,21 +69,24 @@ class LocalStorage:
         img_dir = self._images_dir / self._tenant_id / date_str
         img_dir.mkdir(parents=True, exist_ok=True)
         img_path = img_dir / f"{capture_id}.jpg"
-        cv2.imwrite(str(img_path), frame, _JPEG_PARAMS)
+
+        ok = cv2.imwrite(str(img_path), frame, _JPEG_PARAMS)
+        if not ok:
+            raise IOError(f"cv2.imwrite failed — check disk space and permissions: {img_path}")
 
         plate = lpr_result["text"] if lpr_result else None
         confidence = lpr_result["confidence"] if lpr_result else None
 
         self._conn.execute(
             """INSERT INTO captures
-               (id, path, timestamp, camera_id, location, plate, confidence)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (capture_id, str(img_path), timestamp, camera_id, location, plate, confidence),
+               (id, path, timestamp, camera_id, location, plate, confidence, event_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (capture_id, str(img_path), timestamp, camera_id, location, plate, confidence, event_id),
         )
         self._conn.commit()
         logger.info(
             "capture_saved",
-            extra={"id": capture_id, "plate": plate, "confidence": confidence},
+            extra={"id": capture_id, "plate": plate, "confidence": confidence, "event_id": event_id},
         )
         return capture_id
 

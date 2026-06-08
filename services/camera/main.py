@@ -158,7 +158,11 @@ async def _process_loop() -> None:
             continue
 
         # 3. Save
-        capture_id = _storage.save(img, CAMERA_ID, CAMERA_LOCATION, lpr_result=result)
+        try:
+            capture_id = _storage.save(img, CAMERA_ID, CAMERA_LOCATION, lpr_result=result)
+        except IOError as exc:
+            logger.error("capture_save_failed", extra={"error": str(exc)})
+            continue
         saved += 1
         _last_saved_plate = plate
         _last_saved_at = now
