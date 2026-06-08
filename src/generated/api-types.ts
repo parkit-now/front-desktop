@@ -629,25 +629,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List all entries for the active tenant */
         get: operations["EntriesController_findAll"];
         put?: never;
+        /** Register a vehicle entry (client-provided UUIDv7) */
         post: operations["EntriesController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tenants/{tenantId}/entries/changes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["EntriesController_pullChanges"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -667,7 +653,25 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Close an entry (register exit + payment) using optimistic locking */
         patch: operations["EntriesController_close"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/entries/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental entry changes for offline sync */
+        get: operations["EntriesController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/tenants/{tenantId}/payment-methods": {
@@ -685,7 +689,11 @@ export interface paths {
          */
         get: operations["entitiesListPaymentMethods"];
         put?: never;
-        post?: never;
+        /**
+         * Create a custom payment method
+         * @description Creates a new non-system payment method for the entity. Requires owner role.
+         */
+        post: operations["entitiesCreatePaymentMethod"];
         delete?: never;
         options?: never;
         head?: never;
@@ -702,7 +710,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a custom payment method
+         * @description Permanently deletes a non-system payment method. System methods (`cash`, `mp_transfer`) cannot be deleted — disable them instead. Requires owner role.
+         */
+        delete: operations["entitiesDeletePaymentMethod"];
         options?: never;
         head?: never;
         /**
@@ -712,6 +724,26 @@ export interface paths {
          *     System methods (`mp_transfer`, `cash`) can be disabled but never deleted. Setting `isDefault: true` clears the previous default. The change is recorded in the audit trail. Requires the caller to be an `owner` of the entity (platform admins bypass the role check).
          */
         patch: operations["entitiesTogglePaymentMethod"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/payment-methods/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pull incremental payment method changes
+         * @description Returns payment methods with syncSeq > afterSeq, ordered by syncSeq. Used by the desktop for offline-first sync.
+         */
+        get: operations["entitiesPullPaymentMethodChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/tenants/{tenantId}/rates": {
@@ -742,7 +774,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Soft delete a rate using optimistic locking (expectedVersion) */
+        /** Hard delete a rate using optimistic locking (expectedVersion) */
         delete: operations["RatesController_remove"];
         options?: never;
         head?: never;
@@ -759,6 +791,174 @@ export interface paths {
         };
         /** Pull incremental changes for offline sync */
         get: operations["RatesController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List opening ranges in the active tenant */
+        get: operations["SchedulesController_findAll"];
+        put?: never;
+        /** Create an opening range (validates overlaps) */
+        post: operations["SchedulesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/schedules/{scheduleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an opening range using optimistic locking (expectedVersion) */
+        delete: operations["SchedulesController_remove"];
+        options?: never;
+        head?: never;
+        /** Update an opening range using optimistic locking (expectedVersion) */
+        patch: operations["SchedulesController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/schedules/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental changes for offline sync */
+        get: operations["SchedulesController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the service catalog with the tenant enabled state */
+        get: operations["ServicesController_findAll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/services/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a service for the active tenant (enabled and/or spots) */
+        patch: operations["ServicesController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/services/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental changes for offline sync */
+        get: operations["ServicesController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a vehicle to the tenant catalog
+         * @description Creates a tenant-specific vehicle entry in the catalog. Requires owner role.
+         */
+        post: operations["entitiesCreateTenantVehicle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/vehicles/{vehicleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a tenant vehicle
+         * @description Soft-deletes a tenant-specific vehicle (sets deleted_at). Global vehicles cannot be deleted. Requires owner role.
+         */
+        delete: operations["entitiesDeleteTenantVehicle"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a tenant vehicle
+         * @description Updates brand, model, and/or type of a tenant-specific vehicle. Global vehicles cannot be edited. Requires owner role.
+         */
+        patch: operations["entitiesUpdateTenantVehicle"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/vehicles/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pull vehicle catalog changes
+         * @description Returns global vehicles (admin-managed) and tenant-specific vehicles with syncSeq > afterSeq. Used by the desktop for offline-first autocomplete.
+         */
+        get: operations["entitiesPullVehicleCatalog"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1041,7 +1241,24 @@ export interface components {
             /** @description The authenticated user. */
             user: components["schemas"]["UserDto"];
         };
-        ConnectVehicleDto: Record<string, never>;
+        CloseEntryDto: {
+            /** @description Amount paid in ARS. */
+            amountPaid?: number;
+            /** @example Cochera 3 */
+            cochera?: string;
+            /**
+             * Format: date-time
+             * @description Exit timestamp (ISO 8601). Defaults to now on the server if omitted.
+             */
+            leftAt?: string;
+            /** @example Cliente frecuente */
+            notes?: string;
+            /**
+             * Format: uuid
+             * @description Payment method used.
+             */
+            paymentMethodId?: string;
+        };
         CreateApplicationDto: {
             /**
              * @description Address of the parking lot.
@@ -1090,65 +1307,40 @@ export interface components {
              */
             phone: string;
         };
-        CloseEntryDto: {
-            /** Format: date-time */
-            leftAt?: string;
-            /** Format: double */
-            amountPaid?: number;
-            /** Format: uuid */
-            paymentMethodId?: string;
-            cochera?: string;
-            notes?: string;
-        };
         CreateEntryDto: {
-            /** @description Client-generated UUIDv7 for offline-first sync. Format: uuid */
-            id: string;
-            plate: string;
-            color?: string;
+            /** @example Cochera 3 */
             cochera?: string;
-            notes?: string;
-            /** Format: date-time */
+            /** @example Rojo */
+            color?: string;
+            /**
+             * Format: date-time
+             * @description Entry timestamp (ISO 8601).
+             */
             enteredAt: string;
-            vehicleBrand?: string;
-            vehicleModel?: string;
-            /** Format: uuid */
-            rateId?: string;
-            rateSnapshotName?: string;
-            rateSnapshotHourPriceArs?: number;
-            rateSnapshotStayPriceArs?: number;
-            rateSnapshotFractionPriceArs?: number;
-        };
-        EntryChangesResponseDto: {
-            items: components["schemas"]["EntryDto"][];
-            /** @description Highest sync sequence included in this page. */
-            maxSeq: number;
-        };
-        EntryDto: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline-first sync.
+             * @example 018f44f7-9a96-7f75-9e9c-44ed9432fc12
+             */
             id: string;
-            /** Format: uuid */
-            tenantId: string;
+            /** @example Cliente frecuente */
+            notes?: string;
+            /** @example ABC123 */
             plate: string;
-            color: string | null;
-            cochera: string | null;
-            notes: string | null;
-            /** Format: date-time */
-            enteredAt: string;
-            /** Format: date-time */
-            leftAt: string | null;
-            amountPaid: number | null;
-            vehicleBrand: string | null;
-            vehicleModel: string | null;
-            /** Format: uuid */
-            rateId: string | null;
-            rateSnapshotName: string | null;
-            rateSnapshotHourPriceArs: number | null;
-            rateSnapshotStayPriceArs: number | null;
-            rateSnapshotFractionPriceArs: number | null;
-            version: number;
-            syncSeq: number;
-            /** Format: date-time */
-            updatedAt: string;
+            /**
+             * Format: uuid
+             * @description ID of the selected rate.
+             */
+            rateId?: string;
+            rateSnapshotFractionPriceArs?: number;
+            rateSnapshotHourPriceArs?: number;
+            /** @example Tarifa Día Auto */
+            rateSnapshotName?: string;
+            rateSnapshotStayPriceArs?: number;
+            /** @example Volkswagen */
+            vehicleBrand?: string;
+            /** @example Bora */
+            vehicleModel?: string;
         };
         CreateMembershipDto: {
             /**
@@ -1182,6 +1374,10 @@ export interface components {
              */
             status: "active" | "maintenance";
         };
+        CreatePaymentMethodDto: {
+            /** @example Naranja X */
+            name: string;
+        };
         CreateRateDto: {
             /**
              * @description Precio de la fraccion en ARS.
@@ -1202,12 +1398,50 @@ export interface components {
             /** @example DIA AUTO */
             name: string;
             /**
+             * @description Número de atajo para selección rápida en la operación.
+             * @example 1
+             */
+            shortcutNumber?: number;
+            /**
              * @description Precio de la estadia en ARS.
              * @example 8000
              */
             stayPriceArs: number;
         };
-        CreateVehicleDto: Record<string, never>;
+        CreateScheduleDto: {
+            /**
+             * @description Closing time as minutes since midnight (1..1440; 1440 = midnight).
+             * @example 1200
+             */
+            closeMinute: number;
+            /**
+             * @description Day of the week this opening range belongs to.
+             * @example monday
+             * @enum {string}
+             */
+            day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+            /**
+             * @description Opening time as minutes since midnight (0..1439).
+             * @example 480
+             */
+            openMinute: number;
+        };
+        CreateVehicleDto: {
+            /** @example Toyota */
+            brand: string;
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline-first sync.
+             */
+            id: string;
+            /** @example Corolla */
+            model: string;
+            /**
+             * @example auto
+             * @enum {string}
+             */
+            type?: "auto" | "pickup" | "suv" | "van" | "moto" | "camioneta" | "otro";
+        };
         DocumentSignedUrlDto: {
             /**
              * @description Seconds the signed URL remains valid.
@@ -1311,6 +1545,50 @@ export interface components {
              * @description Entity (tenant) id.
              */
             tenantId: string;
+        };
+        EntryChangesResponseDto: {
+            items: components["schemas"]["EntryDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        EntryDto: {
+            amountPaid?: number;
+            /** @example Cochera 3 */
+            cochera?: string;
+            /** @example Rojo */
+            color?: string;
+            /** Format: date-time */
+            enteredAt: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            leftAt?: string;
+            /** @example Cliente frecuente */
+            notes?: string;
+            /** @example ABC123 */
+            plate: string;
+            /** Format: uuid */
+            rateId?: string;
+            rateSnapshotFractionPriceArs?: number;
+            rateSnapshotHourPriceArs?: number;
+            rateSnapshotName?: string;
+            rateSnapshotStayPriceArs?: number;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /**
+             * @description Vehicle brand snapshot.
+             * @example Volkswagen
+             */
+            vehicleBrand?: string;
+            /**
+             * @description Vehicle model snapshot.
+             * @example Bora
+             */
+            vehicleModel?: string;
+            version: number;
         };
         ForgotPasswordDto: {
             /**
@@ -1524,7 +1802,17 @@ export interface components {
              */
             status: "active" | "maintenance";
         };
+        PaymentMethodChangesResponseDto: {
+            items: components["schemas"]["PaymentMethodSummaryDto"][];
+            /** @description Highest syncSeq in the returned batch. Pass as afterSeq on the next poll. */
+            maxSeq: number;
+        };
         PaymentMethodSummaryDto: {
+            /**
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            createdAt: string;
             /**
              * @description Whether the method is currently enabled for the entity.
              * @example true
@@ -1542,21 +1830,19 @@ export interface components {
              */
             isDefault: boolean;
             /**
-             * @description Whether this is a system method (`mp_transfer` / `cash`). System methods can be disabled but never deleted.
-             * @example true
-             */
-            isSystem: boolean;
-            /**
              * @description Display name of the payment method.
-             * @example Cash
+             * @example Efectivo
              */
             name: string;
+            /** @description Monotonically-increasing sync sequence number. */
+            syncSeq: number;
             /**
-             * @description Payment method type. `mp_transfer` and `cash` are system methods; `other` is custom.
-             * @example cash
-             * @enum {string}
+             * Format: date-time
+             * @description Last modification timestamp.
              */
-            type: "mp_transfer" | "cash" | "other";
+            updatedAt: string;
+            /** @description Optimistic-lock version. */
+            version: number;
         };
         ProblemDetailsDto: {
             /**
@@ -1599,6 +1885,7 @@ export interface components {
             id: string;
             isActive: boolean;
             name: string;
+            shortcutNumber: number | null;
             stayPriceArs: number;
             syncSeq: number;
             /** Format: uuid */
@@ -1652,6 +1939,58 @@ export interface components {
              */
             token: string;
         };
+        ScheduleChangesResponseDto: {
+            items: components["schemas"]["ScheduleDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        ScheduleDto: {
+            /** @description Minutes since midnight (1..1440). */
+            closeMinute: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** @enum {string} */
+            day: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+            /** Format: uuid */
+            id: string;
+            /** @description Minutes since midnight (0..1439). */
+            openMinute: number;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
+        ServiceCatalogItemDto: {
+            /** @enum {string} */
+            code: "ADVANCE_RESERVATION" | "VEHICLE_CAR" | "VEHICLE_BICYCLE" | "VEHICLE_MOTORCYCLE" | "VEHICLE_PICKUP" | "VEHICLE_TRUCK";
+            enabled: boolean;
+            /** @description Spots assigned to this vehicle type (0 for non-vehicle codes). */
+            spots: number;
+        };
+        ServiceChangesResponseDto: {
+            items: components["schemas"]["ServiceDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        ServiceDto: {
+            /** @enum {string} */
+            code: "ADVANCE_RESERVATION" | "VEHICLE_CAR" | "VEHICLE_BICYCLE" | "VEHICLE_MOTORCYCLE" | "VEHICLE_PICKUP" | "VEHICLE_TRUCK";
+            /** Format: date-time */
+            createdAt: string;
+            enabled: boolean;
+            /** Format: uuid */
+            id: string;
+            /** @description Spots assigned to this vehicle type (0 for non-vehicle codes). */
+            spots: number;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
         SessionDto: {
             /** @description Short-lived JWT to put in `Authorization: Bearer <accessToken>` on every protected call. */
             accessToken: string;
@@ -1684,6 +2023,8 @@ export interface components {
              * @example true
              */
             isDefault?: boolean;
+            /** @example Naranja X */
+            name?: string;
         };
         UpdateAdminUserDto: {
             /**
@@ -1844,10 +2185,53 @@ export interface components {
             /** @example NOCHE AUTO */
             name?: string;
             /**
+             * @description Número de atajo para selección rápida en la operación.
+             * @example 1
+             */
+            shortcutNumber?: number;
+            /**
              * @description Precio de la estadia en ARS.
              * @example 9000
              */
             stayPriceArs?: number;
+        };
+        UpdateScheduleDto: {
+            /**
+             * @description Closing time as minutes since midnight (1..1440; 1440 = midnight).
+             * @example 1260
+             */
+            closeMinute?: number;
+            /**
+             * @description Day of the week this opening range belongs to.
+             * @example tuesday
+             * @enum {string}
+             */
+            day?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+            /**
+             * @description Opening time as minutes since midnight (0..1439).
+             * @example 540
+             */
+            openMinute?: number;
+        };
+        UpdateServiceDto: {
+            /** @description Whether the service/vehicle type is offered by the tenant. */
+            enabled?: boolean;
+            /**
+             * @description Spots assigned to this vehicle type (ignored for non-vehicle codes).
+             * @example 40
+             */
+            spots?: number;
+        };
+        UpdateVehicleDto: {
+            /** @example Toyota */
+            brand?: string;
+            /** @example Corolla */
+            model?: string;
+            /**
+             * @example auto
+             * @enum {string}
+             */
+            type?: "auto" | "pickup" | "suv" | "van" | "moto" | "camioneta" | "otro";
         };
         UserDto: {
             /** Format: date-time */
@@ -1900,6 +2284,35 @@ export interface components {
             title: string;
             /** @description Field-level breakdown of the validation failures. */
             validationsErrors: components["schemas"]["ValidationFieldErrorDto"][];
+        };
+        VehicleCatalogChangesResponseDto: {
+            items: components["schemas"]["VehicleCatalogItemDto"][];
+            maxSeq: number;
+        };
+        VehicleCatalogItemDto: {
+            /** @example Toyota */
+            brand: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Non-null when the vehicle has been soft-deleted.
+             */
+            deletedAt?: string;
+            /** Format: uuid */
+            id: string;
+            /** @example Corolla */
+            model: string;
+            syncSeq: number;
+            /**
+             * Format: uuid
+             * @description null = global (admin-managed), UUID = tenant-specific.
+             */
+            tenantId?: string;
+            /** @example auto */
+            type?: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
     };
     responses: never;
@@ -3626,14 +4039,17 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                tenantId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             200: {
-                headers: { [name: string]: unknown };
+                headers: {
+                    [name: string]: unknown;
+                };
                 content: {
                     "application/json": components["schemas"]["EntryDto"][];
                 };
@@ -3645,7 +4061,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                tenantId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
             };
             cookie?: never;
         };
@@ -3656,31 +4073,11 @@ export interface operations {
         };
         responses: {
             200: {
-                headers: { [name: string]: unknown };
+                headers: {
+                    [name: string]: unknown;
+                };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
-                };
-            };
-        };
-    };
-    EntriesController_pullChanges: {
-        parameters: {
-            query?: {
-                afterSeq?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                tenantId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: { [name: string]: unknown };
-                content: {
-                    "application/json": components["schemas"]["EntryChangesResponseDto"];
                 };
             };
         };
@@ -3688,12 +4085,14 @@ export interface operations {
     EntriesController_close: {
         parameters: {
             query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
                 expectedVersion: number;
             };
             header?: never;
             path: {
-                tenantId: string;
                 entryId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
             };
             cookie?: never;
         };
@@ -3704,9 +4103,38 @@ export interface operations {
         };
         responses: {
             200: {
-                headers: { [name: string]: unknown };
+                headers: {
+                    [name: string]: unknown;
+                };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    EntriesController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryChangesResponseDto"];
                 };
             };
         };
@@ -3742,6 +4170,116 @@ export interface operations {
             };
             /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesCreatePaymentMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePaymentMethodDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodSummaryDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesDeletePaymentMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the payment method to delete. */
+                id: string;
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment method deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Attempted to delete a system method. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3815,11 +4353,54 @@ export interface operations {
             };
         };
     };
+    entitiesPullPaymentMethodChanges: {
+        parameters: {
+            query?: {
+                /** @description Return only payment methods with syncSeq > afterSeq. Defaults to 0 (all records). */
+                afterSeq?: number;
+                /** @description Maximum number of items to return. Defaults to 500. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodChangesResponseDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     RatesController_findAll: {
         parameters: {
             query?: {
-                /** @description Include soft-deleted rates in the response. */
-                includeDeleted?: boolean;
                 /** @description Include disabled rates in the response. */
                 includeInactive?: boolean;
             };
@@ -3884,13 +4465,12 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: {
+            /** @description Rate deleted successfully */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["RateDto"];
-                };
+                content?: never;
             };
         };
     };
@@ -3929,8 +4509,6 @@ export interface operations {
             query?: {
                 /** @description Return rows with syncSeq greater than this value. */
                 afterSeq?: components["schemas"]["Object"];
-                /** @description Include deleted rows in the changes feed. */
-                includeDeleted?: boolean;
                 /** @description Max items per page. */
                 limit?: components["schemas"]["Object"];
             };
@@ -3949,6 +4527,419 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateChangesResponseDto"];
+                };
+            };
+        };
+    };
+    SchedulesController_findAll: {
+        parameters: {
+            query?: {
+                /** @description Filter ranges by a single weekday. */
+                day?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+            };
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleDto"][];
+                };
+            };
+        };
+    };
+    SchedulesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateScheduleDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleDto"];
+                };
+            };
+        };
+    };
+    SchedulesController_remove: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                scheduleId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Schedule deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SchedulesController_update: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                scheduleId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateScheduleDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleDto"];
+                };
+            };
+        };
+    };
+    SchedulesController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleChangesResponseDto"];
+                };
+            };
+        };
+    };
+    ServicesController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceCatalogItemDto"][];
+                };
+            };
+        };
+    };
+    ServicesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Service code (ServiceCode enum) */
+                code: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateServiceDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceCatalogItemDto"];
+                };
+            };
+        };
+    };
+    ServicesController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceChangesResponseDto"];
+                };
+            };
+        };
+    };
+    entitiesCreateTenantVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVehicleDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleCatalogItemDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesDeleteTenantVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+                /** @description ID of the tenant vehicle to delete. */
+                vehicleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vehicle deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesUpdateTenantVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+                /** @description ID of the tenant vehicle to update. */
+                vehicleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVehicleDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleCatalogItemDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    entitiesPullVehicleCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleCatalogChangesResponseDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
                 };
             };
         };

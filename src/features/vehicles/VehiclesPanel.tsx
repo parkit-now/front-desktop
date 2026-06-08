@@ -14,6 +14,7 @@ import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { useSync } from '../../lib/sync/SyncContext';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
+import { AppSelect } from '../../lib/ui/AppSelect';
 import { generateUuidV7 } from '../entries/entryUtils';
 
 type Props = {
@@ -571,19 +572,14 @@ export function VehiclesPanel({
               </div>
 
               <div className="form-field">
-                <select
+                <AppSelect
                   value={form.type}
-                  onChange={(event) => {
-                    setForm((prev) => ({ ...prev, type: event.target.value }));
-                  }}
-                >
-                  <option value="">Sin tipo especificado</option>
-                  {VEHICLE_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) =>
+                    setForm((prev) => ({ ...prev, type: value }))
+                  }
+                  placeholder="Sin tipo especificado"
+                  options={VEHICLE_TYPE_OPTIONS}
+                />
               </div>
 
               <div className="rate-dialog-actions">

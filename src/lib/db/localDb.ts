@@ -8,6 +8,7 @@ export interface LocalRate {
   stayPriceArs: string;
   fractionPriceArs: string;
   isActive: boolean;
+  shortcutNumber?: number;
   version: number;
   syncSeq: number;
   createdAt: string;

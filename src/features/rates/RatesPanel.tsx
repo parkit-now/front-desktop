@@ -38,6 +38,7 @@ type FormState = {
   hourPriceArs: string;
   stayPriceArs: string;
   fractionPriceArs: string;
+  shortcutNumber: string;
 };
 
 type FormErrors = {
@@ -45,6 +46,7 @@ type FormErrors = {
   hourPriceArs?: string;
   stayPriceArs?: string;
   fractionPriceArs?: string;
+  shortcutNumber?: string;
 };
 
 type RateConfirmAction = {
@@ -70,6 +72,7 @@ function localToDisplay(r: LocalRate): RateDto {
     stayPriceArs: parseFloat(r.stayPriceArs),
     fractionPriceArs: parseFloat(r.fractionPriceArs),
     isActive: r.isActive,
+    shortcutNumber: r.shortcutNumber ?? null,
     version: r.version,
     syncSeq: r.syncSeq,
     createdAt: r.createdAt,
@@ -86,6 +89,7 @@ function apiToLocal(r: RateDto): LocalRate {
     stayPriceArs: String(r.stayPriceArs),
     fractionPriceArs: String(r.fractionPriceArs),
     isActive: r.isActive,
+    shortcutNumber: r.shortcutNumber ?? undefined,
     version: r.version,
     syncSeq: r.syncSeq,
     createdAt: r.createdAt,
@@ -122,6 +126,7 @@ function emptyForm(): FormState {
     hourPriceArs: '',
     stayPriceArs: '',
     fractionPriceArs: '',
+    shortcutNumber: '',
   };
 }
 
@@ -131,6 +136,8 @@ function fromRate(rate: RateDto): FormState {
     hourPriceArs: toMoneyInputString(rate.hourPriceArs),
     stayPriceArs: toMoneyInputString(rate.stayPriceArs),
     fractionPriceArs: toMoneyInputString(rate.fractionPriceArs),
+    shortcutNumber:
+      rate.shortcutNumber != null ? String(rate.shortcutNumber) : '',
   };
 }
 
@@ -202,14 +209,23 @@ export function RatesPanel({
 
   const canSubmitForm = useMemo(() => {
     const name = form.name.trim();
+    const n = parseInt(form.shortcutNumber.trim(), 10);
     return (
       name.length > 0 &&
       name.length <= 120 &&
       !validateMoney(form.hourPriceArs).error &&
       !validateMoney(form.stayPriceArs).error &&
-      !validateMoney(form.fractionPriceArs).error
+      !validateMoney(form.fractionPriceArs).error &&
+      Number.isInteger(n) &&
+      n >= 1
     );
-  }, [form.fractionPriceArs, form.hourPriceArs, form.name, form.stayPriceArs]);
+  }, [
+    form.fractionPriceArs,
+    form.hourPriceArs,
+    form.name,
+    form.shortcutNumber,
+    form.stayPriceArs,
+  ]);
 
   function resetEditor(): void {
     setEditorMode('create');
@@ -226,7 +242,17 @@ export function RatesPanel({
 
   function beginCreate(): void {
     if (!canManage) return;
-    resetEditor();
+    setEditorMode('create');
+    setEditingRate(null);
+    setErrors({});
+    const used = new Set(
+      (localRates ?? [])
+        .filter((r) => r.shortcutNumber != null)
+        .map((r) => r.shortcutNumber!),
+    );
+    let next = 1;
+    while (used.has(next)) next++;
+    setForm({ ...emptyForm(), shortcutNumber: String(next) });
     setEditorOpen(true);
   }
 
@@ -245,6 +271,7 @@ export function RatesPanel({
       hourPriceArs: number;
       stayPriceArs: number;
       fractionPriceArs: number;
+      shortcutNumber: number;
     };
   } {
     const nextErrors: FormErrors = {};
@@ -265,6 +292,28 @@ export function RatesPanel({
     const fraction = validateMoney(form.fractionPriceArs);
     if (fraction.error) nextErrors.fractionPriceArs = fraction.error;
 
+    const shortcutRaw = form.shortcutNumber.trim();
+    const shortcutN = parseInt(shortcutRaw, 10);
+    let shortcutNumber = 0;
+    if (shortcutRaw.length === 0) {
+      nextErrors.shortcutNumber = 'El número de atajo es obligatorio.';
+    } else if (
+      !Number.isInteger(shortcutN) ||
+      shortcutN < 1 ||
+      String(shortcutN) !== shortcutRaw
+    ) {
+      nextErrors.shortcutNumber = 'Debe ser un entero positivo.';
+    } else {
+      const conflict = (localRates ?? []).find(
+        (r) => r.shortcutNumber === shortcutN && r.id !== editingRate?.id,
+      );
+      if (conflict) {
+        nextErrors.shortcutNumber = `El número ${shortcutN} ya está ocupado por "${conflict.name}".`;
+      } else {
+        shortcutNumber = shortcutN;
+      }
+    }
+
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
@@ -277,6 +326,7 @@ export function RatesPanel({
         hourPriceArs: hour.value ?? 0,
         stayPriceArs: stay.value ?? 0,
         fractionPriceArs: fraction.value ?? 0,
+        shortcutNumber,
       },
     };
   }
@@ -302,6 +352,7 @@ export function RatesPanel({
           hourPriceArs: payload.hourPriceArs,
           stayPriceArs: payload.stayPriceArs,
           fractionPriceArs: payload.fractionPriceArs,
+          shortcutNumber: payload.shortcutNumber,
         };
 
         if (isOnline) {
@@ -320,6 +371,7 @@ export function RatesPanel({
             stayPriceArs: String(payload.stayPriceArs),
             fractionPriceArs: String(payload.fractionPriceArs),
             isActive: true,
+            shortcutNumber: payload.shortcutNumber,
             version: 1,
             syncSeq: 0,
             createdAt: now,
@@ -364,6 +416,8 @@ export function RatesPanel({
           body.stayPriceArs = payload.stayPriceArs;
         if (payload.fractionPriceArs !== currentFractionPrice)
           body.fractionPriceArs = payload.fractionPriceArs;
+        if (payload.shortcutNumber !== editingRate.shortcutNumber)
+          body.shortcutNumber = payload.shortcutNumber;
 
         if (Object.keys(body).length === 0) {
           showToast({ message: 'No hay cambios para guardar.', kind: 'info' });
@@ -400,6 +454,7 @@ export function RatesPanel({
                   body.fractionPriceArs !== undefined
                     ? String(body.fractionPriceArs)
                     : undefined,
+                shortcutNumber: body.shortcutNumber,
                 updatedAt: new Date().toISOString(),
               });
               await localDb.pendingOps.add({
@@ -580,6 +635,19 @@ export function RatesPanel({
 
   const columns = useMemo<ColumnDef<RateDto, unknown>[]>(() => {
     const baseColumns: ColumnDef<RateDto, unknown>[] = [
+      {
+        accessorKey: 'shortcutNumber',
+        header: '#',
+        size: 56,
+        cell: ({ row }) =>
+          row.original.shortcutNumber != null ? (
+            <span className="rate-shortcut-badge">
+              {row.original.shortcutNumber}
+            </span>
+          ) : (
+            <span className="muted">—</span>
+          ),
+      },
       {
         accessorKey: 'name',
         header: 'Nombre',
@@ -777,20 +845,46 @@ export function RatesPanel({
                 void handleSubmit(event);
               }}
             >
-              <div className="form-field">
-                <input
-                  type="text"
-                  placeholder="Nombre (ej. DIA AUTO)"
-                  value={form.name}
-                  onChange={(event) => {
-                    setForm((prev) => ({ ...prev, name: event.target.value }));
-                  }}
-                  className={errors.name ? 'input-error' : undefined}
-                  autoFocus
-                />
-                {errors.name ? (
-                  <p className="field-error">{errors.name}</p>
-                ) : null}
+              <div className="rate-dialog-grid">
+                <div className="form-field">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Nº atajo (ej. 1)"
+                    value={form.shortcutNumber}
+                    onChange={(event) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        shortcutNumber: event.target.value,
+                      }));
+                    }}
+                    className={
+                      errors.shortcutNumber ? 'input-error' : undefined
+                    }
+                    autoFocus
+                  />
+                  {errors.shortcutNumber ? (
+                    <p className="field-error">{errors.shortcutNumber}</p>
+                  ) : null}
+                </div>
+
+                <div className="form-field" style={{ gridColumn: 'span 2' }}>
+                  <input
+                    type="text"
+                    placeholder="Nombre (ej. DIA AUTO)"
+                    value={form.name}
+                    onChange={(event) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        name: event.target.value,
+                      }));
+                    }}
+                    className={errors.name ? 'input-error' : undefined}
+                  />
+                  {errors.name ? (
+                    <p className="field-error">{errors.name}</p>
+                  ) : null}
+                </div>
               </div>
 
               <div className="rate-dialog-grid">
