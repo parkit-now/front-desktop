@@ -23,7 +23,7 @@ const HEALTH_POLL_MS = 500;
  */
 export class ServiceManager {
   private readonly processes: ChildProcess[] = [];
-  private readonly failed: string[] = [];
+  private readonly failed = new Set<string>();
   private readonly healthy = new Set<string>();
 
   constructor(private readonly services: ServiceConfig[]) {}
@@ -100,7 +100,7 @@ export class ServiceManager {
         }
 
         console.error(`[main] ${svc.name} did not become healthy in time`);
-        this.failed.push(svc.name);
+        this.failed.add(svc.name);
       }),
     );
     return [...this.failed];

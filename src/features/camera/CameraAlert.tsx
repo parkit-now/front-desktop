@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { useCameraStatus } from './useCameraStatus';
 
 const ALERT_AFTER_MS = 60_000;
+const TICK_MS = 1_000;
 
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -13,12 +15,19 @@ function formatDuration(ms: number): string {
 
 export function CameraAlert() {
   const status = useCameraStatus();
+  const [now, setNow] = useState(() => Date.now());
+
+  // Tick every second while the camera is down so elapsed time stays live
+  // instead of freezing between 10 s poll cycles.
+  useEffect(() => {
+    if (!status || status.camera === 'ok') return;
+    const id = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(id);
+  }, [status?.camera]);
 
   if (!status || status.camera === 'ok') return null;
 
-  const elapsedMs = status.downSince
-    ? Date.now() - status.downSince.getTime()
-    : 0;
+  const elapsedMs = status.downSince ? now - status.downSince.getTime() : 0;
 
   if (elapsedMs < ALERT_AFTER_MS) return null;
 

@@ -24,10 +24,13 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
   /**
    * Subscribe to post-startup service crashes. Called each time a previously
    * healthy service exits unexpectedly so the UI can alert the operator.
+   * Returns an unsubscribe function — call it on component unmount to avoid
+   * accumulating listeners across React re-mounts.
    */
-  onServiceCrashed: (callback: (name: string) => void) => {
-    ipcRenderer.on('services:crashed', (_event, name: string) =>
-      callback(name),
-    );
+  onServiceCrashed: (callback: (name: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, name: string) =>
+      callback(name);
+    ipcRenderer.on('services:crashed', handler);
+    return () => ipcRenderer.removeListener('services:crashed', handler);
   },
 });
