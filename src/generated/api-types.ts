@@ -1097,12 +1097,16 @@ export interface components {
             amountPaid?: number;
             /** Format: uuid */
             paymentMethodId?: string;
+            cochera?: string;
+            notes?: string;
         };
         CreateEntryDto: {
             /** @description Client-generated UUIDv7 for offline-first sync. Format: uuid */
             id: string;
             plate: string;
             color?: string;
+            cochera?: string;
+            notes?: string;
             /** Format: date-time */
             enteredAt: string;
             /** Format: uuid */
@@ -1126,6 +1130,8 @@ export interface components {
             tenantId: string;
             plate: string;
             color: string | null;
+            cochera: string | null;
+            notes: string | null;
             /** Format: date-time */
             enteredAt: string;
             /** Format: date-time */
@@ -1133,6 +1139,9 @@ export interface components {
             amountPaid: number | null;
             /** Format: uuid */
             vehicleId: string;
+            vehicleBrand: string | null;
+            vehicleModel: string | null;
+            vehiclePlate: string | null;
             /** Format: uuid */
             rateId: string | null;
             rateSnapshotName: string | null;

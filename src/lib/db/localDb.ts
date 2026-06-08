@@ -19,10 +19,14 @@ export interface LocalEntry {
   tenantId: string;
   plate: string;
   color?: string;
+  cochera?: string;
+  notes?: string;
   enteredAt: string;
   leftAt?: string;
   amountPaid?: string;
   vehicleId: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
   rateId?: string;
   rateSnapshotName?: string;
   rateSnapshotHourPriceArs?: string;
@@ -35,6 +39,7 @@ export interface LocalEntry {
 
 export interface LocalVehicle {
   id: string;
+  plate?: string;
   brand: string;
   model: string;
   type?: string;
@@ -43,10 +48,13 @@ export interface LocalVehicle {
 export interface LocalPaymentMethod {
   id: string;
   tenantId: string;
-  type: string;
   name: string;
   enabled: boolean;
   isDefault: boolean;
+  syncSeq: number;
+  version: number;
+  updatedAt: string;
+  createdAt: string;
 }
 
 export interface SyncState {
@@ -56,7 +64,7 @@ export interface SyncState {
 }
 
 export type PendingOpStatus = 'pending' | 'in-flight' | 'failed';
-export type PendingOpEntity = 'rate' | 'entry' | 'vehicle';
+export type PendingOpEntity = 'rate' | 'entry' | 'vehicle' | 'paymentMethod';
 export type PendingOpOperation = 'create' | 'update' | 'delete';
 
 export interface PendingOp {
@@ -90,6 +98,12 @@ class ParkitLocalDb extends Dexie {
       paymentMethods: 'id, tenantId',
       syncState: 'key',
       pendingOps: '++localId, status, entityType, [tenantId+status]',
+    });
+
+    // v2: add plate index to vehicles; add syncSeq index to paymentMethods
+    this.version(2).stores({
+      vehicles: 'id, plate',
+      paymentMethods: 'id, tenantId, [tenantId+syncSeq]',
     });
   }
 }

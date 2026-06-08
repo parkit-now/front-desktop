@@ -1,5 +1,6 @@
 import {
   type LocalEntry,
+  type LocalPaymentMethod,
   type LocalRate,
   type PendingOp,
   localDb,
@@ -18,6 +19,13 @@ import {
   type RateDto,
 } from '../api/rates';
 import { createVehicle } from '../api/vehicles';
+import {
+  createPaymentMethod,
+  deletePaymentMethod,
+  togglePaymentMethod,
+  pullPaymentMethodChanges,
+  type PaymentMethodDto,
+} from '../api/payment-methods';
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -41,10 +49,14 @@ function entryToLocal(e: EntryDto): LocalEntry {
     tenantId: e.tenantId,
     plate: e.plate,
     color: e.color ?? undefined,
+    cochera: e.cochera ?? undefined,
+    notes: e.notes ?? undefined,
     enteredAt: e.enteredAt,
     leftAt: e.leftAt ?? undefined,
     amountPaid: e.amountPaid !== null ? String(e.amountPaid) : undefined,
     vehicleId: e.vehicleId,
+    vehicleBrand: e.vehicleBrand ?? undefined,
+    vehicleModel: e.vehicleModel ?? undefined,
     rateId: e.rateId ?? undefined,
     rateSnapshotName: e.rateSnapshotName ?? undefined,
     rateSnapshotHourPriceArs:
@@ -62,6 +74,20 @@ function entryToLocal(e: EntryDto): LocalEntry {
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
+  };
+}
+
+function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
+  return {
+    id: pm.id,
+    tenantId: '', // filled in by pullPaymentMethods via the context
+    name: pm.name,
+    enabled: pm.enabled,
+    isDefault: pm.isDefault,
+    syncSeq: pm.syncSeq,
+    version: pm.version,
+    updatedAt: pm.updatedAt,
+    createdAt: pm.createdAt,
   };
 }
 
@@ -124,12 +150,75 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      // Collect vehicles embedded in the entries so we can repopulate localDb after reinstall.
+      const vehicleMap = new Map<
+        string,
+        { id: string; plate?: string; brand: string; model: string }
+      >();
+      for (const e of response.items) {
+        if (!vehicleMap.has(e.vehicleId)) {
+          vehicleMap.set(e.vehicleId, {
+            id: e.vehicleId,
+            plate: e.vehiclePlate ?? undefined,
+            brand: e.vehicleBrand ?? '',
+            model: e.vehicleModel ?? '',
+          });
+        }
+      }
+
       await localDb.transaction(
         'rw',
         localDb.entries,
+        localDb.vehicles,
         localDb.syncState,
         async () => {
           await localDb.entries.bulkPut(response.items.map(entryToLocal));
+          // Upsert vehicles so brand/model autocomplete works even after reinstall.
+          if (vehicleMap.size > 0) {
+            await localDb.vehicles.bulkPut([...vehicleMap.values()]);
+          }
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  async pullPaymentMethods(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const tenantId = this.tenantId;
+    const stateKey = `paymentMethods:${tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullPaymentMethodChanges({
+      tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      await localDb.transaction(
+        'rw',
+        localDb.paymentMethods,
+        localDb.syncState,
+        async () => {
+          await localDb.paymentMethods.bulkPut(
+            response.items.map((pm) => ({
+              ...paymentMethodToLocal(pm),
+              tenantId,
+            })),
+          );
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,
@@ -159,7 +248,11 @@ class SyncService {
       await localDb.pendingOps.update(op.localId, { status: 'in-flight' });
 
       try {
-        let serverEntity: LocalRate | LocalEntry | undefined;
+        let serverEntity:
+          | LocalRate
+          | LocalEntry
+          | LocalPaymentMethod
+          | undefined;
 
         if (op.entityType === 'rate') {
           serverEntity = await this.applyRateOp(op);
@@ -167,6 +260,8 @@ class SyncService {
           serverEntity = await this.applyEntryOp(op);
         } else if (op.entityType === 'vehicle') {
           await this.applyVehicleOp(op);
+        } else if (op.entityType === 'paymentMethod') {
+          serverEntity = await this.applyPaymentMethodOp(op);
         }
 
         await localDb.transaction(
@@ -174,20 +269,19 @@ class SyncService {
           localDb.pendingOps,
           localDb.rates,
           localDb.entries,
+          localDb.paymentMethods,
           async () => {
-            await localDb.pendingOps.update(op.localId!, {
-              status: 'failed',
-              error: undefined,
-            });
-            // Mark done by removing the op (keeps the table clean)
             await localDb.pendingOps.delete(op.localId!);
 
-            // Update local entity with server response (gets server-assigned syncSeq etc.)
             if (serverEntity) {
               if (op.entityType === 'rate') {
                 await localDb.rates.put(serverEntity as LocalRate);
               } else if (op.entityType === 'entry') {
                 await localDb.entries.put(serverEntity as LocalEntry);
+              } else if (op.entityType === 'paymentMethod') {
+                await localDb.paymentMethods.put(
+                  serverEntity as LocalPaymentMethod,
+                );
               }
             }
           },
@@ -275,10 +369,47 @@ class SyncService {
     throw new Error(`Unknown entry operation: ${op.operation}`);
   }
 
+  private async applyPaymentMethodOp(
+    op: PendingOp,
+  ): Promise<LocalPaymentMethod | undefined> {
+    const bearer = this.accessToken;
+    const tenantId = this.tenantId;
+
+    if (op.operation === 'create') {
+      const payload = op.payload as { name: string; type?: string };
+      const result = await createPaymentMethod({
+        tenantId,
+        bearer,
+        body: payload,
+      });
+      return { ...paymentMethodToLocal(result), tenantId };
+    }
+
+    if (op.operation === 'update') {
+      const payload = op.payload as { enabled?: boolean; isDefault?: boolean };
+      const result = await togglePaymentMethod({
+        tenantId,
+        bearer,
+        id: op.entityId,
+        body: payload,
+      });
+      return { ...paymentMethodToLocal(result), tenantId };
+    }
+
+    if (op.operation === 'delete') {
+      await deletePaymentMethod({ tenantId, bearer, id: op.entityId });
+      await localDb.paymentMethods.delete(op.entityId);
+      return undefined;
+    }
+
+    throw new Error(`Unknown paymentMethod operation: ${String(op.operation)}`);
+  }
+
   async fullSync(): Promise<void> {
     await this.pushPendingOps();
     await this.pullRates();
     await this.pullEntries();
+    await this.pullPaymentMethods();
   }
 }
 

@@ -1,9 +1,10 @@
 import type { Session } from '@supabase/supabase-js';
-import { Car, DollarSign, Home } from 'lucide-react';
+import { Car, CreditCard, DollarSign, Home } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ActiveVehiclesPanel } from '../entries/ActiveVehiclesPanel';
 import { EntryForm } from '../entries/EntryForm';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
+import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
 import { RatesPanel } from '../rates/RatesPanel';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
@@ -25,7 +26,12 @@ type Props = {
   session: Session;
 };
 
-type WorkspaceSection = 'dashboard' | 'rates' | 'operativo' | 'historial';
+type WorkspaceSection =
+  | 'dashboard'
+  | 'rates'
+  | 'operativo'
+  | 'historial'
+  | 'payment-methods';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -334,11 +340,13 @@ export function SessionView({ session }: Props) {
     operativo: 'Panel Operativo',
     historial: 'Historial',
     rates: 'Gestión de Tasas',
+    'payment-methods': 'Métodos de Pago',
   };
 
   const sectionIcon = (s: WorkspaceSection) => {
     if (s === 'rates') return <DollarSign size={20} aria-hidden />;
     if (s === 'historial') return <Car size={20} aria-hidden />;
+    if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
 
@@ -393,6 +401,17 @@ export function SessionView({ session }: Props) {
               >
                 <DollarSign size={18} aria-hidden="true" />
                 {!sidebarCollapsed ? <span>Tasas</span> : null}
+              </button>
+            ) : null}
+
+            {canShowRatesNav ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'payment-methods' ? 'active' : ''}`}
+                onClick={() => setSection('payment-methods')}
+              >
+                <CreditCard size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Métodos de pago</span> : null}
               </button>
             ) : null}
           </nav>
@@ -478,6 +497,23 @@ export function SessionView({ session }: Props) {
                   <h2>Falta estacionamiento activo</h2>
                   <p className="muted">
                     Seleccioná un estacionamiento para ver el historial.
+                  </p>
+                </section>
+              )
+            ) : section === 'payment-methods' ? (
+              activeTenantId ? (
+                <PaymentMethodsPanel
+                  accessToken={session.access_token}
+                  tenantId={activeTenantId}
+                  userId={session.user.id}
+                  canManage={ratesManageAllowed}
+                />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para gestionar métodos de
+                    pago.
                   </p>
                 </section>
               )

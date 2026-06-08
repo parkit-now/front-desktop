@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createEntry } from '../../lib/api/entries';
 import { createVehicle } from '../../lib/api/vehicles';
 import { translateApiError } from '../../lib/api/translate';
@@ -7,6 +7,7 @@ import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs } from '../../lib/format/argentina';
+import { searchBrands, searchModels } from '../../lib/data/vehicleBrands';
 import { generateUuidV7 } from './entryUtils';
 
 interface Props {
@@ -18,9 +19,14 @@ export function EntryForm({ tenantId, accessToken }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
   const [plate, setPlate] = useState('');
+  const [brand, setBrand] = useState('');
+  const [model, setModel] = useState('');
   const [color, setColor] = useState('');
   const [rateId, setRateId] = useState('');
+  const [cochera, setCochera] = useState('');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const plateResolved = useRef(false);
 
   const activeRates = useLiveQuery(
     () =>
@@ -32,24 +38,54 @@ export function EntryForm({ tenantId, accessToken }: Props) {
     [tenantId],
   );
 
+  // When plate is typed, look up a previous vehicle with that plate → pre-fill brand/model.
+  async function handlePlateBlur() {
+    const normalized = plate.trim().toUpperCase();
+    if (!normalized || plateResolved.current) return;
+
+    const vehicle = await localDb.vehicles
+      .where('plate')
+      .equals(normalized)
+      .first();
+    if (vehicle) {
+      if (!brand) setBrand(vehicle.brand);
+      if (!model) setModel(vehicle.model);
+      plateResolved.current = true;
+    }
+  }
+
+  useEffect(() => {
+    plateResolved.current = false;
+  }, [plate]);
+
   async function findOrCreateVehicleId(
     normalizedPlate: string,
+    vehicleBrand: string,
+    vehicleModel: string,
   ): Promise<string> {
-    // Reuse vehicleId from a previous entry with the same plate
+    // Reuse vehicle by plate if it already exists in localDb.
+    const existing = await localDb.vehicles
+      .where('plate')
+      .equals(normalizedPlate)
+      .first();
+    if (existing) return existing.id;
+
+    // Also check previous entries for the same plate (handles case where vehicle
+    // was created before plate field was added).
     const prev = await localDb.entries
       .where('tenantId')
       .equals(tenantId)
       .filter((e) => e.plate === normalizedPlate)
       .first();
-
     if (prev) return prev.vehicleId;
 
-    // New vehicle
+    // New vehicle — generate UUID and create.
     const vehicleId = generateUuidV7();
     const vehicleBody = {
       id: vehicleId,
-      brand: normalizedPlate,
-      model: 'Auto',
+      plate: normalizedPlate,
+      brand: vehicleBrand || normalizedPlate,
+      model: vehicleModel || 'Auto',
     };
 
     if (isOnline) {
@@ -62,8 +98,9 @@ export function EntryForm({ tenantId, accessToken }: Props) {
         async () => {
           await localDb.vehicles.put({
             id: vehicleId,
-            brand: normalizedPlate,
-            model: 'Auto',
+            plate: normalizedPlate,
+            brand: vehicleBody.brand,
+            model: vehicleBody.model,
           });
           await localDb.pendingOps.add({
             entityType: 'vehicle',
@@ -77,12 +114,14 @@ export function EntryForm({ tenantId, accessToken }: Props) {
           });
         },
       );
+      return vehicleId;
     }
 
     await localDb.vehicles.put({
       id: vehicleId,
-      brand: normalizedPlate,
-      model: 'Auto',
+      plate: normalizedPlate,
+      brand: vehicleBody.brand,
+      model: vehicleBody.model,
     });
     return vehicleId;
   }
@@ -100,7 +139,11 @@ export function EntryForm({ tenantId, accessToken }: Props) {
 
     setSaving(true);
     try {
-      const vehicleId = await findOrCreateVehicleId(normalizedPlate);
+      const vehicleId = await findOrCreateVehicleId(
+        normalizedPlate,
+        brand.trim(),
+        model.trim(),
+      );
       const entryId = generateUuidV7();
       const now = new Date().toISOString();
 
@@ -108,6 +151,8 @@ export function EntryForm({ tenantId, accessToken }: Props) {
         id: entryId,
         plate: normalizedPlate,
         color: color.trim() || undefined,
+        cochera: cochera.trim() || undefined,
+        notes: notes.trim() || undefined,
         enteredAt: now,
         vehicleId,
         rateId: selectedRate?.id,
@@ -134,9 +179,13 @@ export function EntryForm({ tenantId, accessToken }: Props) {
           tenantId: result.tenantId,
           plate: result.plate,
           color: result.color ?? undefined,
+          cochera: result.cochera ?? undefined,
+          notes: result.notes ?? undefined,
           enteredAt: result.enteredAt,
           leftAt: result.leftAt ?? undefined,
           vehicleId: result.vehicleId,
+          vehicleBrand: result.vehicleBrand ?? undefined,
+          vehicleModel: result.vehicleModel ?? undefined,
           rateId: result.rateId ?? undefined,
           rateSnapshotName: result.rateSnapshotName ?? undefined,
           rateSnapshotHourPriceArs:
@@ -167,8 +216,12 @@ export function EntryForm({ tenantId, accessToken }: Props) {
               tenantId,
               plate: normalizedPlate,
               color: color.trim() || undefined,
+              cochera: cochera.trim() || undefined,
+              notes: notes.trim() || undefined,
               enteredAt: now,
               vehicleId,
+              vehicleBrand: brand.trim() || undefined,
+              vehicleModel: model.trim() || undefined,
               rateId: selectedRate?.id,
               rateSnapshotName: selectedRate?.name,
               rateSnapshotHourPriceArs: selectedRate?.hourPriceArs,
@@ -200,14 +253,22 @@ export function EntryForm({ tenantId, accessToken }: Props) {
       });
 
       setPlate('');
+      setBrand('');
+      setModel('');
       setColor('');
       setRateId('');
+      setCochera('');
+      setNotes('');
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
       setSaving(false);
     }
   }
+
+  // Build autocomplete suggestions for brand.
+  const brandSuggestions = brand.length >= 1 ? searchBrands(brand) : [];
+  const modelSuggestions = model.length >= 0 ? searchModels(brand, model) : [];
 
   return (
     <form
@@ -227,10 +288,52 @@ export function EntryForm({ tenantId, accessToken }: Props) {
             onChange={(e) => {
               setPlate(e.target.value.toUpperCase());
             }}
+            onBlur={() => {
+              void handlePlateBlur();
+            }}
             className="entry-form-plate"
-            maxLength={10}
+            maxLength={20}
             autoFocus
           />
+        </div>
+
+        <div className="form-field entry-form-vehicle-row">
+          <div className="form-field-half">
+            <input
+              list="brand-suggestions"
+              type="text"
+              placeholder="Marca (ej. Volkswagen)"
+              value={brand}
+              onChange={(e) => {
+                setBrand(e.target.value);
+                setModel('');
+              }}
+              maxLength={120}
+            />
+            <datalist id="brand-suggestions">
+              {brandSuggestions.map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
+          </div>
+
+          <div className="form-field-half">
+            <input
+              list="model-suggestions"
+              type="text"
+              placeholder="Modelo (ej. Bora)"
+              value={model}
+              onChange={(e) => {
+                setModel(e.target.value);
+              }}
+              maxLength={120}
+            />
+            <datalist id="model-suggestions">
+              {modelSuggestions.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
         </div>
 
         <div className="form-field">
@@ -260,6 +363,30 @@ export function EntryForm({ tenantId, accessToken }: Props) {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="form-field">
+          <input
+            type="text"
+            placeholder="Cochera (opcional)"
+            value={cochera}
+            onChange={(e) => {
+              setCochera(e.target.value);
+            }}
+            maxLength={100}
+          />
+        </div>
+
+        <div className="form-field">
+          <input
+            type="text"
+            placeholder="Notas (opcional)"
+            value={notes}
+            onChange={(e) => {
+              setNotes(e.target.value);
+            }}
+            maxLength={500}
+          />
         </div>
 
         <button
