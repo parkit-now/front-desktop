@@ -22,11 +22,12 @@ export class ApiError extends Error {
 
 function readBaseUrl(): string {
   const raw: unknown = import.meta.env.VITE_API_URL;
-  if (typeof raw !== 'string' || raw.length === 0) {
-    throw new Error('Missing VITE_API_URL in environment');
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    // Dev fallback: keeps desktop usable when .env.local is missing VITE_API_URL.
+    return 'http://localhost:3000';
   }
 
-  return raw.replace(/\/+$/, '');
+  return raw.trim().replace(/\/+$/, '');
 }
 
 function isProblem(value: unknown): value is ProblemDetails {

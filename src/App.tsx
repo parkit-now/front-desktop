@@ -40,6 +40,10 @@ export function App() {
     void initializeSession();
 
     const unsubscribe = onSessionChange((nextSession) => {
+      if (!nextSession && !navigator.onLine) {
+        // Keep the cached session while offline; refresh retries on reconnect.
+        return;
+      }
       setSession(nextSession);
       if (!nextSession) {
         setView('login');
