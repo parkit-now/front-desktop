@@ -74,7 +74,7 @@ class LocalStorage:
         if not ok:
             raise IOError(f"cv2.imwrite failed — check disk space and permissions: {img_path}")
 
-        plate = lpr_result["text"] if lpr_result else None
+        plate = lpr_result["plate"] if lpr_result else None
         confidence = lpr_result["confidence"] if lpr_result else None
 
         self._conn.execute(

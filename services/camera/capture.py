@@ -94,3 +94,4 @@ class CameraCapture(threading.Thread):
         self._stop_event.set()
         if self._cap:
             self._cap.release()
+            self._cap = None
