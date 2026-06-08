@@ -1,11 +1,12 @@
 import type { Session } from '@supabase/supabase-js';
-import { Car, CreditCard, DollarSign, Home } from 'lucide-react';
+import { Car, CreditCard, DollarSign, Home, Truck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ActiveVehiclesPanel } from '../entries/ActiveVehiclesPanel';
 import { EntryForm } from '../entries/EntryForm';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
 import { RatesPanel } from '../rates/RatesPanel';
+import { VehiclesPanel } from '../vehicles/VehiclesPanel';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
 import {
@@ -31,7 +32,8 @@ type WorkspaceSection =
   | 'rates'
   | 'operativo'
   | 'historial'
-  | 'payment-methods';
+  | 'payment-methods'
+  | 'vehicles';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -341,12 +343,14 @@ export function SessionView({ session }: Props) {
     historial: 'Historial',
     rates: 'Gestión de Tasas',
     'payment-methods': 'Métodos de Pago',
+    vehicles: 'Catálogo de Vehículos',
   };
 
   const sectionIcon = (s: WorkspaceSection) => {
     if (s === 'rates') return <DollarSign size={20} aria-hidden />;
     if (s === 'historial') return <Car size={20} aria-hidden />;
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
+    if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
 
@@ -412,6 +416,17 @@ export function SessionView({ session }: Props) {
               >
                 <CreditCard size={18} aria-hidden="true" />
                 {!sidebarCollapsed ? <span>Métodos de pago</span> : null}
+              </button>
+            ) : null}
+
+            {canShowRatesNav ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'vehicles' ? 'active' : ''}`}
+                onClick={() => setSection('vehicles')}
+              >
+                <Truck size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Vehículos</span> : null}
               </button>
             ) : null}
           </nav>
@@ -514,6 +529,23 @@ export function SessionView({ session }: Props) {
                   <p className="muted">
                     Seleccioná un estacionamiento para gestionar métodos de
                     pago.
+                  </p>
+                </section>
+              )
+            ) : section === 'vehicles' ? (
+              activeTenantId ? (
+                <VehiclesPanel
+                  accessToken={session.access_token}
+                  tenantId={activeTenantId}
+                  userId={session.user.id}
+                  canManage={ratesManageAllowed}
+                />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para ver el catálogo de
+                    vehículos.
                   </p>
                 </section>
               )

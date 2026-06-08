@@ -367,3 +367,14 @@ export function searchModels(brand: string, query: string): string[] {
 }
 
 export const ALL_BRAND_NAMES = BRANDS.map((b) => b.name);
+
+export interface StaticVehicle {
+  brand: string;
+  model: string;
+}
+
+export function getAllStaticVehicles(): StaticVehicle[] {
+  return BRANDS.flatMap((b) =>
+    b.models.map((m) => ({ brand: b.name, model: m })),
+  );
+}

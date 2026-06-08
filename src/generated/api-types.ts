@@ -1109,8 +1109,8 @@ export interface components {
             notes?: string;
             /** Format: date-time */
             enteredAt: string;
-            /** Format: uuid */
-            vehicleId: string;
+            vehicleBrand?: string;
+            vehicleModel?: string;
             /** Format: uuid */
             rateId?: string;
             rateSnapshotName?: string;
@@ -1137,11 +1137,8 @@ export interface components {
             /** Format: date-time */
             leftAt: string | null;
             amountPaid: number | null;
-            /** Format: uuid */
-            vehicleId: string;
             vehicleBrand: string | null;
             vehicleModel: string | null;
-            vehiclePlate: string | null;
             /** Format: uuid */
             rateId: string | null;
             rateSnapshotName: string | null;

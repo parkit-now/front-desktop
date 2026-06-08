@@ -2,6 +2,7 @@ import {
   type LocalEntry,
   type LocalPaymentMethod,
   type LocalRate,
+  type LocalVehicle,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -18,7 +19,13 @@ import {
   updateRate,
   type RateDto,
 } from '../api/rates';
-import { createVehicle } from '../api/vehicles';
+import {
+  pullVehicleCatalog,
+  createTenantVehicle,
+  updateTenantVehicle,
+  deleteTenantVehicle,
+  type VehicleCatalogItemDto,
+} from '../api/vehicles';
 import {
   createPaymentMethod,
   deletePaymentMethod,
@@ -54,7 +61,6 @@ function entryToLocal(e: EntryDto): LocalEntry {
     enteredAt: e.enteredAt,
     leftAt: e.leftAt ?? undefined,
     amountPaid: e.amountPaid !== null ? String(e.amountPaid) : undefined,
-    vehicleId: e.vehicleId,
     vehicleBrand: e.vehicleBrand ?? undefined,
     vehicleModel: e.vehicleModel ?? undefined,
     rateId: e.rateId ?? undefined,
@@ -74,6 +80,20 @@ function entryToLocal(e: EntryDto): LocalEntry {
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
+  };
+}
+
+function vehicleCatalogToLocal(v: VehicleCatalogItemDto): LocalVehicle {
+  return {
+    id: v.id,
+    brand: v.brand,
+    model: v.model,
+    type: v.type ?? undefined,
+    tenantId: v.tenantId ?? undefined,
+    deletedAt: v.deletedAt ?? undefined,
+    syncSeq: v.syncSeq,
+    updatedAt: v.updatedAt,
+    createdAt: v.createdAt,
   };
 }
 
@@ -150,32 +170,55 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
-      // Collect vehicles embedded in the entries so we can repopulate localDb after reinstall.
-      const vehicleMap = new Map<
-        string,
-        { id: string; plate?: string; brand: string; model: string }
-      >();
-      for (const e of response.items) {
-        if (!vehicleMap.has(e.vehicleId)) {
-          vehicleMap.set(e.vehicleId, {
-            id: e.vehicleId,
-            plate: e.vehiclePlate ?? undefined,
-            brand: e.vehicleBrand ?? '',
-            model: e.vehicleModel ?? '',
-          });
-        }
-      }
-
       await localDb.transaction(
         'rw',
         localDb.entries,
-        localDb.vehicles,
         localDb.syncState,
         async () => {
           await localDb.entries.bulkPut(response.items.map(entryToLocal));
-          // Upsert vehicles so brand/model autocomplete works even after reinstall.
-          if (vehicleMap.size > 0) {
-            await localDb.vehicles.bulkPut([...vehicleMap.values()]);
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  async pullVehicleCatalog(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const tenantId = this.tenantId;
+    const stateKey = `vehicles:${tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullVehicleCatalog({
+      tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      const deleted = response.items.filter((v) => v.deletedAt != null);
+      const active = response.items.filter((v) => v.deletedAt == null);
+      await localDb.transaction(
+        'rw',
+        localDb.vehicles,
+        localDb.syncState,
+        async () => {
+          if (active.length > 0) {
+            await localDb.vehicles.bulkPut(active.map(vehicleCatalogToLocal));
+          }
+          if (deleted.length > 0) {
+            await localDb.vehicles.bulkDelete(deleted.map((v) => v.id));
           }
           await localDb.syncState.put({
             key: stateKey,
@@ -252,6 +295,7 @@ class SyncService {
           | LocalRate
           | LocalEntry
           | LocalPaymentMethod
+          | LocalVehicle
           | undefined;
 
         if (op.entityType === 'rate') {
@@ -259,17 +303,20 @@ class SyncService {
         } else if (op.entityType === 'entry') {
           serverEntity = await this.applyEntryOp(op);
         } else if (op.entityType === 'vehicle') {
-          await this.applyVehicleOp(op);
+          serverEntity = await this.applyVehicleOp(op);
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         }
 
         await localDb.transaction(
           'rw',
-          localDb.pendingOps,
-          localDb.rates,
-          localDb.entries,
-          localDb.paymentMethods,
+          [
+            localDb.pendingOps,
+            localDb.rates,
+            localDb.entries,
+            localDb.vehicles,
+            localDb.paymentMethods,
+          ],
           async () => {
             await localDb.pendingOps.delete(op.localId!);
 
@@ -278,6 +325,8 @@ class SyncService {
                 await localDb.rates.put(serverEntity as LocalRate);
               } else if (op.entityType === 'entry') {
                 await localDb.entries.put(serverEntity as LocalEntry);
+              } else if (op.entityType === 'vehicle') {
+                await localDb.vehicles.put(serverEntity as LocalVehicle);
               } else if (op.entityType === 'paymentMethod') {
                 await localDb.paymentMethods.put(
                   serverEntity as LocalPaymentMethod,
@@ -296,10 +345,43 @@ class SyncService {
     }
   }
 
-  private async applyVehicleOp(op: PendingOp): Promise<void> {
-    if (op.operation !== 'create') return;
-    const payload = op.payload as Parameters<typeof createVehicle>[0]['body'];
-    await createVehicle({ bearer: this.accessToken, body: payload });
+  private async applyVehicleOp(
+    op: PendingOp,
+  ): Promise<LocalVehicle | undefined> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+
+    if (op.operation === 'create') {
+      const payload = op.payload as Parameters<
+        typeof createTenantVehicle
+      >[0]['body'];
+      const result = await createTenantVehicle({
+        tenantId,
+        bearer,
+        body: payload,
+      });
+      return vehicleCatalogToLocal(result);
+    }
+
+    if (op.operation === 'update') {
+      const payload = op.payload as Parameters<
+        typeof updateTenantVehicle
+      >[0]['body'];
+      const result = await updateTenantVehicle({
+        tenantId,
+        bearer,
+        id: op.entityId,
+        body: payload,
+      });
+      return vehicleCatalogToLocal(result);
+    }
+
+    if (op.operation === 'delete') {
+      await deleteTenantVehicle({ tenantId, bearer, id: op.entityId });
+      return undefined;
+    }
+
+    throw new Error(`Unknown vehicle operation: ${String(op.operation)}`);
   }
 
   private async applyRateOp(op: PendingOp): Promise<LocalRate> {
@@ -410,6 +492,7 @@ class SyncService {
     await this.pullRates();
     await this.pullEntries();
     await this.pullPaymentMethods();
+    await this.pullVehicleCatalog();
   }
 }
 

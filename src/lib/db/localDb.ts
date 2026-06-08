@@ -24,7 +24,6 @@ export interface LocalEntry {
   enteredAt: string;
   leftAt?: string;
   amountPaid?: string;
-  vehicleId: string;
   vehicleBrand?: string;
   vehicleModel?: string;
   rateId?: string;
@@ -39,10 +38,14 @@ export interface LocalEntry {
 
 export interface LocalVehicle {
   id: string;
-  plate?: string;
   brand: string;
   model: string;
   type?: string;
+  tenantId?: string;
+  deletedAt?: string;
+  syncSeq: number;
+  updatedAt: string;
+  createdAt: string;
 }
 
 export interface LocalPaymentMethod {
@@ -105,6 +108,14 @@ class ParkitLocalDb extends Dexie {
       vehicles: 'id, plate',
       paymentMethods: 'id, tenantId, [tenantId+syncSeq]',
     });
+
+    // v3: vehicles become a synced catalog (syncSeq index, no plate)
+    this.version(3).stores({
+      vehicles: 'id, syncSeq, tenantId',
+    });
+
+    // v4: LocalVehicle gains deletedAt field (no index change needed)
+    this.version(4).stores({});
   }
 }
 

@@ -1,13 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createEntry } from '../../lib/api/entries';
-import { createVehicle } from '../../lib/api/vehicles';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs } from '../../lib/format/argentina';
-import { searchBrands, searchModels } from '../../lib/data/vehicleBrands';
+import { getAllStaticVehicles } from '../../lib/data/vehicleBrands';
 import { generateUuidV7 } from './entryUtils';
 
 interface Props {
@@ -15,18 +14,31 @@ interface Props {
   accessToken: string;
 }
 
+type VehicleSuggestion =
+  | { kind: 'model'; label: string; brand: string; model: string }
+  | { kind: 'brand'; label: string; brand: string };
+
+const SUGGESTION_LIMIT = 10;
+
 export function EntryForm({ tenantId, accessToken }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
   const [plate, setPlate] = useState('');
+  // Internal brand/model state — driven by suggestion selection or plate pre-fill.
   const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
+  // Combined display field for vehicle autocomplete.
+  const [vehicleInput, setVehicleInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [color, setColor] = useState('');
   const [rateId, setRateId] = useState('');
   const [cochera, setCochera] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const plateResolved = useRef(false);
+  // True when the user explicitly selected a suggestion (brand+model resolved).
+  const suggestionSelected = useRef(false);
+  const suggestionsRef = useRef<HTMLUListElement>(null);
 
   const activeRates = useLiveQuery(
     () =>
@@ -38,92 +50,123 @@ export function EntryForm({ tenantId, accessToken }: Props) {
     [tenantId],
   );
 
-  // When plate is typed, look up a previous vehicle with that plate → pre-fill brand/model.
-  async function handlePlateBlur() {
-    const normalized = plate.trim().toUpperCase();
-    if (!normalized || plateResolved.current) return;
-
-    const vehicle = await localDb.vehicles
-      .where('plate')
-      .equals(normalized)
-      .first();
-    if (vehicle) {
-      if (!brand) setBrand(vehicle.brand);
-      if (!model) setModel(vehicle.model);
-      plateResolved.current = true;
-    }
-  }
+  // Catalog vehicles visible to this tenant (global + own). Exclude soft-deleted.
+  const catalogVehicles = useLiveQuery(
+    () => localDb.vehicles.filter((v) => !v.deletedAt).toArray(),
+    [],
+  );
 
   useEffect(() => {
     plateResolved.current = false;
   }, [plate]);
 
-  async function findOrCreateVehicleId(
-    normalizedPlate: string,
-    vehicleBrand: string,
-    vehicleModel: string,
-  ): Promise<string> {
-    // Reuse vehicle by plate if it already exists in localDb.
-    const existing = await localDb.vehicles
-      .where('plate')
-      .equals(normalizedPlate)
-      .first();
-    if (existing) return existing.id;
+  // On plate blur: look up previous entries for this tenant with the same plate
+  // and pre-fill vehicle, color and last rate if the fields are currently empty.
+  async function handlePlateBlur() {
+    const normalized = plate.trim().toUpperCase();
+    if (!normalized || plateResolved.current) return;
 
-    // Also check previous entries for the same plate (handles case where vehicle
-    // was created before plate field was added).
     const prev = await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((e) => e.plate === normalizedPlate)
+      .filter((e) => e.plate === normalized)
       .first();
-    if (prev) return prev.vehicleId;
 
-    // New vehicle — generate UUID and create.
-    const vehicleId = generateUuidV7();
-    const vehicleBody = {
-      id: vehicleId,
-      plate: normalizedPlate,
-      brand: vehicleBrand || normalizedPlate,
-      model: vehicleModel || 'Auto',
-    };
+    if (prev) {
+      if (!color && prev.color) setColor(prev.color);
+      if (!rateId && prev.rateId) setRateId(prev.rateId);
+      if (prev.vehicleBrand && !vehicleInput) {
+        const b = prev.vehicleBrand;
+        const m = prev.vehicleModel ?? '';
+        setBrand(b);
+        setModel(m);
+        setVehicleInput(m ? `${b} ${m}` : b);
+        suggestionSelected.current = true;
+      }
+      plateResolved.current = true;
+    }
+  }
 
-    if (isOnline) {
-      await createVehicle({ bearer: accessToken, body: vehicleBody });
-    } else {
-      await localDb.transaction(
-        'rw',
-        localDb.vehicles,
-        localDb.pendingOps,
-        async () => {
-          await localDb.vehicles.put({
-            id: vehicleId,
-            plate: normalizedPlate,
-            brand: vehicleBody.brand,
-            model: vehicleBody.model,
-          });
-          await localDb.pendingOps.add({
-            entityType: 'vehicle',
-            operation: 'create',
-            tenantId,
-            entityId: vehicleId,
-            payload: vehicleBody,
-            status: 'pending',
-            createdAt: Date.now(),
-            retryCount: 0,
-          });
-        },
-      );
-      return vehicleId;
+  // Build combined suggestions: models prioritized over brands.
+  const suggestions = useMemo<VehicleSuggestion[]>(() => {
+    const q = vehicleInput.trim().toLowerCase();
+    if (!q || suggestionSelected.current) return [];
+
+    // Use localDb catalog if populated, otherwise fall back to static data.
+    const source: { brand: string; model: string }[] =
+      catalogVehicles && catalogVehicles.length > 0
+        ? catalogVehicles
+        : getAllStaticVehicles();
+
+    // Compute which model names appear under more than one brand (ambiguous).
+    const modelBrands = new Map<string, Set<string>>();
+    for (const v of source) {
+      const key = v.model.toLowerCase();
+      if (!modelBrands.has(key)) modelBrands.set(key, new Set());
+      modelBrands.get(key)!.add(v.brand.toLowerCase());
+    }
+    const ambiguous = new Set(
+      [...modelBrands.entries()]
+        .filter(([, brands]) => brands.size > 1)
+        .map(([m]) => m),
+    );
+
+    const result: VehicleSuggestion[] = [];
+    const seenModels = new Set<string>();
+    const seenBrands = new Set<string>();
+
+    // Model suggestions first.
+    for (const v of source) {
+      if (!v.model.toLowerCase().includes(q)) continue;
+      const key = `${v.brand}|${v.model}`;
+      if (seenModels.has(key)) continue;
+      seenModels.add(key);
+      const isAmbig = ambiguous.has(v.model.toLowerCase());
+      result.push({
+        kind: 'model',
+        label: isAmbig ? `${v.model} — ${v.brand}` : v.model,
+        brand: v.brand,
+        model: v.model,
+      });
+      if (result.length >= SUGGESTION_LIMIT) break;
     }
 
-    await localDb.vehicles.put({
-      id: vehicleId,
-      plate: normalizedPlate,
-      brand: vehicleBody.brand,
-      model: vehicleBody.model,
-    });
-    return vehicleId;
+    // Brand suggestions after.
+    if (result.length < SUGGESTION_LIMIT) {
+      for (const v of source) {
+        if (!v.brand.toLowerCase().includes(q)) continue;
+        if (seenBrands.has(v.brand)) continue;
+        seenBrands.add(v.brand);
+        result.push({ kind: 'brand', label: v.brand, brand: v.brand });
+        if (result.length >= SUGGESTION_LIMIT) break;
+      }
+    }
+
+    return result;
+  }, [vehicleInput, catalogVehicles]);
+
+  function selectSuggestion(s: VehicleSuggestion) {
+    const b = s.brand;
+    const m = s.kind === 'model' ? s.model : '';
+    setBrand(b);
+    setModel(m);
+    setVehicleInput(m ? `${b} ${m}` : b);
+    suggestionSelected.current = true;
+    setShowSuggestions(false);
+  }
+
+  function handleVehicleInputChange(value: string) {
+    setVehicleInput(value);
+    suggestionSelected.current = false;
+    // Clear resolved brand/model so submit uses vehicleInput as raw model.
+    setBrand('');
+    setModel('');
+    setShowSuggestions(true);
+  }
+
+  function handleVehicleInputBlur() {
+    // Delay so a click on a suggestion registers before hiding.
+    setTimeout(() => setShowSuggestions(false), 150);
   }
 
   async function handleSubmit(event: React.FormEvent): Promise<void> {
@@ -135,39 +178,38 @@ export function EntryForm({ tenantId, accessToken }: Props) {
       return;
     }
 
+    // If no suggestion was selected, treat the raw input as vehicleModel.
+    const finalBrand = suggestionSelected.current ? brand : '';
+    const finalModel = suggestionSelected.current ? model : vehicleInput.trim();
+
     const selectedRate = activeRates?.find((r) => r.id === rateId);
+    const entryId = generateUuidV7();
+    const now = new Date().toISOString();
+
+    const body = {
+      id: entryId,
+      plate: normalizedPlate,
+      color: color.trim() || undefined,
+      cochera: cochera.trim() || undefined,
+      notes: notes.trim() || undefined,
+      enteredAt: now,
+      vehicleBrand: finalBrand || undefined,
+      vehicleModel: finalModel || undefined,
+      rateId: selectedRate?.id,
+      rateSnapshotName: selectedRate?.name,
+      rateSnapshotHourPriceArs: selectedRate
+        ? parseFloat(selectedRate.hourPriceArs)
+        : undefined,
+      rateSnapshotStayPriceArs: selectedRate
+        ? parseFloat(selectedRate.stayPriceArs)
+        : undefined,
+      rateSnapshotFractionPriceArs: selectedRate
+        ? parseFloat(selectedRate.fractionPriceArs)
+        : undefined,
+    };
 
     setSaving(true);
     try {
-      const vehicleId = await findOrCreateVehicleId(
-        normalizedPlate,
-        brand.trim(),
-        model.trim(),
-      );
-      const entryId = generateUuidV7();
-      const now = new Date().toISOString();
-
-      const body = {
-        id: entryId,
-        plate: normalizedPlate,
-        color: color.trim() || undefined,
-        cochera: cochera.trim() || undefined,
-        notes: notes.trim() || undefined,
-        enteredAt: now,
-        vehicleId,
-        rateId: selectedRate?.id,
-        rateSnapshotName: selectedRate?.name,
-        rateSnapshotHourPriceArs: selectedRate
-          ? parseFloat(selectedRate.hourPriceArs)
-          : undefined,
-        rateSnapshotStayPriceArs: selectedRate
-          ? parseFloat(selectedRate.stayPriceArs)
-          : undefined,
-        rateSnapshotFractionPriceArs: selectedRate
-          ? parseFloat(selectedRate.fractionPriceArs)
-          : undefined,
-      };
-
       if (isOnline) {
         const result = await createEntry({
           tenantId,
@@ -183,7 +225,6 @@ export function EntryForm({ tenantId, accessToken }: Props) {
           notes: result.notes ?? undefined,
           enteredAt: result.enteredAt,
           leftAt: result.leftAt ?? undefined,
-          vehicleId: result.vehicleId,
           vehicleBrand: result.vehicleBrand ?? undefined,
           vehicleModel: result.vehicleModel ?? undefined,
           rateId: result.rateId ?? undefined,
@@ -219,9 +260,8 @@ export function EntryForm({ tenantId, accessToken }: Props) {
               cochera: cochera.trim() || undefined,
               notes: notes.trim() || undefined,
               enteredAt: now,
-              vehicleId,
-              vehicleBrand: brand.trim() || undefined,
-              vehicleModel: model.trim() || undefined,
+              vehicleBrand: finalBrand || undefined,
+              vehicleModel: finalModel || undefined,
               rateId: selectedRate?.id,
               rateSnapshotName: selectedRate?.name,
               rateSnapshotHourPriceArs: selectedRate?.hourPriceArs,
@@ -255,20 +295,18 @@ export function EntryForm({ tenantId, accessToken }: Props) {
       setPlate('');
       setBrand('');
       setModel('');
+      setVehicleInput('');
       setColor('');
       setRateId('');
       setCochera('');
       setNotes('');
+      suggestionSelected.current = false;
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
       setSaving(false);
     }
   }
-
-  // Build autocomplete suggestions for brand.
-  const brandSuggestions = brand.length >= 1 ? searchBrands(brand) : [];
-  const modelSuggestions = model.length >= 0 ? searchModels(brand, model) : [];
 
   return (
     <form
@@ -297,42 +335,44 @@ export function EntryForm({ tenantId, accessToken }: Props) {
           />
         </div>
 
-        <div className="form-field entry-form-vehicle-row">
-          <div className="form-field-half">
+        <div className="form-field entry-form-vehicle-wrapper">
+          <div className="entry-form-vehicle-input-container">
             <input
-              list="brand-suggestions"
               type="text"
-              placeholder="Marca (ej. Volkswagen)"
-              value={brand}
+              placeholder="Vehículo (ej. Bora, BMW, Toyota Hilux)"
+              value={vehicleInput}
               onChange={(e) => {
-                setBrand(e.target.value);
-                setModel('');
+                handleVehicleInputChange(e.target.value);
               }}
-              maxLength={120}
-            />
-            <datalist id="brand-suggestions">
-              {brandSuggestions.map((b) => (
-                <option key={b} value={b} />
-              ))}
-            </datalist>
-          </div>
-
-          <div className="form-field-half">
-            <input
-              list="model-suggestions"
-              type="text"
-              placeholder="Modelo (ej. Bora)"
-              value={model}
-              onChange={(e) => {
-                setModel(e.target.value);
+              onFocus={() => {
+                if (!suggestionSelected.current && vehicleInput) {
+                  setShowSuggestions(true);
+                }
               }}
+              onBlur={handleVehicleInputBlur}
               maxLength={120}
+              autoComplete="off"
             />
-            <datalist id="model-suggestions">
-              {modelSuggestions.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
+            {showSuggestions && suggestions.length > 0 && (
+              <ul
+                className="vehicle-suggestions"
+                ref={suggestionsRef}
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                {suggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    className={`vehicle-suggestion vehicle-suggestion--${s.kind}`}
+                    onClick={() => selectSuggestion(s)}
+                  >
+                    {s.label}
+                    {s.kind === 'brand' && (
+                      <span className="vehicle-suggestion-tag">marca</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
