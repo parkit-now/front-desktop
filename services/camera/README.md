@@ -244,6 +244,24 @@ y reintenta con backoff exponencial:
 
 Al recuperar frames, resetea el contador y marca la cámara como `ok`.
 
+**Arranque sin cámara**: si la cámara no está disponible al iniciar, el hilo
+de captura no muere — queda en modo idle y aplica el mismo backoff en cuanto
+el watchdog detecta que no llegan frames. Conectar la cámara después del
+arranque es suficiente para que el servicio la retome automáticamente.
+
+## Notas de storage
+
+- `cv2.imwrite` se valida: si la escritura falla (disco lleno, permisos), el
+  servicio loguea `capture_save_failed` y no inserta la fila en SQLite. Nunca
+  queda un registro apuntando a un archivo inexistente.
+- La columna `event_id` en SQLite está disponible para ser completada por el
+  backend una vez que asocie el acceso a un evento. El campo se incluye en el
+  INSERT desde el primer guardado; por defecto es `NULL` hasta que se asigne.
+- En producción (app empaquetada) Electron inyecta `CAMERA_DB_PATH` y
+  `CAMERA_IMAGES_DIR` apuntando a `app.getPath('userData')`. Las variables de
+  entorno de la tabla de abajo sólo aplican cuando se corre el servicio
+  directamente (dev / make camera-dev).
+
 ---
 
 ## Nota para Windows

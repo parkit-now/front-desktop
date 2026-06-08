@@ -70,6 +70,120 @@ sudo chown root:root node_modules/electron/dist/chrome-sandbox
 sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
+## Servicios locales (camera + LPR)
+
+En desarrollo los servicios Python se levantan manualmente en terminales separadas:
+
+```bash
+# Terminal 1 — LPR service (inferencia ONNX, puerto 8765)
+cd services/lpr
+make lpr-install          # solo la primera vez
+make lpr-download-models  # solo la primera vez (descarga ~12 MB de modelos)
+make lpr-dev
+
+# Terminal 2 — Camera service (captura, storage, watchdog, puerto 8766)
+cd services/camera
+make camera-install       # solo la primera vez
+make camera-dev
+```
+
+En producción Electron los levanta automáticamente como binarios empaquetados;
+en dev el `ServiceManager` es un no-op (`app.isPackaged === false`).
+
+## Empaquetado / Distribución
+
+Flujo completo para generar el instalador:
+
+```bash
+# 1. Compilar los binarios Python (una vez por plataforma)
+cd services/lpr    && make lpr-build    && cd ../..
+cd services/camera && make camera-build && cd ../..
+
+# 2. Empaquetar la app Electron
+bun run pack   # app sin installer → dist-electron/<Parkit>-unpacked/  (rápido, para probar)
+bun run dist   # instalador completo → dist-electron/*.dmg / *.exe / *.AppImage
+```
+
+Los binarios `lpr-service[.exe]` y `camera-service[.exe]` se copian desde
+`services/*/dist/` a `resources/` dentro del bundle via `extraResources`.
+Electron los lee desde `process.resourcesPath` al arrancar.
+
+La base de datos SQLite y las imágenes se guardan en el directorio de datos
+del usuario (no en el bundle, que puede ser read-only):
+
+| SO      | Ruta userData                                           |
+| ------- | ------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/Parkit/`                 |
+| Windows | `%APPDATA%\Parkit\`                                     |
+| Linux   | `~/.config/Parkit/`                                     |
+
+## Cómo probar los cambios recientes
+
+### P0-1 — Captura sobrevive arranque sin cámara
+
+```bash
+cd services/camera && make camera-dev
+# Con la cámara desconectada:
+#   log: camera_open_failed  → el servicio sigue corriendo (antes moría)
+#   log: camera_down / camera_reconnect con backoff 1→2→4→8→30 s
+# Conectar la cámara USB (o levantar el stream RTSP):
+#   log: camera_opened / camera_recovered
+curl http://localhost:8766/stream/status
+# → {"camera":"ok","down_since":null,"reconnect_attempts":N}
+```
+
+### P0-2+P0-3 — Storage: imwrite validado y event_id persistido
+
+```bash
+# Con el servicio corriendo y una patente detectada:
+sqlite3 services/camera/camera.db \
+  "SELECT id, plate, confidence, event_id FROM captures ORDER BY timestamp DESC LIMIT 3;"
+# event_id aparece como NULL hasta que el backend lo proporcione (columna lista).
+
+# Para verificar que imwrite falla limpiamente (sin corromper la DB):
+# apuntar CAMERA_IMAGES_DIR a un path sin permisos de escritura y observar
+# el log  capture_save_failed  sin que se inserte la fila en SQLite.
+```
+
+### P1-1 — Binarios empaquetados con electron-builder
+
+```bash
+# Prerrequisito: tener los binarios Python compilados (ver arriba)
+bun run pack
+# Verificar que los binarios llegaron al bundle:
+ls dist-electron/*/Parkit-linux-unpacked/resources/   # Linux
+ls dist-electron/*/Parkit-mac-unpacked/Contents/Resources/  # macOS
+# Debe aparecer: lpr-service  camera-service (+ lpr-service.exe en Windows)
+```
+
+### P1-2 — Paths writables en app empaquetada
+
+```bash
+bun run pack
+# Ejecutar el binario generado en dist-electron/
+# Al arrancar, Electron pasa al camera-service:
+#   CAMERA_DB_PATH   → <userData>/camera.db
+#   CAMERA_IMAGES_DIR → <userData>/images/
+# Verificar tras detectar una patente:
+# macOS: ls ~/Library/Application\ Support/Parkit/
+# Linux: ls ~/.config/Parkit/
+# → camera.db  images/
+```
+
+### P1-3 — Health IPC visible en devtools
+
+```bash
+# Iniciar la app sin haber levantado el LPR service:
+make dev
+# En DevTools (Ctrl+Shift+I) → Console:
+#   [services:failed] ["lpr-service"]  ← evento IPC enviado desde main
+
+# Verificar también la API de consulta:
+# En DevTools → Console:
+await window.parkitDesktop.getFailedServices()
+# → ["lpr-service"]  (o [] si todos están ok)
+```
+
 ## Checklist antes de PR
 
 ```bash
