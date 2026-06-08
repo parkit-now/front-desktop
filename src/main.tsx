@@ -2,12 +2,15 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { ToastProvider } from './lib/notifications/ToastProvider';
+import { NetworkProvider } from './lib/network/NetworkContext';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ToastProvider>
-      <App />
-    </ToastProvider>
+    <NetworkProvider>
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </NetworkProvider>
   </React.StrictMode>,
 );

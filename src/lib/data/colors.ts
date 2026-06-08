@@ -1,0 +1,25 @@
+export const COLORS = [
+  'AMARILLO',
+  'AZUL',
+  'BEIGE',
+  'BLANCO',
+  'BORDO',
+  'CELESTE',
+  'CHAMPAGNE',
+  'CREMA',
+  'GRIS',
+  'LADRILLO',
+  'LILA',
+  'MARRON',
+  'NARANJA',
+  'NEGRO',
+  'ORO',
+  'PLATA',
+  'ROJO',
+  'ROSA',
+  'TAXI',
+  'VERDE',
+  'VIOLETA',
+] as const;
+
+export type CarColor = (typeof COLORS)[number];

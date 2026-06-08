@@ -21,7 +21,7 @@ export type EndpointKey =
   | 'auth.refresh'
   | 'auth.logout'
   | 'auth.forgotPassword'
-  | 'users.me';
+  | 'auth.me';
 
 export type TranslateContext = {
   endpoint?: EndpointKey;
@@ -51,6 +51,11 @@ const CODE_MESSAGES: Record<string, string> = {
   AUTH_RESET_PASSWORD_FAILED:
     'No pudimos cambiar tu contraseña. Intentalo en unos segundos.',
   AUTH_LOGOUT_FAILED: 'No pudimos cerrar la sesión. Probá de nuevo.',
+
+  // Acceso por entidad (rol owner/operator en la membership, no en el JWT).
+  ENTITY_INSUFFICIENT_ROLE:
+    'Tu rol en este establecimiento no permite esta acción.',
+  ENTITY_NO_ACCESS: 'No tenés acceso a este establecimiento.',
 
   // Validacion (envoltorio — el detalle por campo se traduce con
   // translateValidationCode).
@@ -84,7 +89,6 @@ const CONTEXT_MESSAGES: Record<string, string> = {
   'auth.register:409': 'Ya existe una cuenta con ese email.',
   'auth.refresh:401': 'Tu sesión expiró. Volvé a iniciar sesión.',
   'auth.logout:401': 'Tu sesión ya no es válida.',
-  'users.me:401': 'Tu sesión expiró. Volvé a iniciar sesión.',
 };
 
 // Fallback final por HTTP status.
@@ -170,4 +174,18 @@ export function translateValidationCode(field: string, code: string): string {
   const override = VALIDATION_FIELD_CODE_MESSAGES[overrideKey];
   if (override) return override;
   return VALIDATION_CODE_MESSAGES[code] ?? 'Valor inválido.';
+}
+
+// Etiquetas en español para los roles que muestra la UI.
+// Rol GLOBAL (JWT): admin | user. Rol por entidad (membership): owner | operator.
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrador',
+  user: 'Usuario',
+  owner: 'Dueño',
+  operator: 'Operador',
+};
+
+/** Traduce un rol (global o de entidad) a su etiqueta en español. */
+export function translateRole(role: string): string {
+  return ROLE_LABELS[role] ?? role;
 }

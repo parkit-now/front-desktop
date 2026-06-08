@@ -39,6 +39,11 @@ export function App() {
     void initializeSession();
 
     const unsubscribe = onSessionChange((nextSession) => {
+      if (!nextSession && !navigator.onLine) {
+        // Token expired while offline — keep the cached session alive so the
+        // user is not logged out. The refresh will be retried on reconnect.
+        return;
+      }
       setSession(nextSession);
       if (!nextSession) {
         setView('login');
@@ -51,6 +56,26 @@ export function App() {
     };
   }, [showToast]);
 
+  if (loading) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <div className="brand-lockup">
+            <div className="brand-badge" aria-hidden="true">
+              P
+            </div>
+            <h1>Parkit</h1>
+          </div>
+          <p className="muted">Cargando sesión...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (session) {
+    return <SessionView session={session} />;
+  }
+
   return (
     <main className="auth-page">
       <section className="auth-card">
@@ -61,11 +86,7 @@ export function App() {
           <h1>Parkit</h1>
         </div>
 
-        {loading ? (
-          <p className="muted">Cargando sesión...</p>
-        ) : session ? (
-          <SessionView session={session} />
-        ) : view === 'register' ? (
+        {view === 'register' ? (
           <RegisterScreen
             onSwitchToLogin={() => {
               setView('login');
