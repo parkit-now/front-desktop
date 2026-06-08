@@ -37,6 +37,7 @@ class CameraCapture(threading.Thread):
     def _open(self) -> bool:
         cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():
+            cap.release()  # free OS handle even when open failed (RTSP retry leak)
             logger.error("camera_open_failed", extra={"source": self._source})
             return False
         cap.set(cv2.CAP_PROP_FPS, self._fps)

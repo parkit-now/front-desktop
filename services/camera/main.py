@@ -156,9 +156,23 @@ async def _process_loop() -> None:
     saved = 0
     lpr_busy = False
     last_fallback = time.monotonic()
+    camera_was_down = False
 
     while True:
         await asyncio.sleep(0.1)  # ~10 Hz — matches capture FPS
+
+        # Skip LPR while the camera is down to avoid running inference on a
+        # stale frame. When the camera recovers, reset the motion detector so
+        # the first new frame starts a fresh warmup instead of diffing against
+        # the pre-outage reference.
+        camera_down = _watchdog is not None and _watchdog.status()["camera"] == "down"
+        if camera_down:
+            camera_was_down = True
+            print(f"\r[{_ts()}]  camera down — pausing LPR...                  ", end="", flush=True)
+            continue
+        if camera_was_down:
+            _motion.reset()
+            camera_was_down = False
 
         frame = _capture.latest_frame()
         if frame is None:

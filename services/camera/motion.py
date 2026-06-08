@@ -6,21 +6,6 @@ detection) when:
 
   1. The mean absolute pixel difference exceeds the threshold, AND
   2. The inter-trigger cooldown has elapsed.
-
-Design choices for the MVP
---------------------------
-- absdiff instead of MOG2: simpler, no background-learning period, and
-  immune to the MOG2 "parked-car contamination" problem — a static vehicle
-  eventually becomes part of the learned background and disappears. absdiff
-  detects CHANGE, not presence, which is correct for an entry/exit camera.
-- The detector owns its cooldown (separate from the plate-level cooldown in
-  main.py). This prevents a single slow-moving vehicle from flooding the LPR
-  executor with dozens of back-to-back calls.
-- A warmup period discards the first N frames so that camera auto-exposure
-  settling does not trigger a spurious LPR call on startup.
-- The snapshot returned is captured at the exact moment the motion threshold
-  is crossed — not read from the shared deque afterwards, which could already
-  hold a different frame by the time the executor picks it up.
 """
 
 import time
@@ -56,6 +41,7 @@ class MotionDetector:
         self._threshold = threshold
         self._cooldown = cooldown
         self._roi = roi
+        self._warmup_frames = warmup_frames
         self._warmup_remaining = warmup_frames
         self._prev_gray: np.ndarray | None = None
         self._last_trigger: float = 0.0
@@ -94,6 +80,15 @@ class MotionDetector:
 
         self._last_trigger = now
         return True, frame.copy()
+
+    def reset(self) -> None:
+        """Clear accumulated state so the next frames are treated as warmup.
+
+        Call this when the camera reconnects to avoid comparing a new frame
+        against a stale reference captured before the connection dropped.
+        """
+        self._prev_gray = None
+        self._warmup_remaining = self._warmup_frames
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
