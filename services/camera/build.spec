@@ -11,15 +11,19 @@
 # The resulting binary embeds the Python runtime, OpenCV, httpx and all
 # dependencies. Electron only needs the binary path in extraResources.
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 # ── Data files ────────────────────────────────────────────────────────────────
 datas = []
 datas += collect_data_files("cv2")
+datas += collect_data_files("numpy")
+binaries = []
+binaries += collect_dynamic_libs("numpy")
 
 # ── Hidden imports ────────────────────────────────────────────────────────────
 hiddenimports = (
     collect_submodules("cv2")
+    + collect_submodules("numpy")
     + collect_submodules("httpx")
     + [
         "sqlite3",
@@ -38,7 +42,7 @@ hiddenimports = (
 a = Analysis(
     ["main.py"],
     pathex=["."],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

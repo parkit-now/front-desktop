@@ -4,6 +4,7 @@ uvicorn[standard]==0.32.1
 
 # Camera capture
 opencv-python-headless==4.10.0.84
+numpy==1.26.4
 
 # LPR client
 httpx==0.27.2

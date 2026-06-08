@@ -6,6 +6,7 @@ CYAN  := \033[36m
 RESET := \033[0m
 
 VENV    := .venv
+PYTHON_BIN ?= python3.12
 PYTHON  := $(VENV)/bin/python
 PIP     := $(VENV)/bin/pip
 PORT    ?= 8766
@@ -32,7 +33,7 @@ help: ## Mostrar comandos disponibles
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
 $(VENV)/bin/activate: requirements.txt
-	python3 -m venv $(VENV)
+	$(PYTHON_BIN) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 	@touch $(VENV)/bin/activate
