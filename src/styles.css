@@ -339,7 +339,6 @@ h2 {
   background: var(--color-border);
 }
 
-<<<<<<< feat/camera
 .camera-alert {
   position: fixed;
   top: 0;
@@ -365,7 +364,8 @@ h2 {
 .camera-alert__message {
   margin: 0;
   flex: 1;
-=======
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -2641,5 +2641,4 @@ h2 {
 
 .spin {
   animation: spin 0.8s linear infinite;
->>>>>>> develop
 }
