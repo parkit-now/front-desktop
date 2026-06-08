@@ -1,12 +1,17 @@
 import { type Provider, type Session } from '@supabase/supabase-js';
 import {
+  fetchMe,
   logoutBackend,
   loginWithPassword,
   refreshSessionTokens,
   registerWithPassword,
+  type AppRole,
+  type MeResponseDto,
   type SessionDto,
 } from '../api/auth';
 import { supabase } from './client';
+
+export type { AppRole, MeResponseDto } from '../api/auth';
 
 function resolveRedirectUrl(): string | undefined {
   const customRedirectRaw: unknown = import.meta.env
@@ -90,12 +95,35 @@ export async function registerWithEmail(
   email: string,
   password: string,
 ): Promise<Session> {
-  const result = await registerWithPassword({
-    email,
-    password,
-    role: 'driver',
-  });
+  // The backend always provisions a global `user`; no `role` is sent.
+  const result = await registerWithPassword({ email, password });
   return applyBackendSession(result.session);
+}
+
+/**
+ * Reads the GLOBAL platform role (`admin | user`) from the JWT
+ * (`app_metadata.role`). The owner/operator role is NOT here — it lives in the
+ * entity memberships, resolved via `getCurrentUser` (`GET /auth/me`).
+ */
+export function getRoleFromSession(session: Session | null): AppRole | null {
+  const role: unknown = session?.user.app_metadata.role;
+  return role === 'admin' || role === 'user' ? role : null;
+}
+
+/**
+ * Fetches the caller's identity, global role and entity memberships.
+ *
+ * Desktop is for owners/operators: after login the global `user` operates over
+ * the entities returned in `memberships` (each with its `owner | operator`
+ * role). Use this where the post-login flow needs to know the entities.
+ */
+export async function getCurrentUser(): Promise<MeResponseDto | null> {
+  const current = await getSession();
+  const accessToken = current?.access_token;
+  if (!accessToken) {
+    return null;
+  }
+  return fetchMe(accessToken);
 }
 
 export async function refreshCurrentSession(): Promise<Session | null> {
