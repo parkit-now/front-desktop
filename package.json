@@ -18,7 +18,43 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,html}\"",
-    "sync-types": "node scripts/sync-types.mjs"
+    "sync-types": "node scripts/sync-types.mjs",
+    "pack": "bun run build && electron-builder --dir",
+    "dist": "bun run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.parkit.desktop",
+    "productName": "Parkit",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "services/lpr/dist",
+        "to": ".",
+        "filter": ["lpr-service", "lpr-service.exe"]
+      },
+      {
+        "from": "services/camera/dist",
+        "to": ".",
+        "filter": ["camera-service", "camera-service.exe"]
+      }
+    ],
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "linux": {
+      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "category": "Utility"
+    }
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -34,6 +70,7 @@
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
     "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
     "electronmon": "^2.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
