@@ -56,6 +56,15 @@ export function App() {
     };
   }, [showToast]);
 
+  if (session) {
+    return (
+      <>
+        <CameraAlert />
+        <SessionView session={session} />
+      </>
+    );
+  }
+
   return (
     <main className="auth-page">
       <section className="auth-card">
@@ -68,11 +77,6 @@ export function App() {
 
         {loading ? (
           <p className="muted">Cargando sesión...</p>
-        ) : session ? (
-          <>
-            <CameraAlert />
-            <SessionView session={session} />
-          </>
         ) : view === 'register' ? (
           <RegisterScreen
             onSwitchToLogin={() => {
