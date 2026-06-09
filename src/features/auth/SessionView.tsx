@@ -1,6 +1,14 @@
 import type { Session } from '@supabase/supabase-js';
-import { Car, CreditCard, DollarSign, Home, Truck } from 'lucide-react';
+import {
+  Car,
+  CreditCard,
+  DollarSign,
+  Home,
+  Truck,
+  Archive,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { ActiveVehiclesPanel } from '../entries/ActiveVehiclesPanel';
 import { EntryForm } from '../entries/EntryForm';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
@@ -9,6 +17,10 @@ import { RatesPanel } from '../rates/RatesPanel';
 import { VehiclesPanel } from '../vehicles/VehiclesPanel';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
+import { NoCashSessionScreen } from '../cash-session/NoCashSessionScreen';
+import { CashSessionPanel } from '../cash-session/CashSessionPanel';
+import { CashSessionHistoryPanel } from '../cash-session/CashSessionHistoryPanel';
+import { localDb } from '../../lib/db/localDb';
 import {
   fetchMe,
   type AppRole,
@@ -33,7 +45,8 @@ type WorkspaceSection =
   | 'operativo'
   | 'historial'
   | 'payment-methods'
-  | 'vehicles';
+  | 'vehicles'
+  | 'caja';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -156,6 +169,18 @@ export function SessionView({ session }: Props) {
   const tenantKey = useMemo(
     () => tenantStorageKey(session.user.id),
     [session.user.id],
+  );
+
+  const activeCashSession = useLiveQuery(
+    () =>
+      activeTenantId
+        ? localDb.cashSessions
+            .where('tenantId')
+            .equals(activeTenantId)
+            .filter((s) => !s.closedAt)
+            .first()
+        : Promise.resolve(undefined),
+    [activeTenantId],
   );
 
   const memberships = useMemo(
@@ -344,6 +369,7 @@ export function SessionView({ session }: Props) {
     rates: 'Gestión de Tasas',
     'payment-methods': 'Métodos de Pago',
     vehicles: 'Catálogo de Vehículos',
+    caja: 'Caja',
   };
 
   const sectionIcon = (s: WorkspaceSection) => {
@@ -351,6 +377,7 @@ export function SessionView({ session }: Props) {
     if (s === 'historial') return <Car size={20} aria-hidden />;
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
+    if (s === 'caja') return <Archive size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
 
@@ -396,6 +423,17 @@ export function SessionView({ session }: Props) {
               <Car size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Historial</span> : null}
             </button>
+
+            {hasMemberships || effectiveGlobalRole === 'admin' ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'caja' ? 'active' : ''}`}
+                onClick={() => setSection('caja')}
+              >
+                <Archive size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Caja</span> : null}
+              </button>
+            ) : null}
 
             {canShowRatesNav ? (
               <button
@@ -477,16 +515,23 @@ export function SessionView({ session }: Props) {
           <div className="workspace-content">
             {section === 'operativo' ? (
               activeTenantId ? (
-                <div className="operativo-layout">
-                  <EntryForm
+                activeCashSession ? (
+                  <div className="operativo-layout">
+                    <EntryForm
+                      tenantId={activeTenantId}
+                      accessToken={session.access_token}
+                    />
+                    <ActiveVehiclesPanel
+                      tenantId={activeTenantId}
+                      accessToken={session.access_token}
+                    />
+                  </div>
+                ) : (
+                  <NoCashSessionScreen
                     tenantId={activeTenantId}
                     accessToken={session.access_token}
                   />
-                  <ActiveVehiclesPanel
-                    tenantId={activeTenantId}
-                    accessToken={session.access_token}
-                  />
-                </div>
+                )
               ) : (
                 <section
                   className={`dashboard-card ${hasMemberships ? '' : 'warning'}`}
@@ -549,6 +594,23 @@ export function SessionView({ session }: Props) {
                   <p className="muted">
                     Seleccioná un estacionamiento para ver el catálogo de
                     vehículos.
+                  </p>
+                </section>
+              )
+            ) : section === 'caja' ? (
+              activeTenantId ? (
+                <div className="caja-layout">
+                  <CashSessionPanel
+                    tenantId={activeTenantId}
+                    accessToken={session.access_token}
+                  />
+                  <CashSessionHistoryPanel tenantId={activeTenantId} />
+                </div>
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para gestionar la caja.
                   </p>
                 </section>
               )

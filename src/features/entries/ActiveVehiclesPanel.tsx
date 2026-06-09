@@ -51,9 +51,16 @@ export function ActiveVehiclesPanel({ tenantId, accessToken }: Props) {
           <div key={entry.id} className="vehicle-card">
             <div className="vehicle-card-top">
               <span className="vehicle-plate">{entry.plate}</span>
-              {entry.color ? (
-                <span className="vehicle-color muted">{entry.color}</span>
-              ) : null}
+              <div className="vehicle-card-top-right">
+                {entry.ticketNumber != null ? (
+                  <span className="vehicle-ticket-badge">
+                    #{entry.ticketNumber}
+                  </span>
+                ) : null}
+                {entry.color ? (
+                  <span className="vehicle-color muted">{entry.color}</span>
+                ) : null}
+              </div>
             </div>
 
             <div className="vehicle-card-meta">

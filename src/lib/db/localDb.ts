@@ -32,6 +32,34 @@ export interface LocalEntry {
   rateSnapshotHourPriceArs?: string;
   rateSnapshotStayPriceArs?: string;
   rateSnapshotFractionPriceArs?: string;
+  cashSessionId?: string;
+  ticketNumber?: number;
+  version: number;
+  syncSeq: number;
+  updatedAt: string;
+}
+
+export interface LocalCashSession {
+  id: string;
+  tenantId: string;
+  openedAt: string;
+  closedAt?: string;
+  openingCash: number;
+  leavingCash?: number;
+  notes?: string;
+  version: number;
+  syncSeq: number;
+  updatedAt: string;
+}
+
+export interface LocalPaymentTransaction {
+  id: string;
+  tenantId: string;
+  entryId: string;
+  cashSessionId?: string;
+  paymentMethodId?: string;
+  paymentMethodName: string;
+  amount: number;
   version: number;
   syncSeq: number;
   updatedAt: string;
@@ -68,7 +96,12 @@ export interface SyncState {
 }
 
 export type PendingOpStatus = 'pending' | 'in-flight' | 'failed';
-export type PendingOpEntity = 'rate' | 'entry' | 'vehicle' | 'paymentMethod';
+export type PendingOpEntity =
+  | 'rate'
+  | 'entry'
+  | 'vehicle'
+  | 'paymentMethod'
+  | 'cashSession';
 export type PendingOpOperation = 'create' | 'update' | 'delete';
 
 export interface PendingOp {
@@ -89,6 +122,8 @@ class ParkitLocalDb extends Dexie {
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
   paymentMethods!: Table<LocalPaymentMethod>;
+  cashSessions!: Table<LocalCashSession>;
+  paymentTransactions!: Table<LocalPaymentTransaction>;
   syncState!: Table<SyncState>;
   pendingOps!: Table<PendingOp>;
 
@@ -117,6 +152,14 @@ class ParkitLocalDb extends Dexie {
 
     // v4: LocalVehicle gains deletedAt field (no index change needed)
     this.version(4).stores({});
+
+    // v5: add cashSessions and paymentTransactions tables; add cashSessionId index to entries
+    this.version(5).stores({
+      entries: 'id, [tenantId+syncSeq], tenantId, plate, cashSessionId',
+      cashSessions: 'id, [tenantId+syncSeq], tenantId',
+      paymentTransactions:
+        'id, [tenantId+syncSeq], tenantId, entryId, cashSessionId',
+    });
   }
 }
 

@@ -759,6 +759,20 @@ export function EntryForm({ tenantId, accessToken }: Props) {
     const entryId = generateUuidV7();
     const now = new Date().toISOString();
 
+    // Resolve active cash session and compute ticket number
+    const activeSession = await localDb.cashSessions
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((s) => !s.closedAt)
+      .first();
+
+    const ticketNumber = activeSession
+      ? (await localDb.entries
+          .where('cashSessionId')
+          .equals(activeSession.id)
+          .count()) + 1
+      : undefined;
+
     const body = {
       id: entryId,
       plate: normalizedPlate,
@@ -779,6 +793,8 @@ export function EntryForm({ tenantId, accessToken }: Props) {
       rateSnapshotFractionPriceArs: selectedRate
         ? parseFloat(selectedRate.fractionPriceArs)
         : undefined,
+      cashSessionId: activeSession?.id,
+      ticketNumber,
     };
 
     setSaving(true);
@@ -814,6 +830,8 @@ export function EntryForm({ tenantId, accessToken }: Props) {
             result.rateSnapshotFractionPriceArs !== null
               ? String(result.rateSnapshotFractionPriceArs)
               : undefined,
+          cashSessionId: result.cashSessionId ?? undefined,
+          ticketNumber: result.ticketNumber ?? undefined,
           version: result.version,
           syncSeq: result.syncSeq,
           updatedAt: result.updatedAt,
@@ -840,6 +858,8 @@ export function EntryForm({ tenantId, accessToken }: Props) {
               rateSnapshotHourPriceArs: selectedRate?.hourPriceArs,
               rateSnapshotStayPriceArs: selectedRate?.stayPriceArs,
               rateSnapshotFractionPriceArs: selectedRate?.fractionPriceArs,
+              cashSessionId: activeSession?.id,
+              ticketNumber,
               version: 1,
               syncSeq: 0,
               updatedAt: now,

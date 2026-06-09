@@ -1242,8 +1242,12 @@ export interface components {
             user: components["schemas"]["UserDto"];
         };
         CloseEntryDto: {
-            /** @description Amount paid in ARS. */
+            /**
+             * @description Total amount paid in ARS. Computed from payments[] if provided; otherwise stored directly.
+             */
             amountPaid?: number;
+            /** @description Cash session ID. */
+            cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
             /**
@@ -1253,11 +1257,8 @@ export interface components {
             leftAt?: string;
             /** @example Cliente frecuente */
             notes?: string;
-            /**
-             * Format: uuid
-             * @description Payment method used.
-             */
-            paymentMethodId?: string;
+            /** @description Payment breakdown per method. When provided, amountPaid is set to the sum. */
+            payments?: components["schemas"]["PaymentLineDto"][];
         };
         CreateApplicationDto: {
             /**
@@ -1308,6 +1309,8 @@ export interface components {
             phone: string;
         };
         CreateEntryDto: {
+            /** @description Cash session this entry belongs to. */
+            cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
             /** @example Rojo */
@@ -1337,6 +1340,8 @@ export interface components {
             /** @example Tarifa Día Auto */
             rateSnapshotName?: string;
             rateSnapshotStayPriceArs?: number;
+            /** @description Sequential ticket number within the cash session. */
+            ticketNumber?: number;
             /** @example Volkswagen */
             vehicleBrand?: string;
             /** @example Bora */
@@ -1553,6 +1558,8 @@ export interface components {
         };
         EntryDto: {
             amountPaid?: number;
+            /** @description Cash session this entry belongs to. */
+            cashSessionId?: string | null;
             /** @example Cochera 3 */
             cochera?: string;
             /** @example Rojo */
@@ -1576,6 +1583,8 @@ export interface components {
             syncSeq: number;
             /** Format: uuid */
             tenantId: string;
+            /** @description Sequential ticket number within the cash session. */
+            ticketNumber?: number | null;
             /** Format: date-time */
             updatedAt: string;
             /**
@@ -1801,6 +1810,16 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "maintenance";
+        };
+        PaymentLineDto: {
+            /** @description Total amount for this payment line. */
+            amount: number;
+            /** @description Client-generated UUIDv7. */
+            id: string;
+            /** @description Payment method ID (may be absent if PM was deleted). */
+            paymentMethodId?: string;
+            /** @description Payment method display name snapshot. */
+            paymentMethodName: string;
         };
         PaymentMethodChangesResponseDto: {
             items: components["schemas"]["PaymentMethodSummaryDto"][];

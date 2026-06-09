@@ -1,12 +1,21 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { closeEntry } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
-import { localDb, type LocalEntry } from '../../lib/db/localDb';
+import {
+  localDb,
+  type LocalEntry,
+  type LocalPaymentTransaction,
+} from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
-import { calcSuggestedAmount, formatDuration } from './entryUtils';
+import {
+  calcSuggestedAmount,
+  formatDuration,
+  generateUuidV7,
+} from './entryUtils';
 
 interface Props {
   entry: LocalEntry;
@@ -41,14 +50,89 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [amount, setAmount] = useState(
     suggested > 0 ? suggested.toFixed(2) : '',
   );
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [selectedPmId, setSelectedPmId] = useState('');
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  const enabledPms = useLiveQuery(
+    () =>
+      localDb.paymentMethods
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((pm) => pm.enabled)
+        .toArray(),
+    [tenantId],
+  );
+
+  const activeSession = useLiveQuery(
+    () =>
+      localDb.cashSessions
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((s) => !s.closedAt)
+        .first(),
+    [tenantId],
+  );
+
+  // Pre-select default PM if none is selected yet
+  const pms = enabledPms ?? [];
+  const defaultPm = pms.find((pm) => pm.isDefault) ?? pms[0];
+  const effectivePmId = selectedPmId || defaultPm?.id || '';
+  const effectivePm = pms.find((pm) => pm.id === effectivePmId);
+
+  const splitTotal = pms.reduce((sum, pm) => {
+    const v = parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0');
+    return sum + (Number.isFinite(v) ? v : 0);
+  }, 0);
 
   async function handleConfirm(): Promise<void> {
     setSaving(true);
     const leftAt = new Date().toISOString();
-    const amountPaid = amount.trim()
-      ? parseFloat(amount.replace(',', '.'))
-      : undefined;
+    const cashSessionId = entry.cashSessionId ?? activeSession?.id;
+
+    let amountPaid: number | undefined;
+    let payments:
+      | Array<{
+          id: string;
+          paymentMethodId?: string;
+          paymentMethodName: string;
+          amount: number;
+        }>
+      | undefined;
+
+    if (splitEnabled) {
+      const lines = pms
+        .map((pm) => {
+          const v = parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0');
+          return { pm, v: Number.isFinite(v) ? v : 0 };
+        })
+        .filter(({ v }) => v > 0)
+        .map(({ pm, v }) => ({
+          id: generateUuidV7(),
+          paymentMethodId: pm.id,
+          paymentMethodName: pm.name,
+          amount: v,
+        }));
+
+      if (lines.length > 0) {
+        payments = lines;
+        amountPaid = lines.reduce((s, l) => s + l.amount, 0);
+      }
+    } else {
+      const v = parseFloat(amount.replace(',', '.'));
+      amountPaid = Number.isFinite(v) && v > 0 ? v : undefined;
+      if (effectivePm && amountPaid !== undefined) {
+        payments = [
+          {
+            id: generateUuidV7(),
+            paymentMethodId: effectivePm.id,
+            paymentMethodName: effectivePm.name,
+            amount: amountPaid,
+          },
+        ];
+      }
+    }
 
     try {
       if (isOnline) {
@@ -57,20 +141,58 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           entryId: entry.id,
           expectedVersion: entry.version,
           bearer: accessToken,
-          body: { leftAt, amountPaid },
+          body: { leftAt, amountPaid, cashSessionId, payments },
         });
-        await localDb.entries.update(entry.id, {
-          leftAt: result.leftAt ?? undefined,
-          amountPaid:
-            result.amountPaid !== null ? String(result.amountPaid) : undefined,
-          version: result.version,
-          syncSeq: result.syncSeq,
-          updatedAt: result.updatedAt,
-        });
-      } else {
+        const txs: LocalPaymentTransaction[] = (payments ?? []).map((p) => ({
+          id: p.id,
+          tenantId,
+          entryId: entry.id,
+          cashSessionId,
+          paymentMethodId: p.paymentMethodId,
+          paymentMethodName: p.paymentMethodName,
+          amount: p.amount,
+          version: 1,
+          syncSeq: 0,
+          updatedAt: leftAt,
+        }));
         await localDb.transaction(
           'rw',
           localDb.entries,
+          localDb.paymentTransactions,
+          async () => {
+            await localDb.entries.update(entry.id, {
+              leftAt: result.leftAt ?? undefined,
+              amountPaid:
+                result.amountPaid !== null
+                  ? String(result.amountPaid)
+                  : undefined,
+              version: result.version,
+              syncSeq: result.syncSeq,
+              updatedAt: result.updatedAt,
+            });
+            if (txs.length > 0) {
+              await localDb.paymentTransactions.bulkPut(txs);
+            }
+          },
+        );
+      } else {
+        const txs: LocalPaymentTransaction[] = (payments ?? []).map((p) => ({
+          id: p.id,
+          tenantId,
+          entryId: entry.id,
+          cashSessionId,
+          paymentMethodId: p.paymentMethodId,
+          paymentMethodName: p.paymentMethodName,
+          amount: p.amount,
+          version: 1,
+          syncSeq: 0,
+          updatedAt: leftAt,
+        }));
+
+        await localDb.transaction(
+          'rw',
+          localDb.entries,
+          localDb.paymentTransactions,
           localDb.pendingOps,
           async () => {
             await localDb.entries.update(entry.id, {
@@ -80,6 +202,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               version: entry.version + 1,
               updatedAt: leftAt,
             });
+            if (txs.length > 0) {
+              await localDb.paymentTransactions.bulkPut(txs);
+            }
             await localDb.pendingOps.add({
               entityType: 'entry',
               operation: 'update',
@@ -87,7 +212,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               entityId: entry.id,
               payload: {
                 expectedVersion: entry.version,
-                body: { leftAt, amountPaid },
+                body: { leftAt, amountPaid, cashSessionId, payments },
               },
               status: 'pending',
               createdAt: Date.now(),
@@ -130,6 +255,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             <p className="rate-dialog-kicker">Egreso</p>
             <h3 id="exit-modal-title">{entry.plate}</h3>
             {entry.color ? <p className="muted">{entry.color}</p> : null}
+            {entry.ticketNumber != null ? (
+              <p className="muted">Ticket #{entry.ticketNumber}</p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -161,22 +289,80 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           ) : null}
         </div>
 
-        <div className="form-field">
-          <label className="form-label">Monto cobrado (ARS)</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => {
-              setAmount(e.target.value);
-            }}
-            autoFocus
-          />
-          {suggested > 0 ? (
-            <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
-          ) : null}
-        </div>
+        {!splitEnabled ? (
+          <>
+            {pms.length > 0 ? (
+              <div className="form-field">
+                <label className="form-label">Medio de pago</label>
+                <select
+                  value={effectivePmId}
+                  onChange={(e) => setSelectedPmId(e.target.value)}
+                  className="exit-pm-select"
+                >
+                  {pms.map((pm) => (
+                    <option key={pm.id} value={pm.id}>
+                      {pm.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div className="form-field">
+              <label className="form-label">Monto cobrado (ARS)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                autoFocus
+              />
+              {suggested > 0 ? (
+                <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div className="split-payment-grid">
+            {pms.map((pm) => (
+              <div key={pm.id} className="split-payment-row">
+                <span className="split-pm-name">{pm.name}</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={splitAmounts[pm.id] ?? ''}
+                  onChange={(e) =>
+                    setSplitAmounts((prev) => ({
+                      ...prev,
+                      [pm.id]: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            ))}
+            {pms.length > 0 && (
+              <div className="split-total-row">
+                <span>Total</span>
+                <span className="split-total-amount">
+                  {formatArs(splitTotal)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {pms.length > 1 && (
+          <label className="split-checkbox">
+            <input
+              type="checkbox"
+              checked={splitEnabled}
+              onChange={(e) => setSplitEnabled(e.target.checked)}
+            />
+            <span>Dividir pago entre varios medios</span>
+          </label>
+        )}
 
         <div className="rate-dialog-actions">
           <button

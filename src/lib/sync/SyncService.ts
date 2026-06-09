@@ -1,6 +1,8 @@
 import {
+  type LocalCashSession,
   type LocalEntry,
   type LocalPaymentMethod,
+  type LocalPaymentTransaction,
   type LocalRate,
   type LocalVehicle,
   type PendingOp,
@@ -33,6 +35,15 @@ import {
   pullPaymentMethodChanges,
   type PaymentMethodDto,
 } from '../api/payment-methods';
+import {
+  createCashSession,
+  pullCashSessionChanges,
+  type CashSessionDto,
+} from '../api/cash-sessions';
+import {
+  pullPaymentTransactionChanges,
+  type PaymentTransactionDto,
+} from '../api/payment-transactions';
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -78,9 +89,43 @@ function entryToLocal(e: EntryDto): LocalEntry {
       e.rateSnapshotFractionPriceArs !== null
         ? String(e.rateSnapshotFractionPriceArs)
         : undefined,
+    cashSessionId: e.cashSessionId ?? undefined,
+    ticketNumber: e.ticketNumber ?? undefined,
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
+  };
+}
+
+function cashSessionToLocal(s: CashSessionDto): LocalCashSession {
+  return {
+    id: s.id,
+    tenantId: s.tenantId,
+    openedAt: s.openedAt,
+    closedAt: s.closedAt ?? undefined,
+    openingCash: s.openingCash,
+    leavingCash: s.leavingCash ?? undefined,
+    notes: s.notes ?? undefined,
+    version: s.version,
+    syncSeq: s.syncSeq,
+    updatedAt: s.updatedAt,
+  };
+}
+
+function paymentTransactionToLocal(
+  t: PaymentTransactionDto,
+): LocalPaymentTransaction {
+  return {
+    id: t.id,
+    tenantId: t.tenantId,
+    entryId: t.entryId,
+    cashSessionId: t.cashSessionId ?? undefined,
+    paymentMethodId: t.paymentMethodId ?? undefined,
+    paymentMethodName: t.paymentMethodName,
+    amount: t.amount,
+    version: t.version,
+    syncSeq: t.syncSeq,
+    updatedAt: t.updatedAt,
   };
 }
 
@@ -279,6 +324,82 @@ class SyncService {
     }
   }
 
+  async pullCashSessions(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const stateKey = `cashSessions:${this.tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullCashSessionChanges({
+      tenantId: this.tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      await localDb.transaction(
+        'rw',
+        localDb.cashSessions,
+        localDb.syncState,
+        async () => {
+          await localDb.cashSessions.bulkPut(
+            response.items.map(cashSessionToLocal),
+          );
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  async pullPaymentTransactions(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const stateKey = `paymentTransactions:${this.tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullPaymentTransactionChanges({
+      tenantId: this.tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      await localDb.transaction(
+        'rw',
+        localDb.paymentTransactions,
+        localDb.syncState,
+        async () => {
+          await localDb.paymentTransactions.bulkPut(
+            response.items.map(paymentTransactionToLocal),
+          );
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
   async pushPendingOps(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
@@ -297,6 +418,7 @@ class SyncService {
           | LocalEntry
           | LocalPaymentMethod
           | LocalVehicle
+          | LocalCashSession
           | undefined;
 
         if (op.entityType === 'rate') {
@@ -307,6 +429,8 @@ class SyncService {
           serverEntity = await this.applyVehicleOp(op);
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
+        } else if (op.entityType === 'cashSession') {
+          serverEntity = await this.applyCashSessionOp(op);
         }
 
         await localDb.transaction(
@@ -317,6 +441,7 @@ class SyncService {
             localDb.entries,
             localDb.vehicles,
             localDb.paymentMethods,
+            localDb.cashSessions,
           ],
           async () => {
             await localDb.pendingOps.delete(op.localId!);
@@ -331,6 +456,10 @@ class SyncService {
               } else if (op.entityType === 'paymentMethod') {
                 await localDb.paymentMethods.put(
                   serverEntity as LocalPaymentMethod,
+                );
+              } else if (op.entityType === 'cashSession') {
+                await localDb.cashSessions.put(
+                  serverEntity as LocalCashSession,
                 );
               }
             }
@@ -452,6 +581,27 @@ class SyncService {
     throw new Error(`Unknown entry operation: ${op.operation}`);
   }
 
+  private async applyCashSessionOp(
+    op: PendingOp,
+  ): Promise<LocalCashSession | undefined> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+
+    if (op.operation === 'create') {
+      const payload = op.payload as Parameters<
+        typeof createCashSession
+      >[0]['body'];
+      const result = await createCashSession({
+        tenantId,
+        bearer,
+        body: payload,
+      });
+      return cashSessionToLocal(result);
+    }
+
+    throw new Error(`Unknown cashSession operation: ${String(op.operation)}`);
+  }
+
   private async applyPaymentMethodOp(
     op: PendingOp,
   ): Promise<LocalPaymentMethod | undefined> {
@@ -490,10 +640,12 @@ class SyncService {
 
   async fullSync(): Promise<void> {
     await this.pushPendingOps();
+    await this.pullCashSessions();
     await this.pullRates();
     await this.pullEntries();
     await this.pullPaymentMethods();
     await this.pullVehicleCatalog();
+    await this.pullPaymentTransactions();
   }
 }
 
