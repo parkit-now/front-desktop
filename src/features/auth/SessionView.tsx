@@ -506,7 +506,10 @@ export function SessionView({ session }: Props) {
               )
             ) : section === 'historial' ? (
               activeTenantId ? (
-                <EntryHistoryPanel tenantId={activeTenantId} />
+                <EntryHistoryPanel
+                  tenantId={activeTenantId}
+                  userId={session.user.id}
+                />
               ) : (
                 <section className="dashboard-card warning">
                   <h2>Falta estacionamiento activo</h2>

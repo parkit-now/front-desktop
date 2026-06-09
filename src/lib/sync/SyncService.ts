@@ -43,6 +43,7 @@ function rateToLocal(r: RateDto): LocalRate {
     stayPriceArs: String(r.stayPriceArs),
     fractionPriceArs: String(r.fractionPriceArs),
     isActive: r.isActive,
+    shortcutNumber: r.shortcutNumber ?? undefined,
     version: r.version,
     syncSeq: r.syncSeq,
     createdAt: r.createdAt,
