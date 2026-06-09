@@ -95,6 +95,19 @@ Así el token puede expirar sin que el usuario pierda acceso mientras está offl
 - Generar: `bun run sync-types` (requiere backend corriendo). Commitear `src/generated/api-types.ts`.
 - Tipos manuales permitidos solo para estado/view-model interno O cuando sync-types no está disponible.
 
+## Servicio LPR (`services/lpr/`)
+
+Microservicio Python (FastAPI) de reconocimiento de patentes que corre local
+junto a la app. Electron lo levanta como binario standalone al iniciar.
+
+- Stack: `fast-alpr` (ONNX, sin PyTorch), con detector YOLO-v9 y OCR CCT.
+- OCR default: `cct-s-v2-global-model`, compatible con patentes Mercosur y antiguas.
+- Debe funcionar offline: los modelos se descargan durante build/install y se
+  incluyen en el binario.
+- API local: `GET /health` y `POST /process` en `127.0.0.1:8765`.
+- Trabajar mediante los targets `make lpr-*`, no ejecutar `pip` o `python` a mano.
+- Documentación completa: [`services/lpr/README.md`](./services/lpr/README.md).
+
 ## Donde escribir código
 
 ```
@@ -184,6 +197,13 @@ try {
   });
 }
 ```
+
+### Errores inline de campos
+
+- El backend devuelve `ValidationFieldErrorDto[]`, usando en `code` el nombre
+  del constraint de class-validator.
+- Usar `translateValidationCode(field, code)` para mostrar el texto en español.
+- Validar localmente antes del submit en `src/features/<feature>/validation.ts`.
 
 ### Agregar un caso nuevo
 

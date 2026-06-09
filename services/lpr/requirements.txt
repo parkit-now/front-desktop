@@ -1,0 +1,16 @@
+# Runtime
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# Vision / ALPR — ONNX stack (CPU-friendly, no PyTorch).
+# fast-alpr bundles an ONNX plate detector (open-image-models) and an ONNX
+# OCR model (fast-plate-ocr). The [onnx] extra pulls the CPU onnxruntime.
+# For low-end Intel boxes, [onnx-openvino] can be faster; for Windows,
+# [onnx-directml]. We default to plain CPU for maximum portability.
+fast-alpr[onnx]==0.4.0
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+
+# Packaging (dev / CI only)
+pyinstaller==6.11.1

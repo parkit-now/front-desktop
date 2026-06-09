@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
+import { CameraAlert } from './features/camera/CameraAlert';
 import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
@@ -40,8 +41,7 @@ export function App() {
 
     const unsubscribe = onSessionChange((nextSession) => {
       if (!nextSession && !navigator.onLine) {
-        // Token expired while offline — keep the cached session alive so the
-        // user is not logged out. The refresh will be retried on reconnect.
+        // Keep the cached session while offline; refresh retries on reconnect.
         return;
       }
       setSession(nextSession);
@@ -56,26 +56,6 @@ export function App() {
     };
   }, [showToast]);
 
-  if (loading) {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <div className="brand-lockup">
-            <div className="brand-badge" aria-hidden="true">
-              P
-            </div>
-            <h1>Parkit</h1>
-          </div>
-          <p className="muted">Cargando sesión...</p>
-        </section>
-      </main>
-    );
-  }
-
-  if (session) {
-    return <SessionView session={session} />;
-  }
-
   return (
     <main className="auth-page">
       <section className="auth-card">
@@ -86,7 +66,14 @@ export function App() {
           <h1>Parkit</h1>
         </div>
 
-        {view === 'register' ? (
+        {loading ? (
+          <p className="muted">Cargando sesión...</p>
+        ) : session ? (
+          <>
+            <CameraAlert />
+            <SessionView session={session} />
+          </>
+        ) : view === 'register' ? (
           <RegisterScreen
             onSwitchToLogin={() => {
               setView('login');
