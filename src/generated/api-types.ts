@@ -622,6 +622,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/cash-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all cash sessions (most recent first) */
+        get: operations["CashSessionsController_findAll"];
+        put?: never;
+        /** Open a new cash session (client-provided UUIDv7) */
+        post: operations["CashSessionsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/cash-sessions/{sessionId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Close the current session and auto-open the next one. Active entries carry over. */
+        patch: operations["CashSessionsController_close"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/cash-sessions/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the currently open cash session */
+        get: operations["CashSessionsController_getActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/cash-sessions/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental cash session changes for sync */
+        get: operations["CashSessionsController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries": {
         parameters: {
             query?: never;
@@ -738,6 +807,23 @@ export interface paths {
          * @description Returns payment methods with syncSeq > afterSeq, ordered by syncSeq. Used by the desktop for offline-first sync.
          */
         get: operations["entitiesPullPaymentMethodChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/payment-transactions/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental payment transaction changes for sync */
+        get: operations["PaymentTransactionsController_pullChanges"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1241,12 +1327,58 @@ export interface components {
             /** @description The authenticated user. */
             user: components["schemas"]["UserDto"];
         };
-        CloseEntryDto: {
+        CashSessionChangesResponseDto: {
+            items: components["schemas"]["CashSessionDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        CashSessionDto: {
+            /** Format: date-time */
+            closedAt?: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Cash left for the next shift. */
+            leavingCash?: number;
+            notes?: string;
+            /** Format: date-time */
+            openedAt: string;
+            /** @description Opening cash float in ARS. */
+            openingCash: number;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
+        CloseCashSessionDto: {
             /**
-             * @description Total amount paid in ARS. Computed from payments[] if provided; otherwise stored directly.
+             * Format: date-time
+             * @description Close timestamp. Defaults to now() on the server.
              */
+            closedAt?: string;
+            /** @description Cash left in the drawer for the next shift. Defaults to 0. */
+            leavingCash?: number;
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for the new session.
+             */
+            newSessionId: string;
+            notes?: string;
+        };
+        CloseCashSessionResponseDto: {
+            /** @description Number of active entries reassigned to the new session. */
+            carriedOverCount: number;
+            closedSession: components["schemas"]["CashSessionDto"];
+            newSession: components["schemas"]["CashSessionDto"];
+        };
+        CloseEntryDto: {
+            /** @description Total amount paid in ARS. Computed from payments[] if provided; otherwise stored directly (legacy / offline fallback). */
             amountPaid?: number;
-            /** @description Cash session ID. */
+            /**
+             * Format: uuid
+             * @description Cash session ID.
+             */
             cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
@@ -1308,8 +1440,28 @@ export interface components {
              */
             phone: string;
         };
+        CreateCashSessionDto: {
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline-first support.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the session was opened (ISO 8601).
+             */
+            openedAt: string;
+            /**
+             * @description Opening cash float in ARS. Defaults to 0.
+             * @default 0
+             */
+            openingCash: number;
+        };
         CreateEntryDto: {
-            /** @description Cash session this entry belongs to. */
+            /**
+             * Format: uuid
+             * @description Cash session this entry belongs to.
+             */
             cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
@@ -1558,8 +1710,8 @@ export interface components {
         };
         EntryDto: {
             amountPaid?: number;
-            /** @description Cash session this entry belongs to. */
-            cashSessionId?: string | null;
+            /** Format: uuid */
+            cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
             /** @example Rojo */
@@ -1583,8 +1735,7 @@ export interface components {
             syncSeq: number;
             /** Format: uuid */
             tenantId: string;
-            /** @description Sequential ticket number within the cash session. */
-            ticketNumber?: number | null;
+            ticketNumber?: number;
             /** Format: date-time */
             updatedAt: string;
             /**
@@ -1812,13 +1963,18 @@ export interface components {
             status: "active" | "maintenance";
         };
         PaymentLineDto: {
-            /** @description Total amount for this payment line. */
             amount: number;
-            /** @description Client-generated UUIDv7. */
+            /**
+             * Format: uuid
+             * @description Client-generated UUIDv7 for offline-first support.
+             */
             id: string;
-            /** @description Payment method ID (may be absent if PM was deleted). */
+            /**
+             * Format: uuid
+             * @description Payment method ID (may be absent if PM was deleted).
+             */
             paymentMethodId?: string;
-            /** @description Payment method display name snapshot. */
+            /** @example Efectivo */
             paymentMethodName: string;
         };
         PaymentMethodChangesResponseDto: {
@@ -1861,6 +2017,30 @@ export interface components {
              */
             updatedAt: string;
             /** @description Optimistic-lock version. */
+            version: number;
+        };
+        PaymentTransactionChangesResponseDto: {
+            items: components["schemas"]["PaymentTransactionDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        PaymentTransactionDto: {
+            amount: number;
+            /** Format: uuid */
+            cashSessionId?: string;
+            /** Format: uuid */
+            entryId: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            paymentMethodId?: string;
+            /** @example Efectivo */
+            paymentMethodName: string;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
             version: number;
         };
         ProblemDetailsDto: {
@@ -4053,6 +4233,130 @@ export interface operations {
             };
         };
     };
+    CashSessionsController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashSessionDto"][];
+                };
+            };
+        };
+    };
+    CashSessionsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCashSessionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashSessionDto"];
+                };
+            };
+        };
+    };
+    CashSessionsController_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseCashSessionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloseCashSessionResponseDto"];
+                };
+            };
+        };
+    };
+    CashSessionsController_getActive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashSessionDto"];
+                };
+            };
+        };
+    };
+    CashSessionsController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashSessionChangesResponseDto"];
+                };
+            };
+        };
+    };
     EntriesController_findAll: {
         parameters: {
             query?: never;
@@ -4413,6 +4717,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    PaymentTransactionsController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentTransactionChangesResponseDto"];
                 };
             };
         };
