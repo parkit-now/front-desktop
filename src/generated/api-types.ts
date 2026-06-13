@@ -67,7 +67,7 @@ export interface paths {
          *
          *     - materializes the declared entity as a real parking lot (tenant), storing the declared car/motorcycle/bicycle spot counts in its settings capacity;
          *     - grants the applicant an `owner` membership on the created entity;
-         *     - creates the system payment methods (`mp_transfer` as default, `cash`), which are non-deletable but can be disabled;
+         *     - creates the system payment methods (`transfer` as default, `cash`), which are non-deletable but can be disabled;
          *     - marks the application `approved` (linking the created `tenantId`) and records the audit trail.
          *
          *     The entity-level role (`owner`) lives on the membership; the applicant global role stays `user`, so no JWT claim is changed.
@@ -754,7 +754,7 @@ export interface paths {
          * List the entity payment methods
          * @description Returns every payment method configured for the `:tenantId` entity, oldest first.
          *
-         *     System methods (`mp_transfer`, `cash`) are flagged with `isSystem: true` — they can be enabled or disabled but never deleted. Available to any member of the entity.
+         *     System methods (`transfer`, `cash`) are flagged with `isSystem: true` — they can be enabled or disabled but never deleted. Available to any member of the entity.
          */
         get: operations["entitiesListPaymentMethods"];
         put?: never;
@@ -781,7 +781,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a custom payment method
-         * @description Permanently deletes a non-system payment method. System methods (`cash`, `mp_transfer`) cannot be deleted — disable them instead. Requires owner role.
+         * @description Permanently deletes a non-system payment method. System methods (`cash`, `transfer`) cannot be deleted — disable them instead. Requires owner role.
          */
         delete: operations["entitiesDeletePaymentMethod"];
         options?: never;
@@ -790,7 +790,7 @@ export interface paths {
          * Enable/disable or set-default a payment method
          * @description Toggles a payment method via the `enabled` and/or `isDefault` flags.
          *
-         *     System methods (`mp_transfer`, `cash`) can be disabled but never deleted. Setting `isDefault: true` clears the previous default. The change is recorded in the audit trail. Requires the caller to be an `owner` of the entity (platform admins bypass the role check).
+         *     System methods (`transfer`, `cash`) can be disabled but never deleted. Setting `isDefault: true` clears the previous default. The change is recorded in the audit trail. Requires the caller to be an `owner` of the entity (platform admins bypass the role check).
          */
         patch: operations["entitiesTogglePaymentMethod"];
         trace?: never;
@@ -2004,6 +2004,11 @@ export interface components {
              * @example false
              */
             isDefault: boolean;
+            /**
+             * @description Whether this is a built-in system method (`cash`, `transfer`). System methods can be enabled/disabled but never deleted.
+             * @example true
+             */
+            isSystem: boolean;
             /**
              * @description Display name of the payment method.
              * @example Efectivo
