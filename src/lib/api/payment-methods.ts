@@ -5,6 +5,7 @@ export interface PaymentMethodDto {
   name: string;
   enabled: boolean;
   isDefault: boolean;
+  isSystem: boolean;
   syncSeq: number;
   version: number;
   updatedAt: string;

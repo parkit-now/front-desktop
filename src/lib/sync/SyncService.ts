@@ -150,6 +150,7 @@ function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
     name: pm.name,
     enabled: pm.enabled,
     isDefault: pm.isDefault,
+    isSystem: pm.isSystem,
     syncSeq: pm.syncSeq,
     version: pm.version,
     updatedAt: pm.updatedAt,

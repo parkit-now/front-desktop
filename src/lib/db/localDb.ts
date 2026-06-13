@@ -83,6 +83,7 @@ export interface LocalPaymentMethod {
   name: string;
   enabled: boolean;
   isDefault: boolean;
+  isSystem: boolean;
   syncSeq: number;
   version: number;
   updatedAt: string;
@@ -160,6 +161,22 @@ class ParkitLocalDb extends Dexie {
       paymentTransactions:
         'id, [tenantId+syncSeq], tenantId, entryId, cashSessionId',
     });
+
+    // v6: LocalPaymentMethod gains `isSystem` (no index change). Reset the
+    // payment-method sync cursor so the next pull re-fetches every method and
+    // backfills the new field on rows synced before this version.
+    this.version(6)
+      .stores({})
+      .upgrade((tx) =>
+        tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' && s.key.startsWith('paymentMethods:'),
+          )
+          .delete(),
+      );
   }
 }
 

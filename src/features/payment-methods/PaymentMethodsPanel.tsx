@@ -1,6 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, Power, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import {
@@ -37,7 +37,7 @@ type FormErrors = {
 };
 
 type PmConfirmAction = {
-  kind: 'enable' | 'disable' | 'delete';
+  kind: 'enable' | 'disable' | 'delete' | 'setDefault';
   pm: PaymentMethodDto;
 };
 
@@ -56,6 +56,7 @@ function localToDisplay(r: LocalPaymentMethod): PaymentMethodDto {
     name: r.name,
     enabled: r.enabled,
     isDefault: r.isDefault,
+    isSystem: r.isSystem ?? false,
     syncSeq: r.syncSeq,
     version: r.version,
     updatedAt: r.updatedAt,
@@ -70,6 +71,7 @@ function apiToLocal(r: PaymentMethodDto, tenantId: string): LocalPaymentMethod {
     name: r.name,
     enabled: r.enabled,
     isDefault: r.isDefault,
+    isSystem: r.isSystem,
     syncSeq: r.syncSeq,
     version: r.version,
     updatedAt: r.updatedAt,
@@ -204,6 +206,7 @@ export function PaymentMethodsPanel({
                 name: payload.name,
                 enabled: true,
                 isDefault: false,
+                isSystem: false,
                 syncSeq: 0,
                 version: 1,
                 updatedAt: now,
@@ -327,6 +330,61 @@ export function PaymentMethodsPanel({
             : 'Cambio guardado localmente.',
           kind: 'success',
         });
+      } else if (confirmAction.kind === 'setDefault') {
+        // A single default per tenant: clearing the others keeps the table
+        // consistent with the backend invariant before the next sync.
+        const clearOthers = async (): Promise<void> => {
+          const others = await localDb.paymentMethods
+            .where('tenantId')
+            .equals(tenantId)
+            .filter((m) => m.isDefault && m.id !== pm.id)
+            .toArray();
+          for (const o of others) {
+            await localDb.paymentMethods.update(o.id, { isDefault: false });
+          }
+        };
+        if (isOnline) {
+          const result = await togglePaymentMethod({
+            tenantId,
+            bearer: accessToken,
+            id: pm.id,
+            body: { isDefault: true },
+          });
+          await localDb.transaction('rw', localDb.paymentMethods, async () => {
+            await clearOthers();
+            await localDb.paymentMethods.put(apiToLocal(result, tenantId));
+          });
+        } else {
+          const now = new Date().toISOString();
+          await localDb.transaction(
+            'rw',
+            localDb.paymentMethods,
+            localDb.pendingOps,
+            async () => {
+              await clearOthers();
+              await localDb.paymentMethods.update(pm.id, {
+                isDefault: true,
+                updatedAt: now,
+              });
+              await localDb.pendingOps.add({
+                entityType: 'paymentMethod',
+                operation: 'update',
+                tenantId,
+                entityId: pm.id,
+                payload: { isDefault: true },
+                status: 'pending',
+                createdAt: Date.now(),
+                retryCount: 0,
+              });
+            },
+          );
+        }
+        showToast({
+          message: isOnline
+            ? 'Predeterminado actualizado.'
+            : 'Cambio guardado localmente.',
+          kind: 'success',
+        });
       } else {
         // delete
         if (isOnline) {
@@ -379,13 +437,21 @@ export function PaymentMethodsPanel({
             confirmLabel: 'Deshabilitar',
             variant: 'warning' as const,
           }
-        : {
-            title: `Eliminar "${confirmAction.pm.name}"`,
-            message:
-              'Esta acción es permanente e irreversible. El método de pago será eliminado definitivamente.',
-            confirmLabel: 'Eliminar',
-            variant: 'danger' as const,
-          }
+        : confirmAction.kind === 'setDefault'
+          ? {
+              title: `Marcar "${confirmAction.pm.name}" como predeterminado`,
+              message:
+                'Será el método preseleccionado al cobrar. El predeterminado actual dejará de serlo.',
+              confirmLabel: 'Marcar predeterminado',
+              variant: 'warning' as const,
+            }
+          : {
+              title: `Eliminar "${confirmAction.pm.name}"`,
+              message:
+                'Esta acción es permanente e irreversible. El método de pago será eliminado definitivamente.',
+              confirmLabel: 'Eliminar',
+              variant: 'danger' as const,
+            }
     : null;
 
   const columns = useMemo<ColumnDef<PaymentMethodDto, unknown>[]>(() => {
@@ -393,8 +459,21 @@ export function PaymentMethodsPanel({
       {
         accessorKey: 'name',
         header: 'Nombre',
-        size: 260,
-        cell: ({ row }) => <strong>{row.original.name}</strong>,
+        size: 280,
+        cell: ({ row }) => {
+          const pm = row.original;
+          return (
+            <div className="dt-name-cell">
+              <strong>{pm.name}</strong>
+              {pm.isSystem ? (
+                <span className="status-badge status-muted">Sistema</span>
+              ) : null}
+              {pm.isDefault ? (
+                <span className="status-badge status-ok">Por defecto</span>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: 'status',
@@ -445,30 +524,57 @@ export function PaymentMethodsPanel({
               >
                 <Pencil size={16} />
               </button>
-              <button
-                type="button"
-                className={`table-icon-action ${disabled ? 'warning' : 'active'}`}
-                onClick={() =>
-                  setConfirmAction({
-                    kind: disabled ? 'enable' : 'disable',
-                    pm,
-                  })
-                }
-                disabled={saving}
-                title={disabled ? 'Habilitar método' : 'Deshabilitar método'}
-                aria-label={
-                  disabled ? `Habilitar ${pm.name}` : `Deshabilitar ${pm.name}`
-                }
-              >
-                <Power size={16} />
-              </button>
+              {/* Set as default: only for an enabled, non-default method. */}
+              {!pm.isDefault && pm.enabled ? (
+                <button
+                  type="button"
+                  className="table-icon-action"
+                  onClick={() => setConfirmAction({ kind: 'setDefault', pm })}
+                  disabled={saving}
+                  title="Marcar como predeterminado"
+                  aria-label={`Marcar ${pm.name} como predeterminado`}
+                >
+                  <Star size={16} />
+                </button>
+              ) : null}
+              {/* The default stays enabled, so no enable/disable toggle for it. */}
+              {!pm.isDefault ? (
+                <button
+                  type="button"
+                  className={`table-icon-action ${disabled ? 'warning' : 'active'}`}
+                  onClick={() =>
+                    setConfirmAction({
+                      kind: disabled ? 'enable' : 'disable',
+                      pm,
+                    })
+                  }
+                  disabled={saving}
+                  title={disabled ? 'Habilitar método' : 'Deshabilitar método'}
+                  aria-label={
+                    disabled
+                      ? `Habilitar ${pm.name}`
+                      : `Deshabilitar ${pm.name}`
+                  }
+                >
+                  <Power size={16} />
+                </button>
+              ) : null}
+              {/* System methods (transfer, cash) can't be deleted. */}
               <button
                 type="button"
                 className="table-icon-action danger"
                 onClick={() => setConfirmAction({ kind: 'delete', pm })}
-                disabled={saving}
-                title="Eliminar método"
-                aria-label={`Eliminar ${pm.name}`}
+                disabled={saving || pm.isSystem}
+                title={
+                  pm.isSystem
+                    ? 'Los métodos de sistema no se pueden eliminar'
+                    : 'Eliminar método'
+                }
+                aria-label={
+                  pm.isSystem
+                    ? `${pm.name} es un método de sistema y no se puede eliminar`
+                    : `Eliminar ${pm.name}`
+                }
               >
                 <Trash2 size={16} />
               </button>
