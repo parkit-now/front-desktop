@@ -17,6 +17,7 @@ import { RatesPanel } from '../rates/RatesPanel';
 import { VehiclesPanel } from '../vehicles/VehiclesPanel';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
+import { LprStatusIndicator } from '../lpr/LprStatusIndicator';
 import { NoCashSessionScreen } from '../cash-session/NoCashSessionScreen';
 import { CashSessionPanel } from '../cash-session/CashSessionPanel';
 import { CashSessionHistoryPanel } from '../cash-session/CashSessionHistoryPanel';
@@ -470,6 +471,7 @@ export function SessionView({ session }: Props) {
           </nav>
 
           <div className="sidebar-foot">
+            <LprStatusIndicator collapsed={sidebarCollapsed} />
             <SyncButton collapsed={sidebarCollapsed} />
 
             {!sidebarCollapsed ? (
