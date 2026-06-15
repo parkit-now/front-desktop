@@ -9,7 +9,9 @@ export interface ServiceConfig {
   env?: Record<string, string>;
 }
 
-const HEALTH_TIMEOUT_MS = 30_000;
+const MAX_SPAWN_RETRIES = 2; // 3 total attempts (0, 1, 2)
+const RETRY_DELAY_MS = 2_000;
+const HEALTH_TIMEOUT_MS = 10_000; // per attempt
 const HEALTH_POLL_MS = 500;
 
 /**
@@ -22,7 +24,7 @@ const HEALTH_POLL_MS = 500;
  * placed there by electron-builder's extraResources config.
  */
 export class ServiceManager {
-  private readonly processes: ChildProcess[] = [];
+  private readonly processes = new Map<string, ChildProcess>();
   private readonly failed = new Set<string>();
   private readonly healthy = new Set<string>();
 
@@ -30,84 +32,113 @@ export class ServiceManager {
 
   spawnAll(): void {
     if (!app.isPackaged) return;
-
     for (const svc of this.services) {
-      const ext = process.platform === 'win32' ? '.exe' : '';
-      const bin = path.join(process.resourcesPath, `${svc.name}${ext}`);
-
-      const proc = spawn(bin, [String(svc.port)], {
-        stdio: 'pipe',
-        env: { ...process.env, ...(svc.env ?? {}) },
-      });
-
-      proc.stdout?.on('data', (d: Buffer) =>
-        process.stdout.write(`[${svc.name}] ${d.toString()}`),
-      );
-      proc.stderr?.on('data', (d: Buffer) =>
-        process.stderr.write(`[${svc.name}] ${d.toString()}`),
-      );
-
-      // Catch ENOENT (binary missing) and other OS-level spawn failures so they
-      // don't surface as an unhandled 'error' event and crash the main process.
-      proc.on('error', (err) => {
-        console.error(`[${svc.name}] spawn error: ${err.message}`);
-      });
-
-      proc.on('exit', (code) => {
-        if (code !== 0 && code !== null) {
-          console.error(`[${svc.name}] exited unexpectedly with code ${code}`);
-          // Only notify the renderer for services that were previously healthy —
-          // startup failures are already surfaced via waitAllHealthy / services:failed.
-          if (this.healthy.has(svc.name)) {
-            BrowserWindow.getAllWindows().forEach((win) =>
-              win.webContents.send('services:crashed', svc.name),
-            );
-          }
-        } else {
-          console.log(`[${svc.name}] exited with code ${code}`);
-        }
-      });
-
-      this.processes.push(proc);
-      console.log(
-        `[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid})`,
-      );
+      this.spawnOne(svc);
     }
+  }
+
+  private spawnOne(svc: ServiceConfig): void {
+    // Kill any previous instance before respawning (used on retry).
+    const existing = this.processes.get(svc.name);
+    if (existing && !existing.killed) existing.kill();
+
+    const ext = process.platform === 'win32' ? '.exe' : '';
+    const bin = path.join(process.resourcesPath, `${svc.name}${ext}`);
+
+    const proc = spawn(bin, [String(svc.port)], {
+      stdio: 'pipe',
+      env: { ...process.env, ...(svc.env ?? {}) },
+    });
+
+    proc.stdout?.on('data', (d: Buffer) =>
+      process.stdout.write(`[${svc.name}] ${d.toString()}`),
+    );
+    proc.stderr?.on('data', (d: Buffer) =>
+      process.stderr.write(`[${svc.name}] ${d.toString()}`),
+    );
+
+    // Catch ENOENT (binary missing) and other OS-level spawn failures so they
+    // don't surface as an unhandled 'error' event and crash the main process.
+    proc.on('error', (err) => {
+      console.error(`[${svc.name}] spawn error: ${err.message}`);
+    });
+
+    proc.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        console.error(`[${svc.name}] exited unexpectedly with code ${code}`);
+        // Only notify the renderer for services that were previously healthy —
+        // startup failures are already surfaced via waitAllHealthy / services:failed.
+        if (this.healthy.has(svc.name)) {
+          BrowserWindow.getAllWindows().forEach((win) =>
+            win.webContents.send('services:crashed', svc.name),
+          );
+        }
+      } else {
+        console.log(`[${svc.name}] exited with code ${code}`);
+      }
+    });
+
+    this.processes.set(svc.name, proc);
+    console.log(
+      `[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid})`,
+    );
   }
 
   /**
    * Polls each service's /health endpoint until it responds 200 or the
-   * timeout expires. Returns the names of services that failed to become
-   * healthy so the caller can surface them to the user.
+   * timeout expires. Retries up to MAX_SPAWN_RETRIES times (killing and
+   * respawning the process between attempts) before marking as failed.
+   * Returns the names of services that failed all attempts.
    */
   async waitAllHealthy(): Promise<string[]> {
     await Promise.all(
       this.services.map(async (svc) => {
-        const url = `http://127.0.0.1:${svc.port}/health`;
-        const deadline = Date.now() + HEALTH_TIMEOUT_MS;
-
-        while (Date.now() < deadline) {
-          try {
-            const res = await fetch(url);
-            if (res.ok) {
-              this.healthy.add(svc.name);
-              return;
-            }
-          } catch {
-            // service not ready yet — keep polling
+        for (let attempt = 0; attempt <= MAX_SPAWN_RETRIES; attempt++) {
+          if (attempt > 0) {
+            console.log(
+              `[${svc.name}] retrying (attempt ${attempt + 1}/${MAX_SPAWN_RETRIES + 1})…`,
+            );
+            const proc = this.processes.get(svc.name);
+            if (proc && !proc.killed) proc.kill();
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            this.spawnOne(svc);
           }
-          await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
+
+          const ok = await this.pollHealth(svc.port);
+          if (ok) {
+            this.healthy.add(svc.name);
+            return;
+          }
+
+          console.error(
+            `[${svc.name}] health check failed (attempt ${attempt + 1}/${MAX_SPAWN_RETRIES + 1})`,
+          );
         }
 
-        console.error(`[main] ${svc.name} did not become healthy in time`);
         this.failed.add(svc.name);
       }),
     );
     return [...this.failed];
   }
 
+  private async pollHealth(port: number): Promise<boolean> {
+    const url = `http://127.0.0.1:${port}/health`;
+    const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) return true;
+      } catch {
+        // service not ready yet — keep polling
+      }
+      await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
+    }
+    return false;
+  }
+
   stopAll(): void {
-    for (const proc of this.processes) {
+    for (const [, proc] of this.processes) {
       if (!proc.killed) proc.kill();
     }
   }
