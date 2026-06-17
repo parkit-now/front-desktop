@@ -66,6 +66,7 @@ const CODE_MESSAGES: Record<string, string> = {
   UNAUTHORIZED: 'No tenés autorización para esta acción.',
   FORBIDDEN: 'No tenés permiso para esta acción.',
   NOT_FOUND: 'No encontramos lo que buscabas.',
+  ENTRY_DUPLICATE_ACTIVE_STAY: 'El vehículo ya tiene un ingreso activo.',
   CONFLICT: 'Conflicto con el estado actual.',
   UNPROCESSABLE_ENTITY: 'Algunos datos no son válidos.',
   TOO_MANY_REQUESTS: 'Demasiados intentos. Esperá unos segundos.',
