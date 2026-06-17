@@ -2929,6 +2929,12 @@ h2 {
   font-weight: 700;
 }
 
+.exit-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
 /* Vehicle card ticket badge */
 .vehicle-card-top-right {
   display: flex;

@@ -11,6 +11,7 @@ import {
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
+import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
 import {
   calcSuggestedAmount,
   computeChange,
@@ -57,6 +58,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [selectedPmId, setSelectedPmId] = useState('');
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
 
   const enabledPms = useLiveQuery(
     () =>
@@ -247,7 +249,17 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           : `Egreso guardado localmente: ${entry.plate}`,
         kind: 'success',
       });
-      onClose();
+      setReceipt({
+        plate: entry.plate,
+        ticketNumber: entry.ticketNumber ?? undefined,
+        amountDue: amountPaid ?? 0,
+        received: isCash ? receivedAmount : undefined,
+        change: isCash ? change : undefined,
+        paymentMethodName: splitEnabled
+          ? 'Varios medios'
+          : (effectivePm?.name ?? ''),
+        leftAt,
+      });
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
@@ -289,140 +301,191 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           </button>
         </header>
 
-        <div className="exit-modal-info">
-          <div className="exit-info-row">
-            <span className="muted">Ingresó</span>
-            <span>{formatArgentinaDateTime(entry.enteredAt)}</span>
-          </div>
-          <div className="exit-info-row">
-            <span className="muted">Tiempo</span>
-            <span className="exit-duration">
-              {formatDuration(entry.enteredAt)}
-            </span>
-          </div>
-          {entry.rateSnapshotName ? (
-            <div className="exit-info-row">
-              <span className="muted">Tarifa</span>
-              <span>{entry.rateSnapshotName}</span>
-            </div>
-          ) : null}
-        </div>
-
-        {!splitEnabled ? (
-          <>
-            {pms.length > 0 ? (
-              <div className="form-field">
-                <label className="form-label">Medio de pago</label>
-                <select
-                  value={effectivePmId}
-                  onChange={(e) => setSelectedPmId(e.target.value)}
-                  className="exit-pm-select"
-                >
-                  {pms.map((pm) => (
-                    <option key={pm.id} value={pm.id}>
-                      {pm.name}
-                    </option>
-                  ))}
-                </select>
+        {receipt ? (
+          <div className="exit-receipt">
+            <div className="exit-modal-info">
+              <div className="exit-info-row">
+                <span className="muted">Cobrado</span>
+                <span className="exit-duration">
+                  {formatArs(receipt.amountDue)}
+                </span>
               </div>
-            ) : null}
-
-            <div className="form-field">
-              <label className="form-label">Monto a cobrar (ARS)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="0.00"
-                className="exit-amount-input"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                autoFocus
-              />
-              {suggested > 0 ? (
-                <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
+              <div className="exit-info-row">
+                <span className="muted">Medio</span>
+                <span>{receipt.paymentMethodName}</span>
+              </div>
+              {receipt.received !== undefined ? (
+                <>
+                  <div className="exit-info-row">
+                    <span className="muted">Recibido</span>
+                    <span>{formatArs(receipt.received)}</span>
+                  </div>
+                  <div className="exit-info-row">
+                    <span className="muted">Vuelto</span>
+                    <span className="exit-change-amount">
+                      {formatArs(receipt.change ?? 0)}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <div className="rate-dialog-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => printReceipt(receipt)}
+              >
+                Imprimir comprobante
+              </button>
+              <button
+                type="button"
+                className="primary-button compact"
+                onClick={onClose}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="exit-modal-info">
+              <div className="exit-info-row">
+                <span className="muted">Ingresó</span>
+                <span>{formatArgentinaDateTime(entry.enteredAt)}</span>
+              </div>
+              <div className="exit-info-row">
+                <span className="muted">Tiempo</span>
+                <span className="exit-duration">
+                  {formatDuration(entry.enteredAt)}
+                </span>
+              </div>
+              {entry.rateSnapshotName ? (
+                <div className="exit-info-row">
+                  <span className="muted">Tarifa</span>
+                  <span>{entry.rateSnapshotName}</span>
+                </div>
               ) : null}
             </div>
 
-            {isCash ? (
-              <div className="form-field">
-                <label className="form-label">Monto recibido (ARS)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={received}
-                  onChange={(e) => setReceived(e.target.value)}
-                />
-                <div className="exit-change-row">
-                  <span className="muted">Vuelto</span>
-                  <span className="exit-change-amount">
-                    {formatArs(change)}
-                  </span>
+            {!splitEnabled ? (
+              <>
+                {pms.length > 0 ? (
+                  <div className="form-field">
+                    <label className="form-label">Medio de pago</label>
+                    <select
+                      value={effectivePmId}
+                      onChange={(e) => setSelectedPmId(e.target.value)}
+                      className="exit-pm-select"
+                    >
+                      {pms.map((pm) => (
+                        <option key={pm.id} value={pm.id}>
+                          {pm.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+
+                <div className="form-field">
+                  <label className="form-label">Monto a cobrar (ARS)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    className="exit-amount-input"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    autoFocus
+                  />
+                  {suggested > 0 ? (
+                    <p className="form-helper">
+                      Sugerido: {formatArs(suggested)}
+                    </p>
+                  ) : null}
                 </div>
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <div className="split-payment-grid">
-            {pms.map((pm) => (
-              <div key={pm.id} className="split-payment-row">
-                <span className="split-pm-name">{pm.name}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={splitAmounts[pm.id] ?? ''}
-                  onChange={(e) =>
-                    setSplitAmounts((prev) => ({
-                      ...prev,
-                      [pm.id]: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-            ))}
-            {pms.length > 0 && (
-              <div className="split-total-row">
-                <span>Total</span>
-                <span className="split-total-amount">
-                  {formatArs(splitTotal)}
-                </span>
+
+                {isCash ? (
+                  <div className="form-field">
+                    <label className="form-label">Monto recibido (ARS)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={received}
+                      onChange={(e) => setReceived(e.target.value)}
+                    />
+                    <div className="exit-change-row">
+                      <span className="muted">Vuelto</span>
+                      <span className="exit-change-amount">
+                        {formatArs(change)}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="split-payment-grid">
+                {pms.map((pm) => (
+                  <div key={pm.id} className="split-payment-row">
+                    <span className="split-pm-name">{pm.name}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={splitAmounts[pm.id] ?? ''}
+                      onChange={(e) =>
+                        setSplitAmounts((prev) => ({
+                          ...prev,
+                          [pm.id]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+                {pms.length > 0 && (
+                  <div className="split-total-row">
+                    <span>Total</span>
+                    <span className="split-total-amount">
+                      {formatArs(splitTotal)}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {pms.length > 1 && (
-          <label className="split-checkbox">
-            <input
-              type="checkbox"
-              checked={splitEnabled}
-              onChange={(e) => setSplitEnabled(e.target.checked)}
-            />
-            <span>Dividir pago entre varios medios</span>
-          </label>
-        )}
+            {pms.length > 1 && (
+              <label className="split-checkbox">
+                <input
+                  type="checkbox"
+                  checked={splitEnabled}
+                  onChange={(e) => setSplitEnabled(e.target.checked)}
+                />
+                <span>Dividir pago entre varios medios</span>
+              </label>
+            )}
 
-        <div className="rate-dialog-actions">
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={onClose}
-            disabled={saving}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            className="primary-button compact"
-            onClick={() => {
-              void handleConfirm();
-            }}
-            disabled={saving || !canConfirm}
-          >
-            {saving ? 'Confirmando...' : 'Confirmar cobro'}
-          </button>
-        </div>
+            <div className="rate-dialog-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={onClose}
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="primary-button compact"
+                onClick={() => {
+                  void handleConfirm();
+                }}
+                disabled={saving || !canConfirm}
+              >
+                {saving ? 'Confirmando...' : 'Confirmar cobro'}
+              </button>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );
