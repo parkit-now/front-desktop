@@ -27,6 +27,14 @@ export function formatDuration(enteredAt: string): string {
   return `${hours}h ${minutes}m`;
 }
 
+export function isCashMethod(name: string): boolean {
+  return name.toLowerCase().includes('efectivo');
+}
+
+export function computeChange(amountDue: number, received: number): number {
+  return Math.max(0, received - amountDue);
+}
+
 export function calcSuggestedAmount(
   enteredAt: string,
   leftAt: string,

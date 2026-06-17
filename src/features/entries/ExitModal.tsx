@@ -13,8 +13,10 @@ import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import {
   calcSuggestedAmount,
+  computeChange,
   formatDuration,
   generateUuidV7,
+  isCashMethod,
 } from './entryUtils';
 
 interface Props {
@@ -50,6 +52,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [amount, setAmount] = useState(
     suggested > 0 ? suggested.toFixed(2) : '',
   );
+  const [received, setReceived] = useState('');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [selectedPmId, setSelectedPmId] = useState('');
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
@@ -85,6 +88,22 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
     const v = parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0');
     return sum + (Number.isFinite(v) ? v : 0);
   }, 0);
+
+  const parsedAmount = parseFloat(amount.replace(',', '.'));
+  const amountToCharge =
+    Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
+  const parsedReceived = parseFloat(received.replace(',', '.'));
+  const receivedAmount =
+    Number.isFinite(parsedReceived) && parsedReceived > 0 ? parsedReceived : 0;
+
+  // Cash collection shows received + change only for the cash method on a
+  // single-method payment; split or non-cash methods are charged exactly.
+  const isCash =
+    !splitEnabled && !!effectivePm && isCashMethod(effectivePm.name);
+  const change = computeChange(amountToCharge, receivedAmount);
+
+  // Cash payments require the received amount to cover the charge.
+  const canConfirm = !isCash || receivedAmount >= amountToCharge;
 
   async function handleConfirm(): Promise<void> {
     setSaving(true);
@@ -309,11 +328,12 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             ) : null}
 
             <div className="form-field">
-              <label className="form-label">Monto cobrado (ARS)</label>
+              <label className="form-label">Monto a cobrar (ARS)</label>
               <input
                 type="text"
                 inputMode="decimal"
                 placeholder="0.00"
+                className="exit-amount-input"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 autoFocus
@@ -322,6 +342,25 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
               ) : null}
             </div>
+
+            {isCash ? (
+              <div className="form-field">
+                <label className="form-label">Monto recibido (ARS)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={received}
+                  onChange={(e) => setReceived(e.target.value)}
+                />
+                <div className="exit-change-row">
+                  <span className="muted">Vuelto</span>
+                  <span className="exit-change-amount">
+                    {formatArs(change)}
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="split-payment-grid">
@@ -379,9 +418,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             onClick={() => {
               void handleConfirm();
             }}
-            disabled={saving}
+            disabled={saving || !canConfirm}
           >
-            {saving ? 'Registrando...' : 'Registrar egreso'}
+            {saving ? 'Confirmando...' : 'Confirmar cobro'}
           </button>
         </div>
       </section>
