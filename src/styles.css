@@ -2849,69 +2849,173 @@ h2 {
   font-weight: 700;
 }
 
-/* Exit modal – PM selector and split */
-.exit-pm-select {
-  width: 100%;
-  padding: 10px var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  font-size: 14px;
-  background: var(--color-card);
-  color: var(--color-text);
+/* Exit modal – payment method dropdown (custom, fully rounded) */
+.exit-select {
+  position: relative;
 }
 
-.split-checkbox {
+.exit-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.exit-select-trigger:hover {
+  border-color: var(--color-brand);
+}
+
+.exit-select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px rgba(14, 95, 216, 0.16);
+}
+
+.exit-select-chevron {
+  flex-shrink: 0;
+  color: var(--color-muted);
+  transition: transform 0.15s ease;
+}
+
+.exit-select-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.exit-select-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  box-shadow: 0 18px 44px rgba(4, 20, 45, 0.18);
+}
+
+.exit-select-option {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.exit-select-option:hover {
+  background: #f4f7fb;
+}
+
+.exit-select-option.is-active {
+  background: rgba(14, 95, 216, 0.1);
+  color: var(--color-brand-strong);
+}
+
+/* Split-payment toggle */
+.exit-split-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   cursor: pointer;
   font-size: 13px;
   color: var(--color-muted);
-  margin-bottom: var(--space-2);
+  margin-top: var(--space-3);
 }
 
-.split-payment-grid {
+.exit-split-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand);
+  cursor: pointer;
+}
+
+/* Split-payment breakdown */
+.exit-split {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-2);
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
-.split-payment-row {
+.exit-split-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
-.split-pm-name {
+.exit-split-name {
   flex: 1;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--color-text);
 }
 
-.split-payment-row input {
-  width: 140px;
-  padding: 8px var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  font-size: 14px;
+/* Compact money input for split rows */
+.exit-money-input--compact {
+  width: 180px;
+  padding: 8px 14px;
+}
+
+.exit-money-input--compact .exit-money-prefix {
+  font-size: 18px;
+}
+
+.exit-money-input--compact .exit-money-control {
+  font-size: 18px;
   text-align: right;
 }
 
-.split-total-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-1) 0;
-  border-top: 1px solid var(--color-border);
-  font-weight: 600;
-  font-size: 14px;
+.exit-split-summary {
   margin-top: 4px;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.split-total-amount {
-  font-size: 16px;
+.exit-split-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.exit-split-total {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.exit-split-status {
   font-weight: 700;
+}
+
+.exit-split-status--short {
+  color: var(--color-warning-text);
+}
+
+.exit-split-status--over {
+  color: var(--color-warning-text);
+}
+
+.exit-split-status--exact {
+  color: var(--color-success-text);
 }
 
 /* Exit modal — payment confirmation (POS) layout */

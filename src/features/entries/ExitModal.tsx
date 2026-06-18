@@ -12,6 +12,7 @@ import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
+import { PaymentMethodSelect } from './PaymentMethodSelect';
 import {
   calcSuggestedAmount,
   computeChange,
@@ -122,6 +123,18 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   // Received is optional (charges the exact amount); only an entered amount
   // below the charge blocks confirmation.
   const canConfirm = !isCash || cashState !== 'short';
+
+  // Split mode: compare the entered total against the amount to charge so the
+  // operator sees what's left to cover (advisory, does not block confirm).
+  const splitRemaining = amountToCharge - splitTotal;
+  const splitState =
+    !splitEnabled || amountToCharge <= 0
+      ? 'exact'
+      : splitRemaining > EPSILON
+        ? 'short'
+        : splitRemaining < -EPSILON
+          ? 'over'
+          : 'exact';
 
   async function handleConfirm(): Promise<void> {
     setSaving(true);
@@ -385,50 +398,108 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               ) : null}
             </div>
 
-            {!splitEnabled ? (
+            <div className="form-field exit-money-field">
+              <label className="form-label" htmlFor="exit-amount">
+                Monto a cobrar
+              </label>
+              <div className="exit-money-input">
+                <span className="exit-money-prefix" aria-hidden="true">
+                  $
+                </span>
+                <input
+                  id="exit-amount"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  className="exit-money-control"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {suggested > 0 ? (
+                <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
+              ) : null}
+            </div>
+
+            {pms.length > 1 ? (
+              <label className="exit-split-toggle">
+                <input
+                  type="checkbox"
+                  checked={splitEnabled}
+                  onChange={(e) => setSplitEnabled(e.target.checked)}
+                />
+                <span>Dividir pago entre varios medios</span>
+              </label>
+            ) : null}
+
+            {splitEnabled ? (
+              <div className="exit-split">
+                {pms.map((pm) => (
+                  <div key={pm.id} className="exit-split-row">
+                    <span className="exit-split-name">{pm.name}</span>
+                    <div className="exit-money-input exit-money-input--compact">
+                      <span className="exit-money-prefix" aria-hidden="true">
+                        $
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className="exit-money-control"
+                        aria-label={`Monto en ${pm.name}`}
+                        value={splitAmounts[pm.id] ?? ''}
+                        onChange={(e) =>
+                          setSplitAmounts((prev) => ({
+                            ...prev,
+                            [pm.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                <div
+                  className="exit-split-summary"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="exit-split-summary-row">
+                    <span className="muted">Total ingresado</span>
+                    <span className="exit-split-total">
+                      {formatArs(splitTotal)}
+                    </span>
+                  </div>
+                  {amountToCharge > 0 ? (
+                    <div
+                      className={`exit-split-summary-row exit-split-status exit-split-status--${splitState}`}
+                    >
+                      <span>
+                        {splitState === 'short'
+                          ? 'Restante'
+                          : splitState === 'over'
+                            ? 'Excede'
+                            : 'Cubre el monto'}
+                      </span>
+                      <span>{formatArs(Math.abs(splitRemaining))}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
               <>
                 {pms.length > 0 ? (
                   <div className="form-field">
-                    <label className="form-label">Medio de pago</label>
-                    <select
+                    <span className="form-label">Medio de pago</span>
+                    <PaymentMethodSelect
+                      options={pms}
                       value={effectivePmId}
-                      onChange={(e) => setSelectedPmId(e.target.value)}
-                      className="exit-pm-select"
-                    >
-                      {pms.map((pm) => (
-                        <option key={pm.id} value={pm.id}>
-                          {pm.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-
-                <div className="form-field exit-money-field">
-                  <label className="form-label" htmlFor="exit-amount">
-                    Monto a cobrar
-                  </label>
-                  <div className="exit-money-input">
-                    <span className="exit-money-prefix" aria-hidden="true">
-                      $
-                    </span>
-                    <input
-                      id="exit-amount"
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0,00"
-                      className="exit-money-control"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      autoFocus
+                      onChange={setSelectedPmId}
+                      ariaLabel="Medio de pago"
                     />
                   </div>
-                  {suggested > 0 ? (
-                    <p className="form-helper">
-                      Sugerido: {formatArs(suggested)}
-                    </p>
-                  ) : null}
-                </div>
+                ) : null}
 
                 {isCash ? (
                   <>
@@ -468,45 +539,6 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                   </>
                 ) : null}
               </>
-            ) : (
-              <div className="split-payment-grid">
-                {pms.map((pm) => (
-                  <div key={pm.id} className="split-payment-row">
-                    <span className="split-pm-name">{pm.name}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={splitAmounts[pm.id] ?? ''}
-                      onChange={(e) =>
-                        setSplitAmounts((prev) => ({
-                          ...prev,
-                          [pm.id]: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
-                {pms.length > 0 && (
-                  <div className="split-total-row">
-                    <span>Total</span>
-                    <span className="split-total-amount">
-                      {formatArs(splitTotal)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {pms.length > 1 && (
-              <label className="split-checkbox">
-                <input
-                  type="checkbox"
-                  checked={splitEnabled}
-                  onChange={(e) => setSplitEnabled(e.target.checked)}
-                />
-                <span>Dividir pago entre varios medios</span>
-              </label>
             )}
 
             <div className="rate-dialog-actions">
