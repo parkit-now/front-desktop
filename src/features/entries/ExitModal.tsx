@@ -103,9 +103,25 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const isCash =
     !splitEnabled && !!effectivePm && isCashMethod(effectivePm.name);
   const change = computeChange(amountToCharge, receivedAmount);
+  const shortfall = Math.max(0, amountToCharge - receivedAmount);
+  const receivedEntered = received.trim() !== '';
 
-  // Cash payments require the received amount to cover the charge.
-  const canConfirm = !isCash || receivedAmount >= amountToCharge;
+  // Result-block state for the cash flow (traffic-light UX):
+  //   short  → received below the charge (alert, blocks confirm)
+  //   over   → change to give back (success)
+  //   exact  → exact amount or not entered yet (neutral)
+  // EPSILON guards against float noise on 2-decimal amounts.
+  const EPSILON = 0.005;
+  const cashState =
+    receivedEntered && shortfall > EPSILON
+      ? 'short'
+      : change > EPSILON
+        ? 'over'
+        : 'exact';
+
+  // Received is optional (charges the exact amount); only an entered amount
+  // below the charge blocks confirmation.
+  const canConfirm = !isCash || cashState !== 'short';
 
   async function handleConfirm(): Promise<void> {
     setSaving(true);
@@ -318,7 +334,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 <>
                   <div className="exit-info-row">
                     <span className="muted">Recibido</span>
-                    <span>{formatArs(receipt.received)}</span>
+                    <span className="exit-received-amount">
+                      {formatArs(receipt.received)}
+                    </span>
                   </div>
                   <div className="exit-info-row">
                     <span className="muted">Vuelto</span>
@@ -386,17 +404,25 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                   </div>
                 ) : null}
 
-                <div className="form-field">
-                  <label className="form-label">Monto a cobrar (ARS)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    className="exit-amount-input"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    autoFocus
-                  />
+                <div className="form-field exit-money-field">
+                  <label className="form-label" htmlFor="exit-amount">
+                    Monto a cobrar
+                  </label>
+                  <div className="exit-money-input">
+                    <span className="exit-money-prefix" aria-hidden="true">
+                      $
+                    </span>
+                    <input
+                      id="exit-amount"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      className="exit-money-control"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
                   {suggested > 0 ? (
                     <p className="form-helper">
                       Sugerido: {formatArs(suggested)}
@@ -405,22 +431,41 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 </div>
 
                 {isCash ? (
-                  <div className="form-field">
-                    <label className="form-label">Monto recibido (ARS)</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={received}
-                      onChange={(e) => setReceived(e.target.value)}
-                    />
-                    <div className="exit-change-row">
-                      <span className="muted">Vuelto</span>
-                      <span className="exit-change-amount">
-                        {formatArs(change)}
+                  <>
+                    <div className="form-field exit-money-field">
+                      <label className="form-label" htmlFor="exit-received">
+                        Monto recibido
+                      </label>
+                      <div className="exit-money-input exit-money-input--received">
+                        <span className="exit-money-prefix" aria-hidden="true">
+                          $
+                        </span>
+                        <input
+                          id="exit-received"
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0,00"
+                          className="exit-money-control"
+                          value={received}
+                          onChange={(e) => setReceived(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      className={`exit-result exit-result--${cashState}`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className="exit-result-label">
+                        {cashState === 'short' ? 'Faltan' : 'Vuelto'}
+                      </span>
+                      <span className="exit-result-amount">
+                        {formatArs(cashState === 'short' ? shortfall : change)}
                       </span>
                     </div>
-                  </div>
+                  </>
                 ) : null}
               </>
             ) : (

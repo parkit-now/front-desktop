@@ -10,6 +10,9 @@
   --color-danger-text: #b42318;
   --color-danger-bg: #fff1ef;
   --color-danger-border: #f6c7bf;
+  --color-success-text: #067647;
+  --color-success-bg: #ecfdf3;
+  --color-success-border: #abefc6;
   --color-warning-text: #b54708;
   --color-warning-bg: #fffaeb;
   --color-warning-border: #fedf89;
@@ -2911,28 +2914,145 @@ h2 {
   font-weight: 700;
 }
 
-/* Exit modal — prominent amount to charge + change */
-.exit-amount-input {
-  font-size: 20px;
-  font-weight: 700;
+/* Exit modal — payment confirmation (POS) layout */
+.exit-money-field {
+  margin-top: var(--space-3);
 }
 
-.exit-change-row {
+.exit-money-field .form-label {
+  font-size: 13px;
+}
+
+/* Large money input with a leading currency prefix */
+.exit-money-input {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-top: var(--space-2);
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.exit-change-amount {
-  font-size: 18px;
+.exit-money-input:focus-within {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px rgba(14, 95, 216, 0.16);
+}
+
+.exit-money-prefix {
+  font-size: 26px;
   font-weight: 700;
+  color: var(--color-muted);
+  line-height: 1;
+}
+
+.exit-money-control {
+  flex: 1;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.01em;
+}
+
+/* "Monto recibido" carries a green accent (cash handed by the driver) */
+.exit-money-input--received {
+  border-color: var(--color-success-border);
+}
+
+.exit-money-input--received .exit-money-prefix,
+.exit-money-input--received .exit-money-control {
+  color: var(--color-success-text);
+}
+
+.exit-money-input--received:focus-within {
+  border-color: var(--color-success-text);
+  box-shadow: 0 0 0 3px rgba(6, 118, 71, 0.16);
+}
+
+/* Result block: traffic-light feedback for the change due */
+.exit-result {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  border: 1.5px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.exit-result-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.exit-result-amount {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+/* Neutral — exact amount or nothing entered yet */
+.exit-result--exact {
+  background: #f4f7fb;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.exit-result--exact .exit-result-label {
+  color: var(--color-muted);
+}
+
+/* Alert — received is below the amount due */
+.exit-result--short {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.exit-result--short .exit-result-label {
+  color: var(--color-danger-text);
+}
+
+/* Success — change to give back */
+.exit-result--over {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.exit-result--over .exit-result-label {
+  color: var(--color-success-text);
 }
 
 .exit-receipt {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* Receipt summary keeps the same green for the change line */
+.exit-change-amount {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-success-text);
+}
+
+.exit-received-amount {
+  font-weight: 700;
+  color: var(--color-success-text);
 }
 
 /* Vehicle card ticket badge */
