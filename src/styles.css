@@ -2935,6 +2935,12 @@ h2 {
   font-size: 13px;
   color: var(--color-muted);
   margin-top: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* Give the footer actions room from the content above them */
+.exit-modal .rate-dialog-actions {
+  margin-top: var(--space-4);
 }
 
 .exit-split-toggle input {
