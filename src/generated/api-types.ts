@@ -743,6 +743,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/lpr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a vehicle entry from an LPR detection event */
+        post: operations["EntriesController_createFromLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/payment-methods": {
         parameters: {
             query?: never;
@@ -1718,6 +1735,11 @@ export interface components {
             color?: string;
             /** Format: date-time */
             enteredAt: string;
+            entryCameraId?: string;
+            /** @description URL of the entry photo captured by the LPR camera */
+            entryImageUrl?: string;
+            exitCameraId?: string;
+            exitImageUrl?: string;
             /** Format: uuid */
             id: string;
             /** Format: date-time */
@@ -1732,6 +1754,11 @@ export interface components {
             rateSnapshotHourPriceArs?: number;
             rateSnapshotName?: string;
             rateSnapshotStayPriceArs?: number;
+            /**
+             * @description auto = created by LPR; manual = operator-typed
+             * @example manual
+             */
+            source: string;
             syncSeq: number;
             /** Format: uuid */
             tenantId: string;
@@ -1748,7 +1775,14 @@ export interface components {
              * @example Bora
              */
             vehicleModel?: string;
+            /** @enum {string} */
+            vehicleType?: "auto" | "pickup" | "suv" | "van" | "moto" | "camioneta" | "otro";
             version: number;
+            /**
+             * Format: uuid
+             * @description Set when entry was authorized via whitelist
+             */
+            whitelistId?: string;
         };
         ForgotPasswordDto: {
             /**
@@ -1819,6 +1853,20 @@ export interface components {
              * @example CorrectHorseBatteryStaple1!
              */
             password: string;
+        };
+        LprEntryDto: {
+            cameraId?: string;
+            /** @description URL of the entry photo captured by the LPR camera */
+            imageUrl?: string;
+            /** @example ABC123 */
+            plate: string;
+            /**
+             * Format: date-time
+             * @description Detection timestamp (ISO 8601). Defaults to server time if omitted.
+             */
+            timestamp?: string;
+            /** @enum {string} */
+            vehicleType?: "auto" | "pickup" | "suv" | "van" | "moto" | "camioneta" | "otro";
         };
         MeMembershipDto: {
             /**
@@ -4463,6 +4511,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryChangesResponseDto"];
+                };
+            };
+        };
+    };
+    EntriesController_createFromLpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LprEntryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryDto"];
                 };
             };
         };
