@@ -8,7 +8,7 @@ RESET := \033[0m
 ENV_LOCAL := .env.local
 ENV_PROD  := .env.production
 
-.PHONY: help install dev prod build lint typecheck test format \
+.PHONY: help install install-all dev prod build lint typecheck test format \
         env-check env-use-local env-use-prod \
         sync-types clean
 
@@ -38,8 +38,16 @@ env-use-prod: ## Activar entorno produccion (copia .env.production → .env)
 	@cp $(ENV_PROD) .env
 	@echo "✓ .env apunta a entorno PRODUCCION ($(ENV_PROD))"
 
-dev: env-use-local ## Levantar app apuntando al backend LOCAL
-	@bun run dev
+install-all: install ## Instalar dependencias de los 3 servicios (bun + camera + lpr)
+	@$(MAKE) -C services/camera camera-install
+	@$(MAKE) -C services/lpr lpr-install
+
+dev: install-all sync-types env-use-local ## Instalar todo, sync tipos y levantar los 3 servicios juntos
+	@echo "→ Levantando camera (:8766), lpr (:8765) y electron/vite (:5174)..."
+	@$(MAKE) -C services/camera camera-dev & \
+	$(MAKE) -C services/lpr lpr-dev & \
+	bun run dev; \
+	wait
 
 prod: env-use-prod ## Build de prod + abrir la app empaquetada con Electron
 	@bun run build
