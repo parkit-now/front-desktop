@@ -1,0 +1,12 @@
+export {};
+
+declare global {
+  interface Window {
+    parkitDesktop?: {
+      platform: string;
+      onServicesFailed: (callback: (names: string[]) => void) => void;
+      getFailedServices: () => Promise<string[]>;
+      onServiceCrashed: (callback: (name: string) => void) => () => void;
+    };
+  }
+}
