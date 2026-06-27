@@ -40,9 +40,14 @@ class LocalStorage:
                 location    TEXT,
                 plate       TEXT,
                 confidence  REAL,
-                event_id    TEXT
+                event_id    TEXT,
+                bbox        TEXT
             )
         """)
+        try:
+            self._conn.execute("ALTER TABLE captures ADD COLUMN bbox TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already present
         self._conn.commit()
         logger.info("storage_ready", extra={"db": db_path, "images_dir": images_dir})
 
@@ -53,12 +58,14 @@ class LocalStorage:
         location: str,
         lpr_result: dict | None = None,
         event_id: str | None = None,
+        bbox: tuple[int, int, int, int] | None = None,
     ) -> str:
         """Persist a frame to disk and its metadata to SQLite.
 
         Returns the capture UUID. Raises IOError if the JPEG write fails so the
         caller knows the capture was not actually stored — no SQLite row is
-        inserted in that case.
+        inserted in that case. ``bbox`` (x1,y1,x2,y2 of the plate in the saved
+        frame) is stored so the UI can later crop the image to the plate.
         """
         capture_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
@@ -76,12 +83,13 @@ class LocalStorage:
 
         plate = lpr_result["plate"] if lpr_result else None
         confidence = lpr_result["confidence"] if lpr_result else None
+        bbox_str = ",".join(str(int(v)) for v in bbox) if bbox else None
 
         self._conn.execute(
             """INSERT INTO captures
-               (id, path, timestamp, camera_id, location, plate, confidence, event_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (capture_id, str(img_path), timestamp, camera_id, location, plate, confidence, event_id),
+               (id, path, timestamp, camera_id, location, plate, confidence, event_id, bbox)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (capture_id, str(img_path), timestamp, camera_id, location, plate, confidence, event_id, bbox_str),
         )
         self._conn.commit()
         logger.info(
@@ -89,6 +97,19 @@ class LocalStorage:
             extra={"id": capture_id, "plate": plate, "confidence": confidence, "event_id": event_id},
         )
         return capture_id
+
+    def get(self, capture_id: str) -> dict | None:
+        """Return a single capture row by id (incl. path + bbox), or None."""
+        cur = self._conn.execute(
+            """SELECT id, path, timestamp, camera_id, location, plate, confidence, event_id, bbox
+               FROM captures WHERE id = ?""",
+            (capture_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
 
     def list_recent(self, limit: int = 20) -> list[dict]:
         """Return the most recent captures ordered by timestamp descending."""

@@ -369,8 +369,99 @@ h2 {
   flex: 1;
 }
 
+.camera-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.camera-panel__viewport {
+  position: relative;
+  border: 1px solid #d0d9e6;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0d1320;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-panel__video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.camera-panel__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #c4cede;
+  text-align: center;
+  padding: 24px;
+}
+
+.camera-panel__placeholder p {
+  margin: 0;
+}
+
+.camera-panel__badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(13, 19, 32, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.camera-panel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+}
+
+.camera-panel__badge.live .camera-panel__dot {
+  animation: camera-pulse 1.6s ease-in-out infinite;
+}
+
+.camera-panel__badge.down .camera-panel__dot {
+  background: #f87171;
+  animation: none;
+}
+
+@keyframes camera-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.camera-panel__hint {
+  margin: 0;
+  font-size: 13px;
+}
+
 .app-shell {
-  min-height: 100vh;
+  /* Fill the window exactly so scrolling happens inside the content area, not
+     the whole page — keeps the operativo entry/egreso column always on screen. */
+  height: 100vh;
+  overflow: hidden;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   background:
@@ -455,6 +546,8 @@ h2 {
   display: grid;
   gap: 8px;
   align-content: start;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .nav-item {
@@ -613,6 +706,7 @@ h2 {
   display: grid;
   grid-template-rows: auto 1fr;
   min-width: 0;
+  min-height: 0;
 }
 
 .workspace-header {
@@ -732,6 +826,10 @@ h2 {
   min-width: 0;
   min-height: 0;
   padding: 16px;
+  /* Sections other than operativo scroll here (inside the content area) instead
+     of scrolling the whole window. Operativo fits exactly and scrolls its own
+     auto-entries column. */
+  overflow-y: auto;
 }
 
 .dashboard-card {
@@ -2212,10 +2310,381 @@ h2 {
 
 .operativo-layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: minmax(290px, 310px) minmax(0, 1fr);
+  /* Pin the single row to the container height so the (potentially tall)
+     auto-entries column can't inflate the row and push the egresos card off
+     screen — the column scrolls internally instead. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Column 1: manual entry form on top, egresos zone pinned to the bottom.
+   Both cards live OUTSIDE any scroll area — always fully visible. */
+.operativo-entry-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+/* The manual entry and egresos cards keep their natural height (never shrink
+   or scroll); the flexible space between them is what the auto margin fills. */
+.operativo-entry-column > .entry-form,
+.operativo-entry-column > .exit-controls {
+  flex: none;
+}
+
+/* Submit row inside any entry form (manual = full width, auto = with Descartar) */
+.entry-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.entry-form-actions .primary-button {
+  flex: 1;
+}
+
+/* Egresos zone (ticket lookup + autos en base) — always at the column bottom. */
+.exit-controls {
+  margin-top: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 18px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exit-controls__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.exit-controls__form {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.exit-controls__ticket {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.exit-controls__ticket:focus {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+  border-color: var(--color-brand);
+}
+
+.exit-controls__confirm {
+  flex: none;
+  min-height: 44px;
+  padding: 0 18px;
+}
+
+/* "Ver autos en base" — pill button with car icon, label and live count. */
+.exit-controls__list-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, #f7faff, #eef4ff);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
+}
+
+.exit-controls__list-button:hover {
+  border-color: var(--color-brand);
+  box-shadow: 0 4px 14px rgba(14, 95, 216, 0.16);
+}
+
+.exit-controls__list-button:active {
+  transform: translateY(1px);
+}
+
+.exit-controls__list-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 10px;
+  background: linear-gradient(
+    160deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
+  color: #fff;
+}
+
+.exit-controls__list-label {
+  flex: 1;
+  text-align: left;
+}
+
+.exit-controls__list-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    160deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* Columns 2-3: auto-detected entry suggestions */
+.auto-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  /* Fills the (viewport-bound) layout height; the card grid scrolls inside. */
+  height: 100%;
+}
+
+.auto-entries__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.auto-entries__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.auto-entries__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--color-brand, #2563eb);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.auto-entries__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 40px 24px;
+  border: 1px dashed #cdd7e5;
+  border-radius: 18px;
+  color: #8a98ad;
+}
+
+.auto-entries__empty p {
+  max-width: 320px;
+  margin: 0;
+}
+
+/* Responsive grid: as many ~220px columns as fit (3 by default on a typical
+   window), stretching to fill. The whole list scrolls vertically. */
+.auto-entries__grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  /* Rows take their content height (never compressed by the fixed-height
+     scroll container) so cards can't overlap vertically. */
+  grid-auto-rows: max-content;
+  gap: 14px;
+  align-content: start;
+  padding: 2px;
+}
+
+/* A single auto-detected entry card — same frame as the manual entry card,
+   with the detected-plate photo full-bleed on top. */
+.auto-entry-card {
+  min-width: 0;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.auto-entry-card__header {
+  position: relative;
+  width: 100%;
+  height: 116px;
+  flex: none;
+  background: #0d1320;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.auto-entry-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.auto-entry-card__noimg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #c4cede;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.auto-entry-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(13, 19, 32, 0.65);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  backdrop-filter: blur(4px);
+}
+
+/* Inside the card the form drops its own frame (the card provides it). */
+.entry-form--auto {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 14px;
+  gap: 12px;
+}
+
+.auto-entry-card__dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Fixed-size dialog for the active-vehicles data table: the table body scrolls
+   internally so filtering/searching never resizes (and recenters) the dialog. */
+.active-vehicles-dialog {
+  width: min(1080px, 96vw);
+  max-width: 1080px;
+  height: min(660px, 88vh);
+  display: flex;
+  flex-direction: column;
+}
+
+.active-vehicles-dialog .rate-dialog-header {
+  flex: none;
+}
+
+.active-vehicles-dialog__table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding-top: 16px;
+}
+
+/* The table reuses DataTable's card; drop its frame inside the dialog and let
+   it fill the available height with the rows area scrolling. */
+.active-vehicles-dialog__table .dt-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+.active-vehicles-dialog__table .dt-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.active-vehicles-dialog__table .dt-table {
+  min-width: 0;
+}
+
+/* Keep the "Acción" column (last) pinned to the right edge so the egreso
+   button is always reachable without horizontal scrolling. The td/th already
+   carry an opaque background (white / zebra / hover), so nothing shows through. */
+.active-vehicles-dialog__table .dt-table thead th:last-child,
+.active-vehicles-dialog__table .dt-table tbody td:last-child {
+  position: sticky;
+  right: 0;
+  box-shadow: -10px 0 14px -14px rgba(16, 24, 40, 0.55);
+}
+
+.active-vehicles-dialog__table .dt-table tbody td:last-child {
+  z-index: 2;
+}
+
+.active-vehicles-dialog__table .dt-table thead th:last-child {
+  /* Above the body sticky cells (2) and the other sticky headers (3). */
+  z-index: 5;
+}
+
+.dt-cell-notes {
+  display: block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* AppSelect — custom combobox trigger */
@@ -2530,8 +2999,28 @@ h2 {
 }
 
 @media (max-width: 900px) {
+  /* Stacked layout: let the content area scroll normally instead of pinning. */
   .operativo-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+    height: auto;
+    overflow: visible;
+  }
+
+  .operativo-entry-column {
+    height: auto;
+  }
+
+  .exit-controls {
+    margin-top: 0;
+  }
+
+  .auto-entries {
+    height: auto;
+  }
+
+  .auto-entries__grid {
+    overflow-y: visible;
   }
 }
 
@@ -3163,6 +3652,63 @@ h2 {
 .exit-received-amount {
   font-weight: 700;
   color: var(--color-success-text);
+}
+
+/* Compact exit modal — tighten vertical rhythm so it isn't so tall. */
+.exit-modal {
+  padding: 16px 18px;
+}
+
+.exit-modal .rate-dialog-header {
+  padding-bottom: 12px;
+}
+
+.exit-modal .rate-dialog-header h3 {
+  font-size: 20px;
+}
+
+.exit-modal .exit-modal-info {
+  padding: 10px 14px;
+  gap: 5px;
+  margin-bottom: 0;
+}
+
+.exit-modal .form-field {
+  margin-top: var(--space-2);
+}
+
+.exit-modal .exit-money-field {
+  margin-top: var(--space-2);
+}
+
+.exit-modal .exit-money-input {
+  padding: 7px 14px;
+}
+
+.exit-modal .exit-money-prefix {
+  font-size: 22px;
+}
+
+.exit-modal .exit-money-control {
+  font-size: 24px;
+}
+
+.exit-modal .exit-split-toggle {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+}
+
+.exit-modal .exit-result {
+  margin-top: var(--space-2);
+  padding: 10px var(--space-4);
+}
+
+.exit-modal .exit-result-amount {
+  font-size: 32px;
+}
+
+.exit-modal .rate-dialog-actions {
+  margin-top: var(--space-3);
 }
 
 /* Vehicle card ticket badge */

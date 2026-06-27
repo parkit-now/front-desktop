@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import {
   Car,
+  Cctv,
   CreditCard,
   DollarSign,
   Home,
@@ -9,8 +10,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ActiveVehiclesPanel } from '../entries/ActiveVehiclesPanel';
+import { CameraPanel } from '../camera/CameraPanel';
+import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { EntryForm } from '../entries/EntryForm';
+import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
 import { RatesPanel } from '../rates/RatesPanel';
@@ -44,6 +47,7 @@ type WorkspaceSection =
   | 'dashboard'
   | 'rates'
   | 'operativo'
+  | 'camara'
   | 'historial'
   | 'payment-methods'
   | 'vehicles'
@@ -366,6 +370,7 @@ export function SessionView({ session }: Props) {
   const sectionTitle: Record<WorkspaceSection, string> = {
     dashboard: 'Panel Operativo',
     operativo: 'Panel Operativo',
+    camara: 'Cámara',
     historial: 'Historial',
     rates: 'Gestión de Tasas',
     'payment-methods': 'Métodos de Pago',
@@ -375,6 +380,7 @@ export function SessionView({ session }: Props) {
 
   const sectionIcon = (s: WorkspaceSection) => {
     if (s === 'rates') return <DollarSign size={20} aria-hidden />;
+    if (s === 'camara') return <Cctv size={20} aria-hidden />;
     if (s === 'historial') return <Car size={20} aria-hidden />;
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
@@ -414,6 +420,15 @@ export function SessionView({ session }: Props) {
             >
               <Home size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Operativo</span> : null}
+            </button>
+
+            <button
+              type="button"
+              className={`nav-item ${section === 'camara' ? 'active' : ''}`}
+              onClick={() => setSection('camara')}
+            >
+              <Cctv size={18} aria-hidden="true" />
+              {!sidebarCollapsed ? <span>Cámara</span> : null}
             </button>
 
             <button
@@ -519,11 +534,18 @@ export function SessionView({ session }: Props) {
               activeTenantId ? (
                 activeCashSession ? (
                   <div className="operativo-layout">
-                    <EntryForm
-                      tenantId={activeTenantId}
-                      accessToken={session.access_token}
-                    />
-                    <ActiveVehiclesPanel
+                    <div className="operativo-entry-column">
+                      <EntryForm
+                        tenantId={activeTenantId}
+                        accessToken={session.access_token}
+                      />
+                      <ExitControls
+                        tenantId={activeTenantId}
+                        accessToken={session.access_token}
+                        userId={session.user.id}
+                      />
+                    </div>
+                    <AutoEntriesColumns
                       tenantId={activeTenantId}
                       accessToken={session.access_token}
                     />
@@ -551,6 +573,8 @@ export function SessionView({ session }: Props) {
                   </p>
                 </section>
               )
+            ) : section === 'camara' ? (
+              <CameraPanel />
             ) : section === 'historial' ? (
               activeTenantId ? (
                 <EntryHistoryPanel
