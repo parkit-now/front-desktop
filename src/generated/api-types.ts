@@ -760,6 +760,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/lpr-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List LPR detection events for owner/operator review */
+        get: operations["LprEventsController_list"];
+        put?: never;
+        /** Create or update an auditable LPR detection event */
+        post: operations["LprEventsController_upsert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/lpr-events/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Mark an LPR detection event as registered, dismissed, or suppressed */
+        patch: operations["LprEventsController_updateStatus"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/lpr-events/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental LPR detection event changes for sync */
+        get: operations["LprEventsController_pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/payment-methods": {
         parameters: {
             query?: never;
@@ -1854,6 +1906,50 @@ export interface components {
              */
             password: string;
         };
+        LprDetectionEventChangesResponseDto: {
+            items: components["schemas"]["LprDetectionEventDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        LprDetectionEventDto: {
+            bestCaptureId?: string | null;
+            cameraId: string;
+            candidates: Record<string, never>[];
+            confidence: number;
+            /** Format: date-time */
+            createdAt: string;
+            displayPlate?: string | null;
+            /** Format: uuid */
+            entryId?: string | null;
+            /** Format: date-time */
+            firstSeenAt: string;
+            /** @enum {string} */
+            formatType: "argentina_old" | "argentina_mercosur" | "unknown";
+            formatValid: boolean;
+            /** Format: uuid */
+            id: string;
+            imageStoragePath?: string | null;
+            imageUrl?: string | null;
+            /** Format: date-time */
+            lastSeenAt: string;
+            location: string;
+            normalizedText?: string | null;
+            /** @enum {string} */
+            qualityStatus: "valid_high" | "valid_low" | "invalid_format" | "low_confidence";
+            rawText?: string | null;
+            /** Format: date-time */
+            reviewedAt?: string | null;
+            /** Format: uuid */
+            reviewedByUserId?: string | null;
+            /** @enum {string} */
+            status: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
         LprEntryDto: {
             cameraId?: string;
             /** @description URL of the entry photo captured by the LPR camera */
@@ -2391,6 +2487,23 @@ export interface components {
              */
             status?: "active" | "maintenance";
         };
+        UpdateLprDetectionEventDto: {
+            /**
+             * Format: uuid
+             * @description Entry created from this event, required by registered events.
+             */
+            entryId?: string;
+            /**
+             * Format: date-time
+             * @description Client-side action timestamp. Defaults to server time.
+             */
+            reviewedAt?: string;
+            /**
+             * @description New review/suppression status for the detection event.
+             * @enum {string}
+             */
+            status: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
+        };
         UpdateMembershipDto: {
             /**
              * @description New role at this parking lot: `owner` or `operator`.
@@ -2484,6 +2597,38 @@ export interface components {
              * @enum {string}
              */
             type?: "auto" | "pickup" | "suv" | "van" | "moto" | "camioneta" | "otro";
+        };
+        UpsertLprDetectionEventDto: {
+            bestCaptureId?: string;
+            cameraId: string;
+            candidates?: Record<string, never>[];
+            confidence: number;
+            displayPlate?: string;
+            /** Format: uuid */
+            entryId?: string;
+            /** Format: date-time */
+            firstSeenAt: string;
+            /** @enum {string} */
+            formatType: "argentina_old" | "argentina_mercosur" | "unknown";
+            formatValid: boolean;
+            /** Format: uuid */
+            id: string;
+            imageStoragePath?: string;
+            imageUrl?: string;
+            /** Format: date-time */
+            lastSeenAt: string;
+            location: string;
+            normalizedText?: string;
+            /** @enum {string} */
+            qualityStatus: "valid_high" | "valid_low" | "invalid_format" | "low_confidence";
+            rawText?: string;
+            /** Format: date-time */
+            reviewedAt?: string;
+            /**
+             * @default pending
+             * @enum {string}
+             */
+            status: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
         };
         UserDto: {
             /** Format: date-time */
@@ -4537,6 +4682,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    LprEventsController_list: {
+        parameters: {
+            query?: {
+                limit?: number;
+                status?: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventDto"][];
+                };
+            };
+        };
+    };
+    LprEventsController_upsert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertLprDetectionEventDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventDto"];
+                };
+            };
+        };
+    };
+    LprEventsController_updateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLprDetectionEventDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventDto"];
+                };
+            };
+        };
+    };
+    LprEventsController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventChangesResponseDto"];
                 };
             };
         };

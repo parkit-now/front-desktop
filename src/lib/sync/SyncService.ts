@@ -1,6 +1,7 @@
 import {
   type LocalCashSession,
   type LocalEntry,
+  type LocalLprDetectionEvent,
   type LocalPaymentMethod,
   type LocalPaymentTransaction,
   type LocalRate,
@@ -44,6 +45,12 @@ import {
   pullPaymentTransactionChanges,
   type PaymentTransactionDto,
 } from '../api/payment-transactions';
+import {
+  pullLprDetectionEventChanges,
+  updateLprDetectionEvent,
+  upsertLprDetectionEvent,
+  type LprDetectionEventDto,
+} from '../api/lpr-events';
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -155,6 +162,41 @@ function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
     version: pm.version,
     updatedAt: pm.updatedAt,
     createdAt: pm.createdAt,
+  };
+}
+
+function lprDetectionEventToLocal(
+  event: LprDetectionEventDto,
+  existing?: LocalLprDetectionEvent,
+): LocalLprDetectionEvent {
+  return {
+    id: event.id,
+    tenantId: event.tenantId,
+    cameraId: event.cameraId,
+    location: event.location,
+    firstSeenAt: event.firstSeenAt,
+    lastSeenAt: event.lastSeenAt,
+    rawText: event.rawText ?? existing?.rawText,
+    normalizedText: event.normalizedText ?? existing?.normalizedText,
+    displayPlate: event.displayPlate ?? existing?.displayPlate,
+    confidence: event.confidence,
+    formatValid: event.formatValid,
+    formatType: event.formatType,
+    qualityStatus: event.qualityStatus,
+    status: event.status,
+    entryId: event.entryId ?? undefined,
+    reviewedAt: event.reviewedAt ?? undefined,
+    imageStoragePath: event.imageStoragePath ?? existing?.imageStoragePath,
+    imageUrl: event.imageUrl ?? existing?.imageUrl,
+    bestCaptureId: event.bestCaptureId ?? existing?.bestCaptureId,
+    candidates:
+      event.candidates.length > 0
+        ? event.candidates
+        : (existing?.candidates ?? []),
+    version: event.version,
+    syncSeq: event.syncSeq,
+    createdAt: event.createdAt,
+    updatedAt: event.updatedAt,
   };
 }
 
@@ -401,6 +443,49 @@ class SyncService {
     }
   }
 
+  async pullLprDetectionEvents(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const stateKey = `lprDetectionEvents:${this.tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullLprDetectionEventChanges({
+      tenantId: this.tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      await localDb.transaction(
+        'rw',
+        localDb.lprDetectionEvents,
+        localDb.syncState,
+        async () => {
+          const existingRows = await localDb.lprDetectionEvents.bulkGet(
+            response.items.map((item) => item.id),
+          );
+          await localDb.lprDetectionEvents.bulkPut(
+            response.items.map((item, index) =>
+              lprDetectionEventToLocal(item, existingRows[index]),
+            ),
+          );
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
   async pushPendingOps(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
@@ -420,6 +505,7 @@ class SyncService {
           | LocalPaymentMethod
           | LocalVehicle
           | LocalCashSession
+          | LocalLprDetectionEvent
           | undefined;
 
         if (op.entityType === 'rate') {
@@ -432,6 +518,8 @@ class SyncService {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
           serverEntity = await this.applyCashSessionOp(op);
+        } else if (op.entityType === 'lprDetectionEvent') {
+          serverEntity = await this.applyLprDetectionEventOp(op);
         }
 
         await localDb.transaction(
@@ -443,6 +531,7 @@ class SyncService {
             localDb.vehicles,
             localDb.paymentMethods,
             localDb.cashSessions,
+            localDb.lprDetectionEvents,
           ],
           async () => {
             await localDb.pendingOps.delete(op.localId!);
@@ -461,6 +550,10 @@ class SyncService {
               } else if (op.entityType === 'cashSession') {
                 await localDb.cashSessions.put(
                   serverEntity as LocalCashSession,
+                );
+              } else if (op.entityType === 'lprDetectionEvent') {
+                await localDb.lprDetectionEvents.put(
+                  serverEntity as LocalLprDetectionEvent,
                 );
               }
             }
@@ -603,6 +696,42 @@ class SyncService {
     throw new Error(`Unknown cashSession operation: ${String(op.operation)}`);
   }
 
+  private async applyLprDetectionEventOp(
+    op: PendingOp,
+  ): Promise<LocalLprDetectionEvent | undefined> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+
+    if (op.operation === 'create') {
+      const payload = op.payload as Parameters<
+        typeof upsertLprDetectionEvent
+      >[0]['body'];
+      const result = await upsertLprDetectionEvent({
+        tenantId,
+        bearer,
+        body: payload,
+      });
+      const existing = await localDb.lprDetectionEvents.get(op.entityId);
+      return lprDetectionEventToLocal(result, existing);
+    }
+
+    if (op.operation === 'update') {
+      const payload = op.payload as Parameters<
+        typeof updateLprDetectionEvent
+      >[0]['body'];
+      const result = await updateLprDetectionEvent({
+        tenantId,
+        bearer,
+        eventId: op.entityId,
+        body: payload,
+      });
+      const existing = await localDb.lprDetectionEvents.get(op.entityId);
+      return lprDetectionEventToLocal(result, existing);
+    }
+
+    throw new Error(`Unknown lprDetectionEvent operation: ${op.operation}`);
+  }
+
   private async applyPaymentMethodOp(
     op: PendingOp,
   ): Promise<LocalPaymentMethod | undefined> {
@@ -644,6 +773,7 @@ class SyncService {
     await this.pullCashSessions();
     await this.pullRates();
     await this.pullEntries();
+    await this.pullLprDetectionEvents();
     await this.pullPaymentMethods();
     await this.pullVehicleCatalog();
     await this.pullPaymentTransactions();

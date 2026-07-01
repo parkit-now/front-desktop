@@ -38,6 +38,8 @@ from fast_alpr import ALPR
 DETECTOR_MODEL = os.environ.get("LPR_DETECTOR_MODEL", "yolo-v9-t-384-license-plate-end2end")
 OCR_MODEL = os.environ.get("LPR_OCR_MODEL", "cct-s-v2-global-model")
 DETECTOR_CONF = float(os.environ.get("LPR_DETECTOR_CONF", "0.4"))
+QUALITY_LOW_CONFIDENCE = float(os.environ.get("LPR_QUALITY_LOW_CONFIDENCE", "0.60"))
+QUALITY_HIGH_CONFIDENCE = float(os.environ.get("LPR_QUALITY_HIGH_CONFIDENCE", "0.80"))
 
 # CPU by default for maximum portability. Override to e.g.
 # "OpenVINOExecutionProvider,CPUExecutionProvider" or "CUDAExecutionProvider".
@@ -55,9 +57,13 @@ _MERCOSUR_RE = re.compile(r"^[A-Z]{2}[0-9]{3}[A-Z]{2}$")  # AB123CD (2016+)
 
 @dataclass
 class Recognition:
-    plate: str        # display form, e.g. "AB 123 CD"
-    text: str         # normalised, e.g. "AB123CD"
-    confidence: float  # composite [0, 1]
+    plate: str          # display form, e.g. "AB 123 CD"
+    text: str           # normalised, e.g. "AB123CD"
+    raw_text: str       # OCR output before normalisation
+    format_valid: bool
+    format_type: str    # argentina_old | argentina_mercosur | unknown
+    quality_status: str # valid_high | valid_low | invalid_format | low_confidence
+    confidence: float   # composite [0, 1]
     bbox: tuple[int, int, int, int]  # x1, y1, x2, y2 in source image
 
 
@@ -92,6 +98,24 @@ def _format_plate(t: str) -> str:
     return t
 
 
+def _format_type(t: str) -> str:
+    if _OLD_RE.match(t):
+        return "argentina_old"
+    if _MERCOSUR_RE.match(t):
+        return "argentina_mercosur"
+    return "unknown"
+
+
+def _quality_status(format_valid: bool, confidence: float) -> str:
+    if not format_valid:
+        return "invalid_format"
+    if confidence < QUALITY_LOW_CONFIDENCE:
+        return "low_confidence"
+    if confidence < QUALITY_HIGH_CONFIDENCE:
+        return "valid_low"
+    return "valid_high"
+
+
 def _mean_conf(confidence: float | list[float]) -> float:
     """fast-plate-ocr returns either one score or one per character."""
     if isinstance(confidence, (list, tuple)):
@@ -123,16 +147,23 @@ class PlateRecognizer:
         for r in self._alpr.predict(image):
             if r.ocr is None:
                 continue
-            text = _normalise(r.ocr.text)
+            raw_text = r.ocr.text
+            text = _normalise(raw_text)
             if not text:
                 continue
             # Honest composite: detector quality × OCR quality. No format-based
             # fudge factor — the OCR head already knows the plate alphabet.
             confidence = round(min(r.detection.confidence * _mean_conf(r.ocr.confidence), 1.0), 3)
+            format_type = _format_type(text)
+            format_valid = format_type != "unknown"
             bb = r.detection.bounding_box
             candidate = Recognition(
                 plate=_format_plate(text),
                 text=text,
+                raw_text=raw_text,
+                format_valid=format_valid,
+                format_type=format_type,
+                quality_status=_quality_status(format_valid, confidence),
                 confidence=confidence,
                 bbox=(bb.x1, bb.y1, bb.x2, bb.y2),
             )

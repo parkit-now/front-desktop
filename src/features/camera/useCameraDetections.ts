@@ -1,71 +1,446 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { localDb } from '../../lib/db/localDb';
+import {
+  localDb,
+  type LocalLprDetectionEvent,
+  type LprDetectionStatus,
+} from '../../lib/db/localDb';
+import type {
+  UpdateLprDetectionEventDto,
+  UpsertLprDetectionEventDto,
+} from '../../lib/api/lpr-events';
 
 export const CAMERA_BASE_URL = 'http://127.0.0.1:8766';
+export const LPR_RECENT_EXIT_SUPPRESSION_MINUTES = 30;
+
 const POLL_MS = 2_000;
+const RECENT_EXIT_TICK_MS = 60_000;
 
-export interface PendingDetection {
-  capture_id: string;
-  plate: string; // display form, e.g. "AB 123 CD"
-  text: string; // normalised, e.g. "AB123CD" — matches stored entry plates
-  confidence: number;
-  location: string;
-  camera_id: string;
-  detected_at: string;
-}
+type SuppressionStatus = Extract<
+  LprDetectionStatus,
+  | 'suppressed_active_entry'
+  | 'suppressed_pending_event'
+  | 'suppressed_recent_exit'
+>;
 
-async function deletePending(plate: string): Promise<void> {
-  try {
-    await fetch(
-      `${CAMERA_BASE_URL}/detections/pending/${encodeURIComponent(plate)}`,
-      { method: 'DELETE' },
-    );
-  } catch {
-    // Best effort — the camera service may be unreachable.
-  }
-}
+type CameraEventPayload = {
+  id?: unknown;
+  eventId?: unknown;
+  cameraId?: unknown;
+  camera_id?: unknown;
+  location?: unknown;
+  firstSeenAt?: unknown;
+  lastSeenAt?: unknown;
+  detected_at?: unknown;
+  rawText?: unknown;
+  normalizedText?: unknown;
+  displayPlate?: unknown;
+  plate?: unknown;
+  text?: unknown;
+  confidence?: unknown;
+  formatValid?: unknown;
+  formatType?: unknown;
+  qualityStatus?: unknown;
+  status?: unknown;
+  entryId?: unknown;
+  reviewedAt?: unknown;
+  imageStoragePath?: unknown;
+  imageUrl?: unknown;
+  bestCaptureId?: unknown;
+  capture_id?: unknown;
+  candidates?: unknown;
+  version?: unknown;
+  syncSeq?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
+export type PendingDetection = LocalLprDetectionEvent;
 
 interface CameraDetections {
   detections: PendingDetection[];
-  /** Operator discarded the suggestion without registering. */
-  dismiss: (plate: string) => void;
-  /** Suggestion was registered as an entry. */
-  ack: (plate: string) => void;
+  dismiss: (eventId: string) => void;
+  ack: (eventId: string, entryId: string) => void;
 }
 
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function isString(value: string | undefined): value is string {
+  return typeof value === 'string';
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+function normalisePlate(value: string | undefined): string | undefined {
+  const normalized = value?.replace(/[\s_-]/g, '').toUpperCase();
+  return normalized || undefined;
+}
+
+function isLprStatus(value: unknown): value is LprDetectionStatus {
+  return (
+    value === 'pending' ||
+    value === 'registered' ||
+    value === 'dismissed' ||
+    value === 'suppressed_active_entry' ||
+    value === 'suppressed_pending_event' ||
+    value === 'suppressed_recent_exit'
+  );
+}
+
+function isResolved(status: LprDetectionStatus): boolean {
+  return status !== 'pending';
+}
+
+function qualityScore(event: LocalLprDetectionEvent): number {
+  const rank = {
+    valid_high: 4,
+    valid_low: 3,
+    low_confidence: 2,
+    invalid_format: 1,
+  }[event.qualityStatus];
+  return rank + event.confidence;
+}
+
+function toLocalEvent(
+  tenantId: string,
+  payload: CameraEventPayload,
+  existing?: LocalLprDetectionEvent,
+): LocalLprDetectionEvent | null {
+  const id = asString(payload.eventId) ?? asString(payload.id);
+  if (!id) return null;
+
+  const now = new Date().toISOString();
+  const status = isLprStatus(payload.status) ? payload.status : 'pending';
+  const nextStatus =
+    existing && isResolved(existing.status) && status === 'pending'
+      ? existing.status
+      : status;
+  const normalizedText =
+    normalisePlate(
+      asString(payload.normalizedText) ?? asString(payload.text),
+    ) ?? existing?.normalizedText;
+  const displayPlate =
+    asString(payload.displayPlate) ??
+    asString(payload.plate) ??
+    normalizedText ??
+    asString(payload.rawText);
+
+  return {
+    id,
+    tenantId,
+    cameraId:
+      asString(payload.cameraId) ?? asString(payload.camera_id) ?? 'cam-01',
+    location: asString(payload.location) ?? 'entrada',
+    firstSeenAt:
+      asString(payload.firstSeenAt) ??
+      asString(payload.detected_at) ??
+      existing?.firstSeenAt ??
+      now,
+    lastSeenAt:
+      asString(payload.lastSeenAt) ??
+      asString(payload.detected_at) ??
+      existing?.lastSeenAt ??
+      now,
+    rawText: asString(payload.rawText) ?? existing?.rawText,
+    normalizedText,
+    displayPlate,
+    confidence: asNumber(payload.confidence, existing?.confidence ?? 0),
+    formatValid:
+      typeof payload.formatValid === 'boolean'
+        ? asBoolean(payload.formatValid)
+        : (existing?.formatValid ?? false),
+    formatType:
+      payload.formatType === 'argentina_old' ||
+      payload.formatType === 'argentina_mercosur'
+        ? payload.formatType
+        : (existing?.formatType ?? 'unknown'),
+    qualityStatus:
+      payload.qualityStatus === 'valid_high' ||
+      payload.qualityStatus === 'valid_low' ||
+      payload.qualityStatus === 'invalid_format' ||
+      payload.qualityStatus === 'low_confidence'
+        ? payload.qualityStatus
+        : (existing?.qualityStatus ?? 'low_confidence'),
+    status: nextStatus,
+    entryId: asString(payload.entryId) ?? existing?.entryId,
+    reviewedAt: asString(payload.reviewedAt) ?? existing?.reviewedAt,
+    imageStoragePath:
+      asString(payload.imageStoragePath) ?? existing?.imageStoragePath,
+    imageUrl: asString(payload.imageUrl) ?? existing?.imageUrl,
+    bestCaptureId:
+      asString(payload.bestCaptureId) ??
+      asString(payload.capture_id) ??
+      existing?.bestCaptureId,
+    candidates: Array.isArray(payload.candidates)
+      ? payload.candidates
+      : (existing?.candidates ?? []),
+    version: asNumber(payload.version, existing?.version ?? 1),
+    syncSeq: asNumber(payload.syncSeq, existing?.syncSeq ?? 0),
+    createdAt: asString(payload.createdAt) ?? existing?.createdAt ?? now,
+    updatedAt: asString(payload.updatedAt) ?? existing?.updatedAt ?? now,
+  };
+}
+
+function toUpsertPayload(
+  event: LocalLprDetectionEvent,
+): UpsertLprDetectionEventDto {
+  return {
+    id: event.id,
+    cameraId: event.cameraId,
+    location: event.location,
+    firstSeenAt: event.firstSeenAt,
+    lastSeenAt: event.lastSeenAt,
+    rawText: event.rawText,
+    normalizedText: event.normalizedText,
+    displayPlate: event.displayPlate,
+    confidence: event.confidence,
+    formatValid: event.formatValid,
+    formatType: event.formatType,
+    qualityStatus: event.qualityStatus,
+    status: event.status,
+    entryId: event.entryId,
+    reviewedAt: event.reviewedAt,
+    imageStoragePath: event.imageStoragePath,
+    imageUrl: event.imageUrl,
+    bestCaptureId: event.bestCaptureId,
+    candidates: event.candidates as UpsertLprDetectionEventDto['candidates'],
+  };
+}
+
+function toStatusPayload(
+  status: LprDetectionStatus,
+  entryId?: string,
+  reviewedAt = new Date().toISOString(),
+): UpdateLprDetectionEventDto {
+  return { status, entryId, reviewedAt };
+}
+
+async function upsertCreateOp(
+  tenantId: string,
+  event: LocalLprDetectionEvent,
+): Promise<void> {
+  const existing = await localDb.pendingOps
+    .where('entityType')
+    .equals('lprDetectionEvent')
+    .filter(
+      (op) =>
+        op.tenantId === tenantId &&
+        op.entityId === event.id &&
+        op.operation === 'create',
+    )
+    .first();
+
+  const payload = toUpsertPayload(event);
+  if (existing?.localId != null) {
+    await localDb.pendingOps.update(existing.localId, {
+      payload,
+      status: 'pending',
+      error: undefined,
+    });
+    return;
+  }
+
+  await localDb.pendingOps.add({
+    entityType: 'lprDetectionEvent',
+    operation: 'create',
+    tenantId,
+    entityId: event.id,
+    payload,
+    status: 'pending',
+    createdAt: Date.now(),
+    retryCount: 0,
+  });
+}
+
+async function queueStatusUpdate(
+  tenantId: string,
+  event: LocalLprDetectionEvent,
+  status: LprDetectionStatus,
+  entryId?: string,
+): Promise<void> {
+  const reviewedAt = new Date().toISOString();
+  const next: LocalLprDetectionEvent = {
+    ...event,
+    status,
+    entryId: entryId ?? event.entryId,
+    reviewedAt,
+    updatedAt: reviewedAt,
+    version: event.version + 1,
+  };
+
+  await localDb.transaction(
+    'rw',
+    localDb.lprDetectionEvents,
+    localDb.pendingOps,
+    async () => {
+      await localDb.lprDetectionEvents.put(next);
+
+      const createOp = await localDb.pendingOps
+        .where('entityType')
+        .equals('lprDetectionEvent')
+        .filter(
+          (op) =>
+            op.tenantId === tenantId &&
+            op.entityId === event.id &&
+            op.operation === 'create',
+        )
+        .first();
+
+      if (createOp?.localId != null) {
+        await localDb.pendingOps.update(createOp.localId, {
+          payload: toUpsertPayload(next),
+          status: 'pending',
+          error: undefined,
+        });
+        return;
+      }
+
+      const updateOp = await localDb.pendingOps
+        .where('entityType')
+        .equals('lprDetectionEvent')
+        .filter(
+          (op) =>
+            op.tenantId === tenantId &&
+            op.entityId === event.id &&
+            op.operation === 'update',
+        )
+        .first();
+
+      const payload = toStatusPayload(status, entryId, reviewedAt);
+      if (updateOp?.localId != null) {
+        await localDb.pendingOps.update(updateOp.localId, {
+          payload,
+          status: 'pending',
+          error: undefined,
+        });
+        return;
+      }
+
+      await localDb.pendingOps.add({
+        entityType: 'lprDetectionEvent',
+        operation: 'update',
+        tenantId,
+        entityId: event.id,
+        payload,
+        status: 'pending',
+        createdAt: Date.now(),
+        retryCount: 0,
+      });
+    },
+  );
+}
+
+async function patchCameraEvent(
+  eventId: string,
+  status: LprDetectionStatus,
+  entryId?: string,
+): Promise<void> {
+  try {
+    await fetch(
+      `${CAMERA_BASE_URL}/detections/${encodeURIComponent(eventId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, entryId }),
+      },
+    );
+  } catch {
+    // Best effort. Dexie + sync queue remain the source of truth for audit.
+  }
+}
+
+async function storeCameraEvent(
+  tenantId: string,
+  payload: CameraEventPayload,
+): Promise<void> {
+  const id = asString(payload.eventId) ?? asString(payload.id);
+  if (!id) return;
+  const existing = await localDb.lprDetectionEvents.get(id);
+  const event = toLocalEvent(tenantId, payload, existing);
+  if (!event) return;
+
+  await localDb.transaction(
+    'rw',
+    localDb.lprDetectionEvents,
+    localDb.pendingOps,
+    async () => {
+      await localDb.lprDetectionEvents.put(event);
+      if (!existing || existing.status === 'pending') {
+        await upsertCreateOp(tenantId, event);
+      }
+    },
+  );
+}
+
+function keeperByPlate(events: LocalLprDetectionEvent[]): Map<string, string> {
+  const keepers = new Map<string, LocalLprDetectionEvent>();
+  for (const event of events) {
+    if (!event.normalizedText) continue;
+    const key = event.normalizedText;
+    const current = keepers.get(key);
+    if (!current || qualityScore(event) > qualityScore(current)) {
+      keepers.set(key, event);
+    }
+  }
+  return new Map([...keepers].map(([plate, event]) => [plate, event.id]));
+}
+
+function suppressionReason(
+  event: LocalLprDetectionEvent,
+  keepers: Map<string, string>,
+  activePlates: Set<string>,
+  recentExitPlates: Set<string>,
+): SuppressionStatus | null {
+  const plate = event.normalizedText;
+  if (!plate) return null;
+  if (activePlates.has(plate)) return 'suppressed_active_entry';
+  if (keepers.get(plate) !== event.id) return 'suppressed_pending_event';
+  if (recentExitPlates.has(plate)) return 'suppressed_recent_exit';
+  return null;
+}
+
+export const cameraDetectionTestUtils = {
+  keeperByPlate,
+  normalisePlate,
+  qualityScore,
+  suppressionReason,
+};
+
 /**
- * Polls the local camera service for plates detected but not yet acted on, and
- * suppresses any plate already active in base (a car still inside). Returns the
- * suggestions plus dismiss/ack (both drop the pending detection server-side).
+ * Polls the local camera service for pending LPR events, mirrors them into
+ * Dexie, and returns only operator-actionable events after local suppression.
  */
 export function useCameraDetections(tenantId: string | null): CameraDetections {
-  const [raw, setRaw] = useState<PendingDetection[]>([]);
-  // Plates the operator already acted on — hidden immediately until the next
-  // poll confirms the server dropped them (then pruned, so re-entries reappear).
-  const [removed, setRemoved] = useState<Set<string>>(new Set());
-
-  // Normalised plates currently parked (no leftAt) for this tenant.
-  const activePlates = useLiveQuery(async () => {
-    if (!tenantId) return new Set<string>();
-    const rows = await localDb.entries
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((e) => !e.leftAt)
-      .toArray();
-    return new Set(rows.map((e) => e.plate));
-  }, [tenantId]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), RECENT_EXIT_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const currentTenantId = tenantId;
     let cancelled = false;
     async function poll() {
       try {
         const res = await fetch(`${CAMERA_BASE_URL}/detections/pending`);
         if (!res.ok) return;
-        const data = (await res.json()) as PendingDetection[];
-        if (!cancelled) setRaw(data);
+        const data = (await res.json()) as CameraEventPayload[];
+        if (cancelled) return;
+        await Promise.all(
+          data.map((event) => storeCameraEvent(currentTenantId, event)),
+        );
       } catch {
-        // Service unreachable — leave the last known list in place.
+        // Service unreachable — keep showing the local Dexie state.
       }
     }
     void poll();
@@ -74,36 +449,96 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [tenantId]);
 
-  // Prune the "removed" set once the server stops returning those plates, so a
-  // car that leaves and comes back later can be suggested again.
-  useEffect(() => {
-    setRemoved((prev) => {
-      if (prev.size === 0) return prev;
-      const present = new Set(raw.map((d) => d.text));
-      const next = new Set([...prev].filter((p) => present.has(p)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [raw]);
+  const pendingEvents = useLiveQuery(async () => {
+    if (!tenantId) return [];
+    return localDb.lprDetectionEvents
+      .where('[tenantId+status]')
+      .equals([tenantId, 'pending'])
+      .toArray();
+  }, [tenantId]);
 
-  // Drop pending detections for plates already active in base (best effort).
+  const activePlates = useLiveQuery(async () => {
+    if (!tenantId) return new Set<string>();
+    const rows = await localDb.entries
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((e) => !e.leftAt)
+      .toArray();
+    return new Set(rows.map((e) => normalisePlate(e.plate)).filter(isString));
+  }, [tenantId]);
+
+  const recentExitPlates = useLiveQuery(async () => {
+    if (!tenantId) return new Set<string>();
+    const cutoff = nowMs - LPR_RECENT_EXIT_SUPPRESSION_MINUTES * 60_000;
+    const rows = await localDb.entries
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((e) => {
+        if (!e.leftAt) return false;
+        return new Date(e.leftAt).getTime() >= cutoff;
+      })
+      .toArray();
+    return new Set(rows.map((e) => normalisePlate(e.plate)).filter(isString));
+  }, [tenantId, nowMs]);
+
+  const keepers = useMemo(
+    () => keeperByPlate(pendingEvents ?? []),
+    [pendingEvents],
+  );
+
   useEffect(() => {
-    if (!activePlates) return;
-    for (const d of raw) {
-      if (activePlates.has(d.text)) void deletePending(d.text);
+    if (!tenantId || !pendingEvents || !activePlates || !recentExitPlates)
+      return;
+    for (const event of pendingEvents) {
+      const reason = suppressionReason(
+        event,
+        keepers,
+        activePlates,
+        recentExitPlates,
+      );
+      if (!reason) continue;
+      void queueStatusUpdate(tenantId, event, reason);
+      void patchCameraEvent(event.id, reason);
     }
-  }, [raw, activePlates]);
+  }, [tenantId, pendingEvents, activePlates, recentExitPlates, keepers]);
 
   const detections = useMemo(() => {
+    const events = pendingEvents ?? [];
     const active = activePlates ?? new Set<string>();
-    return raw.filter((d) => !removed.has(d.text) && !active.has(d.text));
-  }, [raw, removed, activePlates]);
+    const recent = recentExitPlates ?? new Set<string>();
+    return events
+      .filter((event) => !suppressionReason(event, keepers, active, recent))
+      .sort(
+        (a, b) =>
+          new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
+      );
+  }, [pendingEvents, activePlates, recentExitPlates, keepers]);
 
-  const remove = useCallback((plate: string) => {
-    setRemoved((prev) => new Set(prev).add(plate));
-    void deletePending(plate);
-  }, []);
+  const dismiss = useCallback(
+    (eventId: string) => {
+      if (!tenantId) return;
+      void localDb.lprDetectionEvents.get(eventId).then((event) => {
+        if (!event) return;
+        void queueStatusUpdate(tenantId, event, 'dismissed');
+        void patchCameraEvent(eventId, 'dismissed');
+      });
+    },
+    [tenantId],
+  );
 
-  return { detections, dismiss: remove, ack: remove };
+  const ack = useCallback(
+    (eventId: string, entryId: string) => {
+      if (!tenantId) return;
+      void localDb.lprDetectionEvents.get(eventId).then((event) => {
+        if (!event) return;
+        void queueStatusUpdate(tenantId, event, 'registered', entryId);
+        void patchCameraEvent(eventId, 'registered', entryId);
+      });
+    },
+    [tenantId],
+  );
+
+  return { detections, dismiss, ack };
 }

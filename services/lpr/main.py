@@ -48,6 +48,12 @@ class ProcessRequest(BaseModel):
 class ProcessResponse(BaseModel):
     plate: str                  # display form, e.g. "AB 123 CD"
     text: str                   # normalised, e.g. "AB123CD"
+    rawText: str                # OCR output before normalisation
+    normalizedText: str         # normalised, e.g. "AB123CD"
+    displayPlate: str           # display form, e.g. "AB 123 CD"
+    formatValid: bool
+    formatType: str             # argentina_old | argentina_mercosur | unknown
+    qualityStatus: str          # valid_high | valid_low | invalid_format | low_confidence
     confidence: float           # composite [0, 1]
     bbox: list[int]             # [x1, y1, x2, y2] of the plate in the source image
 
@@ -79,6 +85,12 @@ def process_image(req: ProcessRequest):
     return ProcessResponse(
         plate=result.plate,
         text=result.text,
+        rawText=result.raw_text,
+        normalizedText=result.text,
+        displayPlate=result.plate,
+        formatValid=result.format_valid,
+        formatType=result.format_type,
+        qualityStatus=result.quality_status,
         confidence=result.confidence,
         bbox=list(result.bbox),
     )

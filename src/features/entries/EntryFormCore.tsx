@@ -34,7 +34,7 @@ interface Props {
   /** Extra buttons rendered next to the submit button (e.g. "Descartar"). */
   extraActions?: ReactNode;
   /** Called after a successful registration with the normalised plate. */
-  onRegistered?: (plate: string) => void;
+  onRegistered?: (result: { plate: string; entryId: string }) => void;
 }
 
 type VehicleSuggestion =
@@ -945,7 +945,7 @@ export function EntryFormCore({
       });
 
       if (variant === 'auto') {
-        onRegistered?.(normalizedPlate);
+        onRegistered?.({ plate: normalizedPlate, entryId });
       } else {
         resetFields();
         setTimeout(() => plateRef.current?.focus(), 50);

@@ -34,7 +34,7 @@ export function AutoEntriesColumns({ tenantId, accessToken }: Props) {
         <div className="auto-entries__grid">
           {detections.map((detection) => (
             <AutoEntryCard
-              key={detection.text}
+              key={detection.id}
               detection={detection}
               tenantId={tenantId}
               accessToken={accessToken}

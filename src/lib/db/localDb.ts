@@ -90,6 +90,49 @@ export interface LocalPaymentMethod {
   createdAt: string;
 }
 
+export type LprDetectionStatus =
+  | 'pending'
+  | 'registered'
+  | 'dismissed'
+  | 'suppressed_active_entry'
+  | 'suppressed_pending_event'
+  | 'suppressed_recent_exit';
+
+export type LprFormatType = 'argentina_old' | 'argentina_mercosur' | 'unknown';
+
+export type LprQualityStatus =
+  | 'valid_high'
+  | 'valid_low'
+  | 'invalid_format'
+  | 'low_confidence';
+
+export interface LocalLprDetectionEvent {
+  id: string;
+  tenantId: string;
+  cameraId: string;
+  location: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  rawText?: string;
+  normalizedText?: string;
+  displayPlate?: string;
+  confidence: number;
+  formatValid: boolean;
+  formatType: LprFormatType;
+  qualityStatus: LprQualityStatus;
+  status: LprDetectionStatus;
+  entryId?: string;
+  reviewedAt?: string;
+  imageStoragePath?: string;
+  imageUrl?: string;
+  bestCaptureId?: string;
+  candidates: unknown[];
+  version: number;
+  syncSeq: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SyncState {
   key: string;
   lastSeq: number;
@@ -102,7 +145,8 @@ export type PendingOpEntity =
   | 'entry'
   | 'vehicle'
   | 'paymentMethod'
-  | 'cashSession';
+  | 'cashSession'
+  | 'lprDetectionEvent';
 export type PendingOpOperation = 'create' | 'update' | 'delete';
 
 export interface PendingOp {
@@ -123,6 +167,7 @@ class ParkitLocalDb extends Dexie {
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
   paymentMethods!: Table<LocalPaymentMethod>;
+  lprDetectionEvents!: Table<LocalLprDetectionEvent>;
   cashSessions!: Table<LocalCashSession>;
   paymentTransactions!: Table<LocalPaymentTransaction>;
   syncState!: Table<SyncState>;
@@ -177,6 +222,12 @@ class ParkitLocalDb extends Dexie {
           )
           .delete(),
       );
+
+    // v7: auditable LPR detection events synced with the backend.
+    this.version(7).stores({
+      lprDetectionEvents:
+        'id, tenantId, status, normalizedText, [tenantId+syncSeq], [tenantId+status], [tenantId+normalizedText]',
+    });
   }
 }
 

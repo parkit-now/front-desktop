@@ -2557,6 +2557,13 @@ h2 {
   flex-direction: column;
 }
 
+.auto-entry-card--attention {
+  border-color: #f59e0b;
+  box-shadow:
+    0 0 0 2px rgba(245, 158, 11, 0.16),
+    var(--shadow-card);
+}
+
 .auto-entry-card__header {
   position: relative;
   width: 100%;
@@ -2597,6 +2604,22 @@ h2 {
   font-size: 12px;
   font-weight: 700;
   backdrop-filter: blur(4px);
+}
+
+.auto-entry-card__badge.warn {
+  background: rgba(146, 64, 14, 0.88);
+}
+
+.auto-entry-card__warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #fff7ed;
+  border-bottom: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 /* Inside the card the form drops its own frame (the card provides it). */
