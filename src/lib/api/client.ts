@@ -56,6 +56,8 @@ export type RequestOptions = {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
   body?: unknown;
+  /** Binary body (e.g. an LPR event photo) sent as-is, bypassing JSON.stringify. */
+  rawBody?: { data: Blob; contentType: string };
   bearer?: string;
 };
 
@@ -67,7 +69,9 @@ export async function apiRequest<TResponse>(
     Accept: 'application/json',
   };
 
-  if (options.body !== undefined) {
+  if (options.rawBody) {
+    headers['Content-Type'] = options.rawBody.contentType;
+  } else if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
   if (options.bearer) {
@@ -77,7 +81,11 @@ export async function apiRequest<TResponse>(
   const response = await fetch(`${baseUrl}${options.path}`, {
     method: options.method,
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.rawBody
+      ? options.rawBody.data
+      : options.body === undefined
+        ? undefined
+        : JSON.stringify(options.body),
   });
 
   if (response.status === 204) {

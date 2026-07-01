@@ -49,8 +49,10 @@ import {
   pullLprDetectionEventChanges,
   updateLprDetectionEvent,
   upsertLprDetectionEvent,
+  uploadLprDetectionEventImage,
   type LprDetectionEventDto,
 } from '../api/lpr-events';
+import { CAMERA_BASE_URL } from '../camera/constants';
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -486,6 +488,51 @@ class SyncService {
     }
   }
 
+  /**
+   * Uploads the photo of every locally-known LPR event that doesn't have one
+   * in Storage yet. Photos live only on the capturing machine's disk, served
+   * by the local camera service — this pulls the bytes from there and hands
+   * them to the backend, which is the only thing with Storage credentials.
+   *
+   * Scans (not a `pendingOps` entry) so it also catches events pulled from
+   * other operators' sessions or left over from a crashed upload — those
+   * simply 404 against this machine's camera service and get skipped.
+   */
+  async pushLprDetectionEventImages(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+
+    const candidates = await localDb.lprDetectionEvents
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((event) => !event.imageStoragePath && !!event.bestCaptureId)
+      .toArray();
+
+    for (const event of candidates) {
+      try {
+        const captureResponse = await fetch(
+          `${CAMERA_BASE_URL}/capture/${encodeURIComponent(event.bestCaptureId!)}/plate.jpg`,
+        );
+        if (!captureResponse.ok) continue;
+        const image = await captureResponse.blob();
+
+        const updated = await uploadLprDetectionEventImage({
+          tenantId,
+          bearer,
+          eventId: event.id,
+          image,
+        });
+        await localDb.lprDetectionEvents.put(
+          lprDetectionEventToLocal(updated, event),
+        );
+      } catch {
+        // Offline, or the local camera service isn't running — retried on
+        // the next sync cycle since the row still has no imageStoragePath.
+      }
+    }
+  }
+
   async pushPendingOps(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
@@ -774,6 +821,7 @@ class SyncService {
     await this.pullRates();
     await this.pullEntries();
     await this.pullLprDetectionEvents();
+    await this.pushLprDetectionEventImages();
     await this.pullPaymentMethods();
     await this.pullVehicleCatalog();
     await this.pullPaymentTransactions();

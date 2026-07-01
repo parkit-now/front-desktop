@@ -9,6 +9,8 @@ export type UpdateLprDetectionEventDto =
   components['schemas']['UpdateLprDetectionEventDto'];
 export type LprDetectionEventChangesResponseDto =
   components['schemas']['LprDetectionEventChangesResponseDto'];
+export type LprDetectionEventImageSignedUrlDto =
+  components['schemas']['LprDetectionEventImageSignedUrlDto'];
 export type LprDetectionStatus = LprDetectionEventDto['status'];
 export type LprFormatType = LprDetectionEventDto['formatType'];
 export type LprQualityStatus = LprDetectionEventDto['qualityStatus'];
@@ -54,6 +56,32 @@ export function updateLprDetectionEvent(input: {
     method: 'PATCH',
     path: `/tenants/${encodeURIComponent(input.tenantId)}/lpr-events/${encodeURIComponent(input.eventId)}`,
     body: input.body,
+    bearer: input.bearer,
+  });
+}
+
+export function uploadLprDetectionEventImage(input: {
+  tenantId: string;
+  bearer: string;
+  eventId: string;
+  image: Blob;
+}): Promise<LprDetectionEventDto> {
+  return apiRequest<LprDetectionEventDto>({
+    method: 'POST',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/lpr-events/${encodeURIComponent(input.eventId)}/image`,
+    rawBody: { data: input.image, contentType: 'image/jpeg' },
+    bearer: input.bearer,
+  });
+}
+
+export function getLprDetectionEventImageSignedUrl(input: {
+  tenantId: string;
+  bearer: string;
+  eventId: string;
+}): Promise<LprDetectionEventImageSignedUrlDto> {
+  return apiRequest<LprDetectionEventImageSignedUrlDto>({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/lpr-events/${encodeURIComponent(input.eventId)}/image-signed-url`,
     bearer: input.bearer,
   });
 }
