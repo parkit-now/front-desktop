@@ -2786,11 +2786,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "image/jpeg": string;
-            };
-        };
+        requestBody?: never;
         responses: {
             200: {
                 headers: {
@@ -4835,7 +4831,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+            };
+        };
         responses: {
             200: {
                 headers: {
