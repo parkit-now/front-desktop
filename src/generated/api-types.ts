@@ -795,6 +795,50 @@ export interface paths {
         patch: operations["LprEventsController_updateStatus"];
         trace?: never;
     };
+    "/tenants/{tenantId}/lpr-events/{eventId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload an LPR detection event's photo
+         * @description Accepts the raw JPEG bytes (`Content-Type: image/jpeg`, max 2MB) captured by the desktop camera service, uploads them to the private `lpr-detection-images` bucket, and persists `imageStoragePath` on the event.
+         *
+         *     Object path is deterministic (`<tenantId>/<eventId>.jpg`), so retrying after a dropped connection just overwrites the same object — safe to call again from the offline sync queue.
+         */
+        post: operations["LprEventsController_uploadImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/lpr-events/{eventId}/image-signed-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mint a signed URL to preview an LPR detection event's photo
+         * @description Returns a short-lived signed URL (5 minutes) pointing at the photo binary in Supabase Storage.
+         *
+         *     The photo is never exposed via a permanent public URL — it can contain plate and vehicle identity, so URLs are minted on demand with the service role, which bypasses the bucket's deny-by-default storage RLS.
+         */
+        get: operations["LprEventsController_imageSignedUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/lpr-events/changes": {
         parameters: {
             query?: never;
@@ -1949,6 +1993,18 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             version: number;
+        };
+        LprDetectionEventImageSignedUrlDto: {
+            /**
+             * @description Seconds the signed URL remains valid.
+             * @example 300
+             */
+            expiresIn: number;
+            /**
+             * @description Time-limited signed URL pointing at the photo binary in Supabase Storage.
+             * @example https://project.supabase.co/storage/v1/object/sign/lpr-detection-images/3f2504e0/9c858901.jpg?token=...
+             */
+            url: string;
         };
         LprEntryDto: {
             cameraId?: string;
@@ -4760,6 +4816,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LprDetectionEventDto"];
+                };
+            };
+        };
+    };
+    LprEventsController_uploadImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventDto"];
+                };
+            };
+        };
+    };
+    LprEventsController_imageSignedUrl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventImageSignedUrlDto"];
                 };
             };
         };

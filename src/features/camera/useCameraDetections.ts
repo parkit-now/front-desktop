@@ -9,8 +9,9 @@ import type {
   UpdateLprDetectionEventDto,
   UpsertLprDetectionEventDto,
 } from '../../lib/api/lpr-events';
+import { CAMERA_BASE_URL } from '../../lib/camera/constants';
 
-export const CAMERA_BASE_URL = 'http://127.0.0.1:8766';
+export { CAMERA_BASE_URL };
 export const LPR_RECENT_EXIT_SUPPRESSION_MINUTES = 30;
 
 const POLL_MS = 2_000;
