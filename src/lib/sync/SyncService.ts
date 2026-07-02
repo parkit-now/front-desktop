@@ -506,7 +506,12 @@ class SyncService {
     const candidates = await localDb.lprDetectionEvents
       .where('tenantId')
       .equals(tenantId)
-      .filter((event) => !event.imageStoragePath && !!event.bestCaptureId)
+      .filter(
+        (event) =>
+          !event.imageStoragePath &&
+          !!event.bestCaptureId &&
+          event.status !== 'suppressed_pending_event',
+      )
       .toArray();
 
     for (const event of candidates) {
