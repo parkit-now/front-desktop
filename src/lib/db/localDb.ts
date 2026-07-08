@@ -125,6 +125,7 @@ export interface LocalLprDetectionEvent {
   reviewedAt?: string;
   imageStoragePath?: string;
   imageUrl?: string;
+  imageDeletedAt?: string;
   bestCaptureId?: string;
   candidates: unknown[];
   version: number;
@@ -228,6 +229,11 @@ class ParkitLocalDb extends Dexie {
       lprDetectionEvents:
         'id, tenantId, status, normalizedText, [tenantId+syncSeq], [tenantId+status], [tenantId+normalizedText]',
     });
+
+    // v8: LocalLprDetectionEvent gains `imageDeletedAt` (no index change
+    // needed) — marks images purged server-side by the retention job, so
+    // sync stops treating the row as still needing an image upload.
+    this.version(8).stores({});
   }
 }
 

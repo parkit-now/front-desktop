@@ -795,6 +795,26 @@ export interface paths {
         patch: operations["LprEventsController_updateStatus"];
         trace?: never;
     };
+    "/tenants/{tenantId}/lpr-events/{eventId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Archive a dismissed LPR detection event after owner review
+         * @description Hides a dismissed event from the owner review inbox without deleting the auditable event or its stored evidence image.
+         */
+        patch: operations["LprEventsController_archive"];
+        trace?: never;
+    };
     "/tenants/{tenantId}/lpr-events/{eventId}/image": {
         parameters: {
             query?: never;
@@ -837,6 +857,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/lpr-events/{eventId}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Move an archived LPR detection event back to owner review */
+        patch: operations["LprEventsController_unarchive"];
         trace?: never;
     };
     "/tenants/{tenantId}/lpr-events/changes": {
@@ -1956,6 +1993,10 @@ export interface components {
             maxSeq: number;
         };
         LprDetectionEventDto: {
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: uuid */
+            archivedByUserId?: string | null;
             bestCaptureId?: string | null;
             cameraId: string;
             candidates: Record<string, never>[];
@@ -1972,6 +2013,8 @@ export interface components {
             formatValid: boolean;
             /** Format: uuid */
             id: string;
+            /** Format: date-time */
+            imageDeletedAt?: string | null;
             imageStoragePath?: string | null;
             imageUrl?: string | null;
             /** Format: date-time */
@@ -2669,8 +2712,6 @@ export interface components {
             formatValid: boolean;
             /** Format: uuid */
             id: string;
-            imageStoragePath?: string;
-            imageUrl?: string;
             /** Format: date-time */
             lastSeenAt: string;
             location: string;
@@ -4745,6 +4786,8 @@ export interface operations {
     LprEventsController_list: {
         parameters: {
             query?: {
+                /** @description When false (default), archived LPR events are hidden from review lists. Set true to list archived events instead. */
+                archived?: boolean;
                 limit?: number;
                 status?: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
             };
@@ -4820,6 +4863,29 @@ export interface operations {
             };
         };
     };
+    LprEventsController_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventDto"];
+                };
+            };
+        };
+    };
     LprEventsController_uploadImage: {
         parameters: {
             query?: never;
@@ -4866,6 +4932,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LprDetectionEventImageSignedUrlDto"];
+                };
+            };
+        };
+    };
+    LprEventsController_unarchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprDetectionEventDto"];
                 };
             };
         };

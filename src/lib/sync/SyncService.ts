@@ -188,8 +188,12 @@ function lprDetectionEventToLocal(
     status: event.status,
     entryId: event.entryId ?? undefined,
     reviewedAt: event.reviewedAt ?? undefined,
-    imageStoragePath: event.imageStoragePath ?? existing?.imageStoragePath,
-    imageUrl: event.imageUrl ?? existing?.imageUrl,
+    // Server-authoritative fields: an explicit `null` (e.g. the retention job
+    // purged the image) must clear the local copy, not fall back to the
+    // stale cached value like the other optional fields above do.
+    imageStoragePath: event.imageStoragePath ?? undefined,
+    imageUrl: event.imageUrl ?? undefined,
+    imageDeletedAt: event.imageDeletedAt ?? undefined,
     bestCaptureId: event.bestCaptureId ?? existing?.bestCaptureId,
     candidates:
       event.candidates.length > 0
@@ -497,6 +501,10 @@ class SyncService {
    * Scans (not a `pendingOps` entry) so it also catches events pulled from
    * other operators' sessions or left over from a crashed upload — those
    * simply 404 against this machine's camera service and get skipped.
+   *
+   * Excludes events with `imageDeletedAt` set: the backend's retention job
+   * purges old photos on purpose, and a purged event still has no
+   * `imageStoragePath` — without this check every sync would re-upload it.
    */
   async pushLprDetectionEventImages(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
@@ -509,6 +517,7 @@ class SyncService {
       .filter(
         (event) =>
           !event.imageStoragePath &&
+          !event.imageDeletedAt &&
           !!event.bestCaptureId &&
           event.status !== 'suppressed_pending_event',
       )
