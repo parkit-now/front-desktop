@@ -209,8 +209,10 @@ function toUpsertPayload(
     status: event.status,
     entryId: event.entryId,
     reviewedAt: event.reviewedAt,
-    imageStoragePath: event.imageStoragePath,
-    imageUrl: event.imageUrl,
+    // imageStoragePath/imageUrl are intentionally NOT sent: the backend
+    // ignores them on upsert now (see backend PR #15) since resending our
+    // last-known local copy on every camera poll tick could resurrect a
+    // path the retention job had already purged from Storage.
     bestCaptureId: event.bestCaptureId,
     candidates: event.candidates as UpsertLprDetectionEventDto['candidates'],
   };
