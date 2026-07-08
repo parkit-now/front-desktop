@@ -2712,8 +2712,6 @@ export interface components {
             formatValid: boolean;
             /** Format: uuid */
             id: string;
-            imageStoragePath?: string;
-            imageUrl?: string;
             /** Format: date-time */
             lastSeenAt: string;
             location: string;
