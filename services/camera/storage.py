@@ -33,6 +33,7 @@ class LocalStorage:
         self._tenant_id = tenant_id
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = Lock()
+        self._closed = False
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS captures (
@@ -305,6 +306,20 @@ class LocalStorage:
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def close(self) -> None:
+        """Flush and close the SQLite connection during service shutdown."""
+        with self._lock:
+            if self._closed:
+                return
+            try:
+                self._conn.commit()
+                self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error as exc:
+                logger.warning("storage_close_checkpoint_failed", extra={"error": str(exc)})
+            finally:
+                self._conn.close()
+                self._closed = True
 
 
 def _now_iso() -> str:

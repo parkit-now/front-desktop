@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 
 export interface ServiceConfig {
@@ -13,7 +14,12 @@ const MAX_SPAWN_RETRIES = 2; // 3 total attempts (0, 1, 2)
 const RETRY_DELAY_MS = 2_000;
 const HEALTH_TIMEOUT_MS = 10_000; // per attempt
 const HEALTH_POLL_MS = 500;
-const SHUTDOWN_TIMEOUT_MS = 8_000;
+// Budget: PROCESS_LOOP_SHUTDOWN_TIMEOUT (3s, camera main.py) + watchdog.stop()
+// join (2s) + capture.stop() join (2s) + storage.close()'s WAL checkpoint,
+// bounded by sqlite3's default 5s busy_timeout if the db is briefly locked.
+const SHUTDOWN_TIMEOUT_MS = 12_000;
+const SHUTDOWN_TOKEN_ENV = 'PARKIT_SHUTDOWN_TOKEN';
+const SHUTDOWN_TOKEN_HEADER = 'X-Parkit-Shutdown-Token';
 
 /**
  * Manages the lifecycle of Python microservices spawned by Electron.
@@ -28,8 +34,14 @@ export class ServiceManager {
   private readonly processes = new Map<string, ChildProcess>();
   private readonly failed = new Set<string>();
   private readonly healthy = new Set<string>();
+  private readonly shutdownToken: string;
 
-  constructor(private readonly services: ServiceConfig[]) {}
+  constructor(
+    private readonly services: ServiceConfig[],
+    shutdownToken = randomBytes(32).toString('hex'),
+  ) {
+    this.shutdownToken = shutdownToken;
+  }
 
   spawnAll(): void {
     if (!app.isPackaged) return;
@@ -48,7 +60,11 @@ export class ServiceManager {
 
     const proc = spawn(bin, [String(svc.port)], {
       stdio: 'pipe',
-      env: { ...process.env, ...(svc.env ?? {}) },
+      env: {
+        ...process.env,
+        ...(svc.env ?? {}),
+        [SHUTDOWN_TOKEN_ENV]: this.shutdownToken,
+      },
     });
 
     proc.stdout?.on('data', (d: Buffer) =>
@@ -178,13 +194,22 @@ export class ServiceManager {
 
       proc.once('exit', finish);
 
-      fetch(`http://127.0.0.1:${svc.port}/shutdown`, { method: 'POST' }).catch(
-        (err: unknown) => {
+      fetch(`http://127.0.0.1:${svc.port}/shutdown`, {
+        method: 'POST',
+        headers: { [SHUTDOWN_TOKEN_HEADER]: this.shutdownToken },
+      })
+        .then((res) => {
+          if (!res.ok) {
+            console.warn(
+              `[${svc.name}] /shutdown rejected with HTTP ${res.status}`,
+            );
+          }
+        })
+        .catch((err: unknown) => {
           console.warn(
             `[${svc.name}] /shutdown request failed: ${(err as Error).message}`,
           );
-        },
-      );
+        });
     });
   }
 }
