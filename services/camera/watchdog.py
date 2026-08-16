@@ -89,5 +89,7 @@ class CameraWatchdog(threading.Thread):
             "reconnect_attempts": self._attempts,
         }
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 2.0) -> None:
         self._stop_event.set()
+        if threading.current_thread() is not self and self.is_alive():
+            self.join(timeout=timeout)

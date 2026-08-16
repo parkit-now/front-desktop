@@ -53,6 +53,7 @@ void app.whenReady().then(async () => {
   const failed = app.isPackaged ? await services.waitAllHealthy() : [];
 
   const win = createWindow();
+  let shuttingDownServices = false;
 
   // Once the renderer is loaded, forward any health failures so the UI can
   // show an actionable error instead of silently operating with broken services.
@@ -69,7 +70,12 @@ void app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 
-  app.on('before-quit', () => services.stopAll());
+  app.on('before-quit', (event) => {
+    if (shuttingDownServices) return;
+    event.preventDefault();
+    shuttingDownServices = true;
+    void services.stopAll().finally(() => app.quit());
+  });
 });
 
 app.on('window-all-closed', () => {

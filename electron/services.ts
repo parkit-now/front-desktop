@@ -13,6 +13,7 @@ const MAX_SPAWN_RETRIES = 2; // 3 total attempts (0, 1, 2)
 const RETRY_DELAY_MS = 2_000;
 const HEALTH_TIMEOUT_MS = 10_000; // per attempt
 const HEALTH_POLL_MS = 500;
+const SHUTDOWN_TIMEOUT_MS = 8_000;
 
 /**
  * Manages the lifecycle of Python microservices spawned by Electron.
@@ -137,9 +138,53 @@ export class ServiceManager {
     return false;
   }
 
-  stopAll(): void {
-    for (const [, proc] of this.processes) {
-      if (!proc.killed) proc.kill();
-    }
+  async stopAll(): Promise<void> {
+    await Promise.all(
+      this.services.flatMap((svc) => {
+        const proc = this.processes.get(svc.name);
+        return proc ? [this.stopOne(svc, proc)] : [];
+      }),
+    );
+    this.processes.clear();
+  }
+
+  /**
+   * Requests a graceful shutdown via the service's own /shutdown endpoint
+   * instead of an OS signal: on Windows, ChildProcess.kill() ignores the
+   * signal argument and always force-kills (TerminateProcess), which would
+   * skip the Python-side cleanup entirely on that platform. Falls back to
+   * SIGKILL if the process hasn't exited by SHUTDOWN_TIMEOUT_MS (service
+   * unresponsive, /shutdown request failed, etc).
+   */
+  private stopOne(svc: ServiceConfig, proc: ChildProcess): Promise<void> {
+    if (proc.killed || proc.exitCode !== null) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+
+      const timer = setTimeout(() => {
+        if (!proc.killed && proc.exitCode === null) {
+          console.warn(`[${svc.name}] graceful shutdown timed out; killing`);
+          proc.kill('SIGKILL');
+        }
+        finish();
+      }, SHUTDOWN_TIMEOUT_MS);
+
+      proc.once('exit', finish);
+
+      fetch(`http://127.0.0.1:${svc.port}/shutdown`, { method: 'POST' }).catch(
+        (err: unknown) => {
+          console.warn(
+            `[${svc.name}] /shutdown request failed: ${(err as Error).message}`,
+          );
+        },
+      );
+    });
   }
 }

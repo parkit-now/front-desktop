@@ -20,6 +20,7 @@ from recognizer import PlateRecognizer
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 
 _recognizer: PlateRecognizer | None = None
+_server: uvicorn.Server | None = None
 
 
 @asynccontextmanager
@@ -63,6 +64,13 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/shutdown", status_code=202)
+def shutdown():
+    if _server is not None:
+        _server.should_exit = True
+    return {"status": "shutting down"}
+
+
 @app.post("/process", response_model=ProcessResponse)
 def process_image(req: ProcessRequest):
     # Decode base64 → OpenCV image
@@ -97,4 +105,6 @@ def process_image(req: ProcessRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    _config = uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info")
+    _server = uvicorn.Server(_config)
+    _server.run()

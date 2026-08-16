@@ -33,6 +33,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from contextlib import suppress
 from datetime import datetime, timezone
 
 import cv2
@@ -137,6 +138,9 @@ _storage:      LocalStorage   | None = None
 _watchdog:     CameraWatchdog | None = None
 _motion:       MotionDetector | None = None
 _lpr_executor: ThreadPoolExecutor | None = None
+_server:       uvicorn.Server | None = None
+
+PROCESS_LOOP_SHUTDOWN_TIMEOUT = 3.0
 
 # Last successful detection — read by GET /detection/latest.
 _last_detection: dict | None = None
@@ -510,9 +514,11 @@ async def lifespan(app: FastAPI):
     yield
 
     task.cancel()
+    with suppress(asyncio.CancelledError, asyncio.TimeoutError):
+        await asyncio.wait_for(task, timeout=PROCESS_LOOP_SHUTDOWN_TIMEOUT)
     _watchdog.stop()
     _capture.stop()
-    _lpr_executor.shutdown(wait=False)
+    _lpr_executor.shutdown(wait=True, cancel_futures=True)
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -530,6 +536,21 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/shutdown", status_code=202)
+def shutdown():
+    """Trigger uvicorn's own graceful-shutdown path from inside the process.
+
+    Electron calls this instead of relying on OS signals: on Windows, Node's
+    ChildProcess.kill() ignores the signal argument and always force-kills
+    (TerminateProcess), which would skip the `lifespan` cleanup above
+    entirely. Flipping `should_exit` drives the same shutdown path uvicorn
+    uses for SIGTERM/SIGINT, and works identically on every platform.
+    """
+    if _server is not None:
+        _server.should_exit = True
+    return {"status": "shutting down"}
 
 
 @app.get("/stream/status")
@@ -677,4 +698,6 @@ def detection_latest_clear():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    _config = uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info")
+    _server = uvicorn.Server(_config)
+    _server.run()
