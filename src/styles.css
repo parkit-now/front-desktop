@@ -2593,10 +2593,10 @@ h2 {
   font-size: 14px;
 }
 
-.auto-entry-card__badge {
+.auto-entry-card__badge,
+.auto-entry-card__time {
   position: absolute;
   top: 8px;
-  right: 8px;
   padding: 3px 8px;
   border-radius: 999px;
   background: rgba(13, 19, 32, 0.65);
@@ -2606,8 +2606,16 @@ h2 {
   backdrop-filter: blur(4px);
 }
 
+.auto-entry-card__badge {
+  right: 8px;
+}
+
 .auto-entry-card__badge.warn {
   background: rgba(146, 64, 14, 0.88);
+}
+
+.auto-entry-card__time {
+  left: 8px;
 }
 
 .auto-entry-card__warning {

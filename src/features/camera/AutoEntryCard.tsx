@@ -21,6 +21,10 @@ export function AutoEntryCard({
   const [imgError, setImgError] = useState(false);
   const [imageRetry, setImageRetry] = useState(0);
   const confidencePct = Math.round(detection.confidence * 100);
+  const detectedAtLabel = new Date(detection.firstSeenAt).toLocaleTimeString(
+    'es-AR',
+    { hour: '2-digit', minute: '2-digit', hour12: false },
+  );
   const needsManualPlate =
     !detection.formatValid ||
     detection.qualityStatus === 'invalid_format' ||
@@ -65,6 +69,9 @@ export function AutoEntryCard({
             onError={() => setImgError(true)}
           />
         )}
+        <span className="auto-entry-card__time" title="Hora de detección">
+          {detectedAtLabel}
+        </span>
         <span
           className={`auto-entry-card__badge${needsManualPlate ? ' warn' : ''}`}
           title="Confianza del LPR"
