@@ -29,7 +29,6 @@ dist-electron/
 !.vscode/settings.json
 !.vscode/extensions.json
 
-<<<<<<< feat/camera
 # Services
 services/lpr/__pycache__/
 services/lpr/.build/
@@ -42,9 +41,7 @@ services/camera/.venv/
 services/camera/dist/
 services/camera/.camera.pid
 services/camera/images/
-services/camera/camera.db
-=======
+services/camera/camera.db*
 
 # Skills
 skills/
->>>>>>> develop

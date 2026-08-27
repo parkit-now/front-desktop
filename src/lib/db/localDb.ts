@@ -140,7 +140,10 @@ export interface SyncState {
   lastSyncAt: string;
 }
 
-export type PendingOpStatus = 'pending' | 'in-flight' | 'failed';
+// 'unreviewed' is for audit-only ops (e.g. a freshly-detected LPR plate the
+// operator hasn't registered/dismissed yet) — they still get pushed like any
+// other op, but are excluded from the user-facing pending-changes count.
+export type PendingOpStatus = 'unreviewed' | 'pending' | 'in-flight' | 'failed';
 export type PendingOpEntity =
   | 'rate'
   | 'entry'

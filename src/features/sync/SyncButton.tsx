@@ -31,6 +31,18 @@ export function SyncButton({ collapsed = false }: Props) {
             ? `Sincronizado ${lastSyncAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
             : 'Sincronizar';
 
+  const label = !isOnline
+    ? 'Sin conexión'
+    : isSyncing
+      ? 'Sincronizando...'
+      : syncError
+        ? 'Error al sincronizar'
+        : hasPending
+          ? 'Cambios pendientes'
+          : lastSyncAt
+            ? `Sincronizado ${lastSyncAt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
+            : 'Sincronizar';
+
   return (
     <button
       type="button"
@@ -47,7 +59,7 @@ export function SyncButton({ collapsed = false }: Props) {
         aria-hidden="true"
         className={isSyncing ? 'spin' : ''}
       />
-      {!collapsed && <span className="sync-button-label">{title}</span>}
+      {!collapsed && <span className="sync-button-label">{label}</span>}
       {!collapsed && hasPending && !isSyncing && (
         <span className="sync-badge">{pendingCount}</span>
       )}

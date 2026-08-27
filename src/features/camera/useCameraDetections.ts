@@ -4,12 +4,15 @@ import {
   localDb,
   type LocalLprDetectionEvent,
   type LprDetectionStatus,
+  type PendingOpStatus,
 } from '../../lib/db/localDb';
 import type {
   UpdateLprDetectionEventDto,
   UpsertLprDetectionEventDto,
 } from '../../lib/api/lpr-events';
 import { CAMERA_BASE_URL } from '../../lib/camera/constants';
+import { useNetwork } from '../../lib/network/NetworkContext';
+import { useSync } from '../../lib/sync/SyncContext';
 
 export { CAMERA_BASE_URL };
 export const LPR_RECENT_EXIT_SUPPRESSION_MINUTES = 30;
@@ -245,7 +248,7 @@ async function upsertCreateOp(
   if (existing?.localId != null) {
     await localDb.pendingOps.update(existing.localId, {
       payload,
-      status: 'pending',
+      status: 'unreviewed',
       error: undefined,
     });
     return;
@@ -257,7 +260,7 @@ async function upsertCreateOp(
     tenantId,
     entityId: event.id,
     payload,
-    status: 'pending',
+    status: 'unreviewed',
     createdAt: Date.now(),
     retryCount: 0,
   });
@@ -278,6 +281,14 @@ async function queueStatusUpdate(
     updatedAt: reviewedAt,
     version: event.version + 1,
   };
+
+  // Only an actual operator decision (registered/dismissed) should surface
+  // as a pending change — automatic suppression (duplicate plate, already
+  // active, recently exited) is system noise the operator never sees.
+  const opStatus: PendingOpStatus =
+    status === 'registered' || status === 'dismissed'
+      ? 'pending'
+      : 'unreviewed';
 
   await localDb.transaction(
     'rw',
@@ -300,7 +311,7 @@ async function queueStatusUpdate(
       if (createOp?.localId != null) {
         await localDb.pendingOps.update(createOp.localId, {
           payload: toUpsertPayload(next),
-          status: 'pending',
+          status: opStatus,
           error: undefined,
         });
         return;
@@ -321,7 +332,7 @@ async function queueStatusUpdate(
       if (updateOp?.localId != null) {
         await localDb.pendingOps.update(updateOp.localId, {
           payload,
-          status: 'pending',
+          status: opStatus,
           error: undefined,
         });
         return;
@@ -333,7 +344,7 @@ async function queueStatusUpdate(
         tenantId,
         entityId: event.id,
         payload,
-        status: 'pending',
+        status: opStatus,
         createdAt: Date.now(),
         retryCount: 0,
       });
@@ -423,6 +434,8 @@ export const cameraDetectionTestUtils = {
  */
 export function useCameraDetections(tenantId: string | null): CameraDetections {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const { isOnline } = useNetwork();
+  const { triggerSync } = useSync();
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), RECENT_EXIT_TICK_MS);
@@ -522,25 +535,29 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
   const dismiss = useCallback(
     (eventId: string) => {
       if (!tenantId) return;
-      void localDb.lprDetectionEvents.get(eventId).then((event) => {
+      void localDb.lprDetectionEvents.get(eventId).then(async (event) => {
         if (!event) return;
-        void queueStatusUpdate(tenantId, event, 'dismissed');
+        await queueStatusUpdate(tenantId, event, 'dismissed');
         void patchCameraEvent(eventId, 'dismissed');
+        // The operator just made a real decision — push it now instead of
+        // waiting for the next unrelated sync trigger.
+        if (isOnline) void triggerSync();
       });
     },
-    [tenantId],
+    [tenantId, isOnline, triggerSync],
   );
 
   const ack = useCallback(
     (eventId: string, entryId: string) => {
       if (!tenantId) return;
-      void localDb.lprDetectionEvents.get(eventId).then((event) => {
+      void localDb.lprDetectionEvents.get(eventId).then(async (event) => {
         if (!event) return;
-        void queueStatusUpdate(tenantId, event, 'registered', entryId);
+        await queueStatusUpdate(tenantId, event, 'registered', entryId);
         void patchCameraEvent(eventId, 'registered', entryId);
+        if (isOnline) void triggerSync();
       });
     },
-    [tenantId],
+    [tenantId, isOnline, triggerSync],
   );
 
   return { detections, dismiss, ack };

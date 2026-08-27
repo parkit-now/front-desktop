@@ -550,9 +550,15 @@ class SyncService {
   async pushPendingOps(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
+    // 'unreviewed' ops (audit-only LPR detections not yet acted on by the
+    // operator) still need to reach the backend — they're just excluded from
+    // the user-facing pending-changes count in SyncContext.
     const pending = await localDb.pendingOps
       .where('[tenantId+status]')
-      .equals([this.tenantId, 'pending'])
+      .anyOf([
+        [this.tenantId, 'pending'],
+        [this.tenantId, 'unreviewed'],
+      ])
       .sortBy('localId');
 
     for (const op of pending) {
