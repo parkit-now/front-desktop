@@ -1364,6 +1364,30 @@ h2 {
   margin-top: 7px;
 }
 
+.dt-filter-list > * + * {
+  margin-top: 7px;
+}
+
+.dt-filter-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 11px;
+  border-radius: 12px;
+  background: #f7f8fa;
+}
+
+.dt-filter-date-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #1d2939;
+  font-weight: 700;
+  font-size: 13px;
+}
+
 .dt-filter-section-header {
   width: 100%;
   min-height: 42px;
@@ -1397,6 +1421,39 @@ h2 {
   display: grid;
   gap: 2px;
   padding: 7px 8px 9px;
+}
+
+.dt-filter-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.dt-filter-search svg {
+  flex: none;
+  color: var(--color-muted);
+}
+
+.dt-filter-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.dt-filter-options-scroll {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .dt-check-row {

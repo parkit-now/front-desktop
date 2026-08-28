@@ -1,9 +1,8 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo } from 'react';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
-import { DataTable, type DataTableFilterOption } from '../data-table';
+import { DataTable } from '../data-table';
 
 interface Props {
   tenantId: string;
@@ -12,11 +11,6 @@ interface Props {
 
 function dateOnly(iso: string | undefined): string {
   return iso ? iso.slice(0, 10) : '';
-}
-
-function formatDateLabel(isoDate: string): string {
-  const [year, month, day] = isoDate.split('-');
-  return `${day}/${month}/${year}`;
 }
 
 const COLUMNS: ColumnDef<LocalEntry, unknown>[] = [
@@ -64,6 +58,7 @@ const COLUMNS: ColumnDef<LocalEntry, unknown>[] = [
     accessorFn: (row) => dateOnly(row.enteredAt),
     header: 'Ingreso',
     size: 155,
+    filterFn: 'dateRange',
     cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
   },
   {
@@ -71,6 +66,7 @@ const COLUMNS: ColumnDef<LocalEntry, unknown>[] = [
     accessorFn: (row) => dateOnly(row.leftAt),
     header: 'Egreso',
     size: 155,
+    filterFn: 'dateRange',
     cell: ({ row }) =>
       row.original.leftAt ? (
         formatArgentinaDateTime(row.original.leftAt)
@@ -138,14 +134,6 @@ const FILTERABLE_COLUMNS = [
 
 const SEARCHABLE_KEYS = ['plate', 'notes'];
 
-function buildDateOptions(dates: string[]): DataTableFilterOption[] {
-  return [...new Set(dates)]
-    .filter(Boolean)
-    .sort()
-    .reverse()
-    .map((d) => ({ value: d, label: formatDateLabel(d) }));
-}
-
 export function EntryHistoryPanel({ tenantId, userId }: Props) {
   const entries = useLiveQuery(
     () =>
@@ -163,17 +151,6 @@ export function EntryHistoryPanel({ tenantId, userId }: Props) {
     [tenantId],
   );
 
-  const filterOptionsByColumn = useMemo(() => {
-    if (!entries) return {};
-    const result: Record<string, DataTableFilterOption[]> = {
-      enteredAt: buildDateOptions(entries.map((e) => dateOnly(e.enteredAt))),
-      leftAt: buildDateOptions(
-        entries.filter((e) => e.leftAt).map((e) => dateOnly(e.leftAt)),
-      ),
-    };
-    return result;
-  }, [entries]);
-
   return (
     <DataTable
       data={entries ?? []}
@@ -183,7 +160,6 @@ export function EntryHistoryPanel({ tenantId, userId }: Props) {
       searchPlaceholder="Buscar por patente o notas…"
       searchableKeys={SEARCHABLE_KEYS}
       filterableColumns={FILTERABLE_COLUMNS}
-      filterOptionsByColumn={filterOptionsByColumn}
       initialPageSize={20}
       pageSizeOptions={[10, 20, 50, 100]}
       getRowId={(row) => row.id}

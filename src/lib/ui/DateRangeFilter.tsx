@@ -16,6 +16,10 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker, type DateRange } from 'react-day-picker';
+import {
+  POPOVER_PANEL_ATTRIBUTE,
+  useCloseOnOutsideClick,
+} from './useCloseOnOutsideClick';
 
 export type { DateRange };
 
@@ -36,11 +40,6 @@ function formatLabel(value: DateRange | undefined): string | null {
   return `${from} - ${format(value.to, 'd/M')}`;
 }
 
-/**
- * Single-day-or-range date filter, styled to match this app's design system.
- * Click one day to filter that exact day; click a second to filter the range
- * between them. Reused across every table with a date filter.
- */
 export function DateRangeFilter({
   value,
   onChange,
@@ -49,10 +48,10 @@ export function DateRangeFilter({
 }: DateRangeFilterProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const [panelStyle, setPanelStyle] = useState<CSSProperties>();
 
   const close = useCallback(() => setOpen(false), []);
+  useCloseOnOutsideClick(triggerRef, open, close);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -78,22 +77,6 @@ export function DateRangeFilter({
       window.removeEventListener('scroll', updatePosition, true);
     };
   }, [open, updatePosition]);
-
-  // The panel is portaled to document.body (escapes any overflow/z-index
-  // context), so it isn't a DOM descendant of the trigger — check both refs.
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (triggerRef.current?.contains(target)) return;
-      if (panelRef.current?.contains(target)) return;
-      close();
-    }
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    return () =>
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [open, close]);
 
   const label = formatLabel(value);
   const now = new Date();
@@ -130,7 +113,7 @@ export function DateRangeFilter({
           <div
             className="date-range-filter-panel"
             style={panelStyle}
-            ref={panelRef}
+            {...{ [POPOVER_PANEL_ATTRIBUTE]: true }}
           >
             <DayPicker
               mode="range"

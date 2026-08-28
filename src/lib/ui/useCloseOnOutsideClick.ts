@@ -1,5 +1,7 @@
 import { type RefObject, useEffect } from 'react';
 
+export const POPOVER_PANEL_ATTRIBUTE = 'data-popover-panel';
+
 export function useCloseOnOutsideClick<TElement extends HTMLElement>(
   ref: RefObject<TElement | null>,
   isOpen: boolean,
@@ -12,6 +14,12 @@ export function useCloseOnOutsideClick<TElement extends HTMLElement>(
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (ref.current?.contains(target)) return;
+      if (
+        target instanceof Element &&
+        target.closest(`[${POPOVER_PANEL_ATTRIBUTE}]`)
+      ) {
+        return;
+      }
       onClose();
     }
 
