@@ -675,7 +675,7 @@ class SyncService {
     throw new Error(`Unknown vehicle operation: ${String(op.operation)}`);
   }
 
-  private async applyRateOp(op: PendingOp): Promise<LocalRate> {
+  private async applyRateOp(op: PendingOp): Promise<LocalRate | undefined> {
     const bearer = this.accessToken;
     const tenantId = this.tenantId;
 
@@ -709,9 +709,10 @@ class SyncService {
         bearer,
       });
       await localDb.rates.delete(op.entityId);
+      return undefined;
     }
 
-    throw new Error(`Unknown rate operation: ${op.operation}`);
+    throw new Error(`Unknown rate operation: ${String(op.operation)}`);
   }
 
   private async applyEntryOp(op: PendingOp): Promise<LocalEntry> {
