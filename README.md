@@ -108,6 +108,41 @@ bun run dist   # instalador completo → dist-electron/*.dmg / *.exe / *.AppImag
 > Si los binarios Python no existen, el comando falla con un mensaje claro
 > antes de que electron-builder arranque.
 
+### Build multiplataforma (mac / win / linux)
+
+**No se puede generar el `.exe` de Windows (ni el `.AppImage` de Linux) desde
+macOS.** Los binarios de `lpr-service`/`camera-service` se compilan con
+PyInstaller, que empaqueta binarios nativos y no cross-compila — el `.exe`
+solo sale corriendo en Windows, el `.dmg` solo corriendo en macOS, etc. Por
+eso cada teammate empaqueta en su propio SO, usando el target explícito:
+
+```bash
+make dist-mac     # o: bun run dist:mac    — corre en macOS   → .dmg
+make dist-win     # o: bun run dist:win    — corre en Windows → .exe (nsis)
+make dist-linux   # o: bun run dist:linux  — corre en Linux   → .AppImage
+```
+
+Cada uno de estos targets compila primero los binarios Python nativos
+(`make services-build`) y después empaqueta con `electron-builder` solo para
+ese SO — no toca los otros targets ni requiere binarios de los otros SO.
+
+Prerrequisitos por SO:
+
+| SO      | Necesita además de `bun`/`make`/Python 3.12                             |
+| ------- | -------------------------------------------------------------------------- |
+| macOS   | Xcode Command Line Tools (`xcode-select --install`)                        |
+| Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado    |
+| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`               |
+
+CI (`.github/workflows/build-desktop.yml`) corre esta misma matriz en runners
+nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`) en
+cada tag `v*.*.*` o manualmente (`workflow_dispatch`), y sube los 3
+instaladores como artifacts. Sirve para validar el build sin depender de que
+alguien tenga las 3 máquinas — pero **no firma los binarios**: son válidos
+para pruebas internas, no para distribuir a clientes todavía (falta
+Authenticode en Windows y notarización de Apple en macOS; ver comentarios al
+final del workflow).
+
 Los binarios `lpr-service[.exe]` y `camera-service[.exe]` se copian desde
 `services/*/dist/` a `resources/` dentro del bundle via `extraResources`.
 Electron los lee desde `process.resourcesPath` al arrancar.

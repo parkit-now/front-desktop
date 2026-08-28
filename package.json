@@ -22,7 +22,10 @@
     "prepack": "node scripts/check-services.mjs",
     "pack": "bun run build && electron-builder --dir",
     "predist": "node scripts/check-services.mjs",
-    "dist": "bun run build && electron-builder"
+    "dist": "bun run build && electron-builder",
+    "dist:mac": "bun run build && node scripts/check-services.mjs mac && electron-builder --mac",
+    "dist:win": "bun run build && node scripts/check-services.mjs win && electron-builder --win",
+    "dist:linux": "bun run build && node scripts/check-services.mjs linux && electron-builder --linux"
   },
   "build": {
     "appId": "com.parkit.desktop",
