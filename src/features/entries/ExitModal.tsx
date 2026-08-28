@@ -278,12 +278,19 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           : `Egreso guardado localmente: ${entry.plate}`,
         kind: 'success',
       });
+      const effectiveReceivedAmount = receivedEntered
+        ? receivedAmount
+        : amountToCharge;
+      const effectiveChange = computeChange(
+        amountToCharge,
+        effectiveReceivedAmount,
+      );
       setReceipt({
         plate: entry.plate,
         ticketNumber: entry.ticketNumber ?? undefined,
         amountDue: amountPaid ?? 0,
-        received: isCash ? receivedAmount : undefined,
-        change: isCash ? change : undefined,
+        received: isCash ? effectiveReceivedAmount : undefined,
+        change: isCash ? effectiveChange : undefined,
         paymentMethodName: splitEnabled
           ? 'Varios medios'
           : (effectivePm?.name ?? ''),
@@ -378,7 +385,13 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             </div>
           </div>
         ) : (
-          <>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (saving || !canConfirm) return;
+              void handleConfirm();
+            }}
+          >
             <div className="exit-modal-info">
               <div className="exit-info-row">
                 <span className="muted">Ingresó</span>
@@ -551,17 +564,14 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 Cancelar
               </button>
               <button
-                type="button"
+                type="submit"
                 className="primary-button compact"
-                onClick={() => {
-                  void handleConfirm();
-                }}
                 disabled={saving || !canConfirm}
               >
                 {saving ? 'Confirmando...' : 'Confirmar cobro'}
               </button>
             </div>
-          </>
+          </form>
         )}
       </section>
     </div>
