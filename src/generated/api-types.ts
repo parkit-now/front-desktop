@@ -2026,6 +2026,8 @@ export interface components {
             rawText?: string | null;
             /** Format: date-time */
             reviewedAt?: string | null;
+            /** @description The reviewing operator's display name (falls back to email). Only resolved by the list endpoint — null elsewhere. */
+            reviewedByName?: string | null;
             /** Format: uuid */
             reviewedByUserId?: string | null;
             /** @enum {string} */
@@ -2139,6 +2141,24 @@ export interface components {
              * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
              */
             tenantId: string | null;
+        };
+        PaginatedLprDetectionEventsDto: {
+            items: components["schemas"]["LprDetectionEventDto"][];
+            /**
+             * @description Current 1-based page.
+             * @example 1
+             */
+            page: number;
+            /**
+             * @description Items per page.
+             * @example 20
+             */
+            pageSize: number;
+            /**
+             * @description Total number of events matching the query.
+             * @example 128
+             */
+            total: number;
         };
         PaginatedParkingsDto: {
             items: components["schemas"]["ParkingDto"][];
@@ -4788,7 +4808,14 @@ export interface operations {
             query?: {
                 /** @description When false (default), archived LPR events are hidden from review lists. Set true to list archived events instead. */
                 archived?: boolean;
-                limit?: number;
+                /** @description Only include events first detected at or after this timestamp (ISO 8601, inclusive). */
+                firstSeenFrom?: string;
+                /** @description Only include events first detected at or before this timestamp (ISO 8601, inclusive). */
+                firstSeenTo?: string;
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Number of items per page (capped at 100). */
+                pageSize?: number;
                 status?: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
             };
             header?: never;
@@ -4805,7 +4832,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LprDetectionEventDto"][];
+                    "application/json": components["schemas"]["PaginatedLprDetectionEventsDto"];
                 };
             };
         };
