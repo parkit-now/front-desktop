@@ -3050,6 +3050,15 @@ h2 {
   font-size: 16px;
 }
 
+.exit-rate-breakdown {
+  font-size: 12px;
+}
+
+.exit-rate-breakdown-value {
+  color: var(--color-muted);
+  text-align: right;
+}
+
 .form-label {
   display: block;
   font-size: 13px;
@@ -3590,11 +3599,11 @@ h2 {
 }
 
 .exit-split-status--short {
-  color: var(--color-warning-text);
+  color: var(--color-danger-text);
 }
 
 .exit-split-status--over {
-  color: var(--color-warning-text);
+  color: var(--color-success-text);
 }
 
 .exit-split-status--exact {

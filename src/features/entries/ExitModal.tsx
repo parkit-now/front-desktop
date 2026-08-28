@@ -404,10 +404,20 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 </span>
               </div>
               {entry.rateSnapshotName ? (
-                <div className="exit-info-row">
-                  <span className="muted">Tarifa</span>
-                  <span>{entry.rateSnapshotName}</span>
-                </div>
+                <>
+                  <div className="exit-info-row">
+                    <span className="muted">Tarifa</span>
+                    <span>{entry.rateSnapshotName}</span>
+                  </div>
+                  <div className="exit-info-row exit-rate-breakdown">
+                    <span className="muted">Precios</span>
+                    <span className="exit-rate-breakdown-value">
+                      Estadía {formatArs(stayPrice)} · Hora{' '}
+                      {formatArs(hourPrice)} · Fracción{' '}
+                      {formatArs(fractionPrice)}
+                    </span>
+                  </div>
+                </>
               ) : null}
             </div>
 
