@@ -20,7 +20,6 @@ type ActiveRow = {
   plate: string;
   vehicleBrand: string;
   vehicleModel: string;
-  vehicle: string;
   color: string;
   rate: string;
   cochera: string;
@@ -31,14 +30,12 @@ type ActiveRow = {
 };
 
 function toRow(e: LocalEntry): ActiveRow {
-  const vehicle = [e.vehicleBrand, e.vehicleModel].filter(Boolean).join(' ');
   return {
     id: e.id,
     ticketNumber: e.ticketNumber ?? null,
     plate: e.plate,
     vehicleBrand: e.vehicleBrand ?? '',
     vehicleModel: e.vehicleModel ?? '',
-    vehicle: vehicle || '—',
     color: e.color ?? '—',
     rate: e.rateSnapshotName ?? '—',
     cochera: e.cochera ?? '',
@@ -104,9 +101,16 @@ export function ActiveVehiclesDialog({
         cell: ({ row }) => <strong>{row.original.plate}</strong>,
       },
       {
-        accessorKey: 'vehicle',
-        header: 'Vehículo',
-        size: 180,
+        accessorKey: 'vehicleBrand',
+        header: 'Marca',
+        size: 110,
+        cell: ({ row }) => row.original.vehicleBrand || '—',
+      },
+      {
+        accessorKey: 'vehicleModel',
+        header: 'Modelo',
+        size: 120,
+        cell: ({ row }) => row.original.vehicleModel || '—',
       },
       {
         accessorKey: 'color',
@@ -221,7 +225,12 @@ export function ActiveVehiclesDialog({
               'cochera',
               'notes',
             ]}
-            filterableColumns={['color', 'rate']}
+            filterableColumns={[
+              'vehicleBrand',
+              'vehicleModel',
+              'color',
+              'rate',
+            ]}
             getRowId={(r) => r.id}
             initialPageSize={8}
             templateScope={{ userId, tenantId, tableKey: 'active-vehicles' }}

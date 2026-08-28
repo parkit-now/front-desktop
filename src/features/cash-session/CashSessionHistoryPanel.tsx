@@ -9,17 +9,21 @@ interface Props {
   tenantId: string;
 }
 
+const FILTERABLE_COLUMNS = ['openedAt', 'closedAt'];
+
 const COLUMNS: ColumnDef<LocalCashSession, unknown>[] = [
   {
     accessorKey: 'openedAt',
     header: 'Apertura',
     size: 160,
+    filterFn: 'dateRange',
     cell: ({ row }) => formatArgentinaDateTime(row.original.openedAt),
   },
   {
     accessorKey: 'closedAt',
     header: 'Cierre',
     size: 160,
+    filterFn: 'dateRange',
     cell: ({ row }) =>
       row.original.closedAt ? (
         formatArgentinaDateTime(row.original.closedAt)
@@ -84,6 +88,7 @@ export function CashSessionHistoryPanel({ tenantId }: Props) {
         data={sessions ?? []}
         isLoading={sessions === undefined}
         emptyMessage="No hay cajas cerradas registradas."
+        filterableColumns={FILTERABLE_COLUMNS}
       />
     </div>
   );
