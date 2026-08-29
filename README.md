@@ -129,10 +129,10 @@ ese SO — no toca los otros targets ni requiere binarios de los otros SO.
 Prerrequisitos por SO:
 
 | SO      | Necesita además de `bun`/`make`/Python 3.12                             |
-| ------- | -------------------------------------------------------------------------- |
-| macOS   | Xcode Command Line Tools (`xcode-select --install`)                        |
-| Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado    |
-| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`               |
+| ------- | ----------------------------------------------------------------------- |
+| macOS   | Xcode Command Line Tools (`xcode-select --install`)                     |
+| Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado |
+| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`            |
 
 CI (`.github/workflows/build-desktop.yml`) corre esta misma matriz en runners
 nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`) en
