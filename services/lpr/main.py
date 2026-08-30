@@ -5,21 +5,32 @@ Usage:
 """
 
 import base64
+import hmac
+import os
 import sys
 from contextlib import asynccontextmanager
 
 import cv2
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from recognizer import PlateRecognizer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+SHUTDOWN_TOKEN = os.environ.get("PARKIT_SHUTDOWN_TOKEN")
 
 _recognizer: PlateRecognizer | None = None
+_server: uvicorn.Server | None = None
+
+
+def _require_shutdown_token(token: str | None) -> None:
+    if not SHUTDOWN_TOKEN or token is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not hmac.compare_digest(token, SHUTDOWN_TOKEN):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 @asynccontextmanager
@@ -63,6 +74,14 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/shutdown", status_code=202)
+def shutdown(x_parkit_shutdown_token: str | None = Header(default=None)):
+    _require_shutdown_token(x_parkit_shutdown_token)
+    if _server is not None:
+        _server.should_exit = True
+    return {"status": "shutting down"}
+
+
 @app.post("/process", response_model=ProcessResponse)
 def process_image(req: ProcessRequest):
     # Decode base64 → OpenCV image
@@ -97,4 +116,6 @@ def process_image(req: ProcessRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    _config = uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info")
+    _server = uvicorn.Server(_config)
+    _server.run()
