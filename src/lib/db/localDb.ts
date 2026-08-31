@@ -13,6 +13,12 @@ export interface LocalRate {
   syncSeq: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Set when the backend soft-deleted the rate. Rows that arrive with it are
+   * deleted locally by `pullRates`, so in practice this is never persisted —
+   * it's kept for the same defensive reason as `LocalVehicle.deletedAt`.
+   */
+  deletedAt?: string;
 }
 
 export interface LocalEntry {
@@ -237,6 +243,11 @@ class ParkitLocalDb extends Dexie {
     // needed) — marks images purged server-side by the retention job, so
     // sync stops treating the row as still needing an image upload.
     this.version(8).stores({});
+
+    // v9: LocalRate gains `deletedAt` (no index change needed) — the backend
+    // now soft-deletes rates, so `/rates/changes` ships tombstones and
+    // `pullRates` removes them from the local copy.
+    this.version(9).stores({});
   }
 }
 

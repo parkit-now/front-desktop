@@ -181,9 +181,16 @@ export function RatesPanel({
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [errors, setErrors] = useState<FormErrors>({});
 
-  // Local-first: rates come from IndexedDB, updated reactively via Dexie
+  // Local-first: rates come from IndexedDB, updated reactively via Dexie.
+  // Soft-deleted rows are dropped by `pullRates`; filtering here too keeps a
+  // stray tombstone from ever rendering.
   const localRates = useLiveQuery(
-    () => localDb.rates.where('tenantId').equals(tenantId).sortBy('name'),
+    () =>
+      localDb.rates
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((r) => !r.deletedAt)
+        .sortBy('name'),
     [tenantId],
   );
 
