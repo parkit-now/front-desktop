@@ -34,6 +34,12 @@ const NETWORK_MESSAGE =
 // Catalogo estable de `code` provisto por el backend.
 // Fuente: backend/src/utils/exceptions/error-codes.ts
 const CODE_MESSAGES: Record<string, string> = {
+  VEHICLE_NOT_FOUND: 'No encontramos el vehículo.',
+  VEHICLE_NOT_OWNED_BY_TENANT:
+    'Este vehículo es del catálogo global: no se puede editar ni eliminar.',
+  VEHICLE_DUPLICATE: 'Ya tenés un vehículo con esa marca y modelo.',
+  VEHICLE_ALREADY_IN_GLOBAL_CATALOG:
+    'Ese vehículo ya está en el catálogo global, no hace falta cargarlo.',
   // Auth
   AUTH_INVALID_CREDENTIALS: 'Email o contraseña incorrectos.',
   AUTH_REFRESH_INVALID: 'Tu sesión expiró. Volvé a iniciar sesión.',

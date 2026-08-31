@@ -8,6 +8,7 @@ import {
   updateTenantVehicle,
   deleteTenantVehicle,
 } from '../../lib/api/vehicles';
+import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalVehicle } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
@@ -43,31 +44,30 @@ type VehicleRow = {
   model: string;
   type: string | null;
   tenantId: string | null;
+  version: number;
   syncSeq: number;
   updatedAt: string;
   createdAt: string;
   isOwn: boolean;
 };
 
+// Espeja el enum `VehicleType` del backend. `camioneta` se quitó: se pisaba con
+// `pickup` y con `suv`. Se sumaron `bici` y `camion`, que son categorías con
+// plazas asignables (ServiceCode.VEHICLE_BICYCLE / VEHICLE_TRUCK).
 const VEHICLE_TYPE_OPTIONS = [
   { value: 'auto', label: 'Auto' },
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'suv', label: 'SUV' },
-  { value: 'van', label: 'Van' },
   { value: 'moto', label: 'Moto' },
-  { value: 'camioneta', label: 'Camioneta' },
+  { value: 'bici', label: 'Bicicleta' },
+  { value: 'suv', label: 'SUV' },
+  { value: 'pickup', label: 'Pickup' },
+  { value: 'van', label: 'Utilitario' },
+  { value: 'camion', label: 'Camión' },
   { value: 'otro', label: 'Otro' },
 ];
 
-const TYPE_LABEL: Record<string, string> = {
-  auto: 'Auto',
-  pickup: 'Pickup',
-  suv: 'SUV',
-  van: 'Van',
-  moto: 'Moto',
-  camioneta: 'Camioneta',
-  otro: 'Otro',
-};
+const TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  VEHICLE_TYPE_OPTIONS.map((o) => [o.value, o.label]),
+);
 
 const ORIGIN_FILTER_OPTIONS: DataTableFilterOption[] = [
   { value: 'Global', label: 'Global' },
@@ -81,6 +81,10 @@ function localToRow(v: LocalVehicle, tenantId: string): VehicleRow {
     model: v.model,
     type: v.type ?? null,
     tenantId: v.tenantId ?? null,
+    // Las filas sincronizadas antes de la v10 del schema no la traen. El
+    // upgrade resetea el cursor para que el próximo pull las rellene; hasta
+    // entonces 1 es el valor con el que nace toda fila nueva.
+    version: v.version ?? 1,
     syncSeq: v.syncSeq,
     updatedAt: v.updatedAt,
     createdAt: v.createdAt,
@@ -187,6 +191,31 @@ export function VehiclesPanel({
     return { payload: { brand, model, type: form.type } };
   }
 
+  /**
+   * El optimistic locking del backend responde 409 cuando la `version` que
+   * mandamos quedó vieja. No se reintenta solo: reintentar pisaría el cambio de
+   * la otra persona, que es justo lo que el control de versión evita.
+   *
+   * Se cierra el editor y el diálogo porque los dos guardan una foto de la fila
+   * (id + version); si quedaran abiertos, el próximo intento repetiría la
+   * versión vieja y volvería a chocar en loop.
+   */
+  function handleApiError(error: unknown): void {
+    if (error instanceof ApiError && error.status === 409) {
+      setEditorOpen(false);
+      resetEditor();
+      setConfirmDelete(null);
+      if (isOnline) void triggerSync();
+      showToast({
+        message:
+          'El vehículo fue modificado por otra persona. Actualizamos el catálogo, revisá los datos y volvé a intentar.',
+        kind: 'error',
+      });
+      return;
+    }
+    showToast({ message: translateApiError(error), kind: 'error' });
+  }
+
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>,
   ): Promise<void> {
@@ -219,6 +248,7 @@ export function VehiclesPanel({
             model: result.model,
             type: result.type ?? undefined,
             tenantId: result.tenantId ?? undefined,
+            version: result.version,
             syncSeq: result.syncSeq,
             updatedAt: result.updatedAt,
             createdAt: result.createdAt,
@@ -234,6 +264,8 @@ export function VehiclesPanel({
                 model: payload.model,
                 type: typeValue,
                 tenantId,
+                // Provisoria: el servidor asigna la real cuando la op se sube.
+                version: 1,
                 syncSeq: 0,
                 updatedAt: now,
                 createdAt: now,
@@ -278,6 +310,7 @@ export function VehiclesPanel({
             tenantId,
             bearer: accessToken,
             id: editingVehicle.id,
+            expectedVersion: editingVehicle.version,
             body: {
               brand: payload.brand,
               model: payload.model,
@@ -288,6 +321,7 @@ export function VehiclesPanel({
             brand: result.brand,
             model: result.model,
             type: result.type ?? undefined,
+            version: result.version,
             syncSeq: result.syncSeq,
             updatedAt: result.updatedAt,
           });
@@ -307,10 +341,15 @@ export function VehiclesPanel({
                 operation: 'update',
                 tenantId,
                 entityId: editingVehicle.id,
+                // `expectedVersion` va junto al body: el backend lo exige y sin
+                // él la op vuelve con 400 al reconectar.
                 payload: {
-                  brand: payload.brand,
-                  model: payload.model,
-                  type: typeValue,
+                  expectedVersion: editingVehicle.version,
+                  body: {
+                    brand: payload.brand,
+                    model: payload.model,
+                    type: typeValue,
+                  },
                 },
                 status: 'pending',
                 createdAt: Date.now(),
@@ -329,7 +368,7 @@ export function VehiclesPanel({
       setEditorOpen(false);
       resetEditor();
     } catch (error) {
-      showToast({ message: translateApiError(error), kind: 'error' });
+      handleApiError(error);
     } finally {
       setSaving(false);
     }
@@ -344,24 +383,37 @@ export function VehiclesPanel({
           tenantId,
           bearer: accessToken,
           id: confirmDelete.id,
+          expectedVersion: confirmDelete.version,
         });
+        await localDb.vehicles.delete(confirmDelete.id);
       } else {
-        await localDb.pendingOps.add({
-          entityType: 'vehicle',
-          operation: 'delete',
-          tenantId,
-          entityId: confirmDelete.id,
-          payload: {},
-          status: 'pending',
-          createdAt: Date.now(),
-          retryCount: 0,
-        });
+        // En una transacción, igual que create y update: si el borrado local
+        // fallaba, la op quedaba encolada igual y el vehículo seguía visible.
+        await localDb.transaction(
+          'rw',
+          [localDb.vehicles, localDb.pendingOps],
+          async () => {
+            await localDb.pendingOps.add({
+              entityType: 'vehicle',
+              operation: 'delete',
+              tenantId,
+              entityId: confirmDelete.id,
+              payload: { expectedVersion: confirmDelete.version },
+              status: 'pending',
+              createdAt: Date.now(),
+              retryCount: 0,
+            });
+            await localDb.vehicles.delete(confirmDelete.id);
+          },
+        );
       }
-      await localDb.vehicles.delete(confirmDelete.id);
-      showToast({ message: 'Vehículo eliminado.', kind: 'success' });
+      showToast({
+        message: isOnline ? 'Vehículo eliminado.' : 'Baja guardada localmente.',
+        kind: 'success',
+      });
       setConfirmDelete(null);
     } catch (error) {
-      showToast({ message: translateApiError(error), kind: 'error' });
+      handleApiError(error);
     } finally {
       setSaving(false);
     }
