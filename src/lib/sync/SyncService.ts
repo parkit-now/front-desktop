@@ -147,6 +147,7 @@ function vehicleCatalogToLocal(v: VehicleCatalogItemDto): LocalVehicle {
     type: v.type ?? undefined,
     tenantId: v.tenantId ?? undefined,
     deletedAt: v.deletedAt ?? undefined,
+    version: v.version,
     syncSeq: v.syncSeq,
     updatedAt: v.updatedAt,
     createdAt: v.createdAt,
@@ -666,21 +667,32 @@ class SyncService {
       return vehicleCatalogToLocal(result);
     }
 
+    // El backend exige `expectedVersion` en PATCH y DELETE, así que el panel lo
+    // encola junto al body al guardar offline. Sin él, la op saldría con
+    // `expectedVersion=undefined` y volvería con 400.
     if (op.operation === 'update') {
-      const payload = op.payload as Parameters<
-        typeof updateTenantVehicle
-      >[0]['body'];
+      const payload = op.payload as {
+        expectedVersion: number;
+        body: Parameters<typeof updateTenantVehicle>[0]['body'];
+      };
       const result = await updateTenantVehicle({
         tenantId,
         bearer,
         id: op.entityId,
-        body: payload,
+        expectedVersion: payload.expectedVersion,
+        body: payload.body,
       });
       return vehicleCatalogToLocal(result);
     }
 
     if (op.operation === 'delete') {
-      await deleteTenantVehicle({ tenantId, bearer, id: op.entityId });
+      const payload = op.payload as { expectedVersion: number };
+      await deleteTenantVehicle({
+        tenantId,
+        bearer,
+        id: op.entityId,
+        expectedVersion: payload.expectedVersion,
+      });
       return undefined;
     }
 
@@ -848,16 +860,52 @@ class SyncService {
     throw new Error(`Unknown paymentMethod operation: ${String(op.operation)}`);
   }
 
+  /**
+   * Sincronización completa.
+   *
+   * Cada etapa corre AISLADA. Antes eran nueve `await` en secuencia y sin
+   * try/catch: la primera que fallaba abortaba todas las siguientes. Con
+   * `pullVehicleCatalog` en la octava posición, un 500 en `pullEntries` dejaba
+   * el catálogo de vehículos sin bajar — y como el formulario de ingreso exige
+   * elegir un vehículo del catálogo, el operador no podía registrar NINGÚN
+   * ingreso hasta el próximo sync exitoso. Una falla en un dato accesorio
+   * volteaba la operación entera.
+   *
+   * El orden también cambió: primero se sube lo pendiente, y enseguida van los
+   * dos catálogos que el ingreso necesita sí o sí (vehículos y tarifas). Lo
+   * accesorio queda para el final.
+   *
+   * Si alguna etapa falla se sigue con las demás y recién al terminar se lanza
+   * un error con todas las que fallaron, para que el SyncButton lo muestre.
+   */
   async fullSync(): Promise<void> {
-    await this.pushPendingOps();
-    await this.pullCashSessions();
-    await this.pullRates();
-    await this.pullEntries();
-    await this.pullLprDetectionEvents();
-    await this.pushLprDetectionEventImages();
-    await this.pullPaymentMethods();
-    await this.pullVehicleCatalog();
-    await this.pullPaymentTransactions();
+    const stages: [string, () => Promise<void>][] = [
+      ['cambios pendientes', () => this.pushPendingOps()],
+      // Los dos catálogos que bloquean el alta de ingresos van primero.
+      ['catálogo de vehículos', () => this.pullVehicleCatalog()],
+      ['tarifas', () => this.pullRates()],
+      ['métodos de pago', () => this.pullPaymentMethods()],
+      ['cajas', () => this.pullCashSessions()],
+      ['ingresos', () => this.pullEntries()],
+      ['detecciones', () => this.pullLprDetectionEvents()],
+      ['imágenes de detecciones', () => this.pushLprDetectionEventImages()],
+      ['pagos', () => this.pullPaymentTransactions()],
+    ];
+
+    const failures: string[] = [];
+
+    for (const [label, run] of stages) {
+      try {
+        await run();
+      } catch (error) {
+        failures.push(label);
+        console.error(`[sync] Falló la etapa "${label}"`, error);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`No se pudo sincronizar: ${failures.join(', ')}.`);
+    }
   }
 }
 

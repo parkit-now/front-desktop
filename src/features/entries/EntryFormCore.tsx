@@ -14,7 +14,6 @@ import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
-import { getAllStaticVehicles } from '../../lib/data/vehicleBrands';
 import { COLORS } from '../../lib/data/colors';
 import { generateUuidV7 } from './entryUtils';
 import { type LocalRate } from '../../lib/db/localDb';
@@ -421,10 +420,13 @@ export function EntryFormCore({
     const q = vehicleInput.trim().toLowerCase();
     if (!q || vehicleSelected) return [];
 
-    const source: { brand: string; model: string }[] =
-      catalogVehicles && catalogVehicles.length > 0
-        ? catalogVehicles
-        : getAllStaticVehicles();
+    // Única fuente: el catálogo sincronizado. Antes había un fallback a una
+    // lista estática de 244 modelos hardcodeada en el repo, pero era
+    // todo-o-nada: apenas había UN vehículo en la base local la lista entera se
+    // ignoraba, así que con el seed viejo (3 globales) el operador solo podía
+    // cargar Corolla, Ranger o Kangoo. El catálogo global ahora vive en la base
+    // y lo siembra una migración.
+    const source: { brand: string; model: string }[] = catalogVehicles ?? [];
 
     const modelBrands = new Map<string, Set<string>>();
     for (const v of source) {
@@ -488,15 +490,20 @@ export function EntryFormCore({
     return result;
   }, [vehicleInput, catalogVehicles, scoreMatch, vehicleSelected]);
 
+  /**
+   * El catálogo local está vacío: o nunca se sincronizó, o el pull falló. El
+   * formulario exige elegir del catálogo, así que en ese estado no se puede
+   * registrar ningún ingreso y hay que decirlo en vez de rechazar en silencio.
+   */
+  const catalogIsEmpty =
+    catalogVehicles !== undefined && catalogVehicles.length === 0;
+
   // True when the current vehicleInput query matches at least one catalog entry.
   // Independent of vehicleSelected — used to enforce catalog selection.
   const hasCatalogMatches = useMemo(() => {
     const q = vehicleInput.trim().toLowerCase();
     if (!q) return false;
-    const source =
-      catalogVehicles && catalogVehicles.length > 0
-        ? catalogVehicles
-        : getAllStaticVehicles();
+    const source = catalogVehicles ?? [];
     return source.some(
       (v) =>
         v.model.toLowerCase().includes(q) || v.brand.toLowerCase().includes(q),
@@ -752,10 +759,15 @@ export function EntryFormCore({
       setVehicleError('Ingresá el vehículo');
       ok = false;
     } else if (!vehicleSelected) {
+      // Con el catálogo vacío el input rechaza TODO, y un mensaje de "no
+      // encontrado" haría creer que el modelo no existe cuando en realidad
+      // falta sincronizar. Se distinguen los dos casos.
       setVehicleError(
-        hasCatalogMatches
-          ? 'Seleccioná un vehículo de la lista'
-          : 'Vehículo no encontrado en el catálogo',
+        catalogIsEmpty
+          ? 'El catálogo no está sincronizado. Sincronizá para cargar ingresos.'
+          : hasCatalogMatches
+            ? 'Seleccioná un vehículo de la lista'
+            : 'Vehículo no encontrado en el catálogo',
       );
       ok = false;
     }
@@ -1005,7 +1017,12 @@ export function EntryFormCore({
             <input
               ref={vehicleInputRef}
               type="text"
-              placeholder="Vehículo (ej. Bora, BMW, Toyota Hilux)"
+              placeholder={
+                catalogIsEmpty
+                  ? 'Catálogo sin sincronizar — sincronizá para cargar'
+                  : 'Vehículo (ej. Bora, BMW, Toyota Hilux)'
+              }
+              disabled={catalogIsEmpty}
               value={vehicleInput}
               onChange={(e) => {
                 handleVehicleInputChange(e.target.value);
