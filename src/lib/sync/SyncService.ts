@@ -68,6 +68,7 @@ function rateToLocal(r: RateDto): LocalRate {
     syncSeq: r.syncSeq,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    deletedAt: r.deletedAt ?? undefined,
   };
 }
 
@@ -229,12 +230,23 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      // A rate with `deletedAt` set is a tombstone: the backend soft-deleted it
+      // and this is the only signal we get that it must go. Same split as
+      // pullVehicleCatalog — without it a deleted rate would linger locally
+      // forever, still showing up and still chargeable.
+      const deleted = response.items.filter((r) => r.deletedAt != null);
+      const active = response.items.filter((r) => r.deletedAt == null);
       await localDb.transaction(
         'rw',
         localDb.rates,
         localDb.syncState,
         async () => {
-          await localDb.rates.bulkPut(response.items.map(rateToLocal));
+          if (active.length > 0) {
+            await localDb.rates.bulkPut(active.map(rateToLocal));
+          }
+          if (deleted.length > 0) {
+            await localDb.rates.bulkDelete(deleted.map((r) => r.id));
+          }
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,

@@ -1010,7 +1010,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Hard delete a rate using optimistic locking (expectedVersion) */
+        /**
+         * Soft-delete a rate using optimistic locking (expectedVersion)
+         * @description Soft-deletes the rate (sets deleted_at). The row keeps flowing through GET /rates/changes as a tombstone so offline clients can remove it from their local copy. Requires owner role.
+         */
         delete: operations["RatesController_remove"];
         options?: never;
         head?: never;
@@ -2346,6 +2349,11 @@ export interface components {
         RateDto: {
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: date-time
+             * @description Non-null when the rate has been soft-deleted. Rows with a non-null value only ever appear in GET /rates/changes, as a tombstone telling offline clients to drop the rate from their local copy.
+             */
+            deletedAt?: string;
             fractionPriceArs: number;
             hourPriceArs: number;
             /** Format: uuid */

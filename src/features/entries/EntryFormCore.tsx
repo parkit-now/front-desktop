@@ -290,12 +290,15 @@ export function EntryFormCore({
   // True when user explicitly selected a catalog suggestion (brand+model resolved).
   const [vehicleSelected, setVehicleSelected] = useState(false);
 
+  // Exclude soft-deleted rates: charging with a rate the owner took down is the
+  // whole point of the tombstone sync. `pullRates` already removes them, this is
+  // the belt-and-suspenders read.
   const activeRates = useLiveQuery(
     () =>
       localDb.rates
         .where('tenantId')
         .equals(tenantId)
-        .filter((r) => r.isActive)
+        .filter((r) => r.isActive && !r.deletedAt)
         .sortBy('name'),
     [tenantId],
   );
