@@ -36,10 +36,14 @@ help: ## Mostrar comandos disponibles
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
+# --only-binary=:all: en el install de requirements: todo el stack (numpy,
+# opencv, onnxruntime, fast-alpr) publica wheels. Si falta uno (típico: Python
+# != 3.12) queremos un error claro y al toque, no que pip caiga a compilar
+# desde source y reviente sin compilador.
 $(VENV_STAMP): requirements.txt
 	$(PYTHON_BIN) -m venv $(VENV)
 	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	$(PIP) install --only-binary=:all: -r requirements.txt
 	@touch $(VENV_STAMP)
 
 lpr-install: $(VENV_STAMP) ## Crear venv e instalar dependencias Python
