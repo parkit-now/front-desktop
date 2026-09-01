@@ -122,9 +122,16 @@ make dist-win     # o: bun run dist:win    — corre en Windows → .exe (nsis)
 make dist-linux   # o: bun run dist:linux  — corre en Linux   → .AppImage
 ```
 
-Cada uno de estos targets compila primero los binarios Python nativos
-(`make services-build`) y después empaqueta con `electron-builder` solo para
-ese SO — no toca los otros targets ni requiere binarios de los otros SO.
+Cada uno de estos targets corre primero `make doctor` (preflight de entorno),
+después compila los binarios Python nativos (`make services-build`) y por
+último empaqueta con `electron-builder` solo para ese SO — no toca los otros
+targets ni requiere binarios de los otros SO.
+
+> **`make doctor`** (podés correrlo suelto) valida en ~1 s que estén `bun`,
+> `node 22`, Python 3.12 con `venv`/`ensurepip`, `bash`, GNU make, y avisa de
+> cosas no bloqueantes (`upx`, `.env`, VS Build Tools). Falla con un mensaje
+> accionable en vez de reventar 10 min adentro del build. Si tu Python 3.12 no
+> se llama `python3.12`, el preflight te dice el `PYTHON_BIN=...` a usar.
 
 Prerrequisitos por SO:
 

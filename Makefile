@@ -9,7 +9,7 @@ ENV_LOCAL := .env.local
 ENV_PROD  := .env.production
 
 .PHONY: help install install-all dev prod build lint typecheck test format \
-        env-check env-use-local env-use-prod \
+        env-check env-use-local env-use-prod doctor \
         sync-types clean \
         services-build dist-mac dist-win dist-linux
 
@@ -90,17 +90,20 @@ env-check: ## Validar variables mínimas del .env activo
 sync-types: ## Generar tipos TypeScript desde OpenAPI
 	@bun run sync-types
 
+doctor: ## Preflight: valida que el entorno puede correr make dist-<os> (rápido, no buildea)
+	@node scripts/check-build-env.mjs
+
 services-build: ## Compilar binarios NATIVOS de lpr/camera para el SO actual (PyInstaller no cross-compila)
 	@$(MAKE) -C services/lpr lpr-build
 	@$(MAKE) -C services/camera camera-build
 
-dist-mac: services-build ## Empaquetar .dmg — solo funciona corriendo en macOS
+dist-mac: doctor services-build ## Empaquetar .dmg — solo funciona corriendo en macOS
 	@bun run dist:mac
 
-dist-win: services-build ## Empaquetar .exe (nsis) — solo funciona corriendo en Windows
+dist-win: doctor services-build ## Empaquetar .exe (nsis) — solo funciona corriendo en Windows
 	@bun run dist:win
 
-dist-linux: services-build ## Empaquetar AppImage — solo funciona corriendo en Linux
+dist-linux: doctor services-build ## Empaquetar AppImage — solo funciona corriendo en Linux
 	@bun run dist:linux
 
 clean: ## Limpiar artefactos locales
