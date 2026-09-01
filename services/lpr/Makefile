@@ -14,7 +14,9 @@ else
   PYTHON_BIN ?= python3
 endif
 PYTHON  := $(VENV_BIN)/python
-PIP     := $(VENV_BIN)/pip
+# `python -m pip` (no el wrapper pip.exe): en Windows el wrapper no puede
+# actualizarse a sí mismo con `pip install --upgrade pip`.
+PIP     := $(PYTHON) -m pip
 PORT    ?= 8765
 PIDFILE := .lpr.pid
 LOGFILE := .lpr.log
