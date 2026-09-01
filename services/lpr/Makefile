@@ -6,8 +6,15 @@ CYAN  := \033[36m
 RESET := \033[0m
 
 VENV    := .venv
-PYTHON  := $(VENV)/bin/python
-PIP     := $(VENV)/bin/pip
+ifeq ($(OS),Windows_NT)
+  VENV_BIN   := $(VENV)/Scripts
+  PYTHON_BIN ?= python
+else
+  VENV_BIN   := $(VENV)/bin
+  PYTHON_BIN ?= python3
+endif
+PYTHON  := $(VENV_BIN)/python
+PIP     := $(VENV_BIN)/pip
 PORT    ?= 8765
 PIDFILE := .lpr.pid
 LOGFILE := .lpr.log
@@ -20,13 +27,13 @@ help: ## Mostrar comandos disponibles
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
-$(VENV)/bin/activate: requirements.txt
-	python3 -m venv $(VENV)
+$(VENV_BIN)/activate: requirements.txt
+	$(PYTHON_BIN) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
-	@touch $(VENV)/bin/activate
+	@touch $(VENV_BIN)/activate
 
-lpr-install: $(VENV)/bin/activate ## Crear venv e instalar dependencias Python
+lpr-install: $(VENV_BIN)/activate ## Crear venv e instalar dependencias Python
 
 # ── Model download ────────────────────────────────────────────────────────────
 

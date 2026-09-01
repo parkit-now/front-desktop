@@ -6,9 +6,15 @@ CYAN  := \033[36m
 RESET := \033[0m
 
 VENV    := .venv
-PYTHON_BIN ?= python3.12
-PYTHON  := $(VENV)/bin/python
-PIP     := $(VENV)/bin/pip
+ifeq ($(OS),Windows_NT)
+  VENV_BIN   := $(VENV)/Scripts
+  PYTHON_BIN ?= python
+else
+  VENV_BIN   := $(VENV)/bin
+  PYTHON_BIN ?= python3.12
+endif
+PYTHON  := $(VENV_BIN)/python
+PIP     := $(VENV_BIN)/pip
 PORT    ?= 8766
 PIDFILE := .camera.pid
 LOGFILE := .camera.log
@@ -32,13 +38,13 @@ help: ## Mostrar comandos disponibles
 
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
-$(VENV)/bin/activate: requirements.txt
+$(VENV_BIN)/activate: requirements.txt
 	$(PYTHON_BIN) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
-	@touch $(VENV)/bin/activate
+	@touch $(VENV_BIN)/activate
 
-camera-install: $(VENV)/bin/activate ## Crear venv e instalar dependencias Python
+camera-install: $(VENV_BIN)/activate ## Crear venv e instalar dependencias Python
 
 # ── Development ───────────────────────────────────────────────────────────────
 
