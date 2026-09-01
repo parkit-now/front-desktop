@@ -97,14 +97,17 @@ services-build: ## Compilar binarios NATIVOS de lpr/camera para el SO actual (Py
 	@$(MAKE) -C services/lpr lpr-build
 	@$(MAKE) -C services/camera camera-build
 
+# CSC_IDENTITY_AUTO_DISCOVERY=false: mismo valor que usa CI. Todavía no hay
+# certificados, así que evitamos que electron-builder intente descubrir/usar
+# uno (los binarios quedan sin firmar, válidos para pruebas internas).
 dist-mac: doctor services-build ## Empaquetar .dmg — solo funciona corriendo en macOS
-	@bun run dist:mac
+	@CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist:mac
 
 dist-win: doctor services-build ## Empaquetar .exe (nsis) — solo funciona corriendo en Windows
-	@bun run dist:win
+	@CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist:win
 
 dist-linux: doctor services-build ## Empaquetar AppImage — solo funciona corriendo en Linux
-	@bun run dist:linux
+	@CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist:linux
 
 clean: ## Limpiar artefactos locales
 	@rm -rf dist dist-electron coverage .expo .vite

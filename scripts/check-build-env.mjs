@@ -196,6 +196,30 @@ if (target === 'win') {
   }
 }
 
+// ── Windows: permiso para crear symlinks ────────────────────────────────────
+// electron-builder extrae winCodeSign (trae rcedit) con 7za, y ese archivo
+// tiene symlinks. Sin "Modo de desarrollador" o consola de Administrador,
+// Windows rechaza la creación de symlinks y el build aborta.
+if (target === 'win' && process.platform === 'win32') {
+  const reg = run('reg', [
+    'query',
+    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock',
+    '/v',
+    'AllowDevelopmentWithoutDevLicense',
+  ]);
+  const devMode = /AllowDevelopmentWithoutDevLicense\s+REG_DWORD\s+0x1/i.test(reg || '');
+  const isAdmin = run('net', ['session']) !== null; // net session solo corre elevado
+  if (devMode || isAdmin) {
+    ok(`creación de symlinks OK (${devMode ? 'Modo de desarrollador' : 'consola de Administrador'})`);
+  } else {
+    err(
+      'no podés crear symlinks — electron-builder falla extrayendo winCodeSign. ' +
+        'Activá "Configuración → Para desarrolladores → Modo de desarrollador", ' +
+        'o corré el build desde una Git Bash abierta como Administrador',
+    );
+  }
+}
+
 // ── resumen ──────────────────────────────────────────────────────────────────
 console.log();
 if (errors > 0) {

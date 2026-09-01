@@ -135,11 +135,13 @@ targets ni requiere binarios de los otros SO.
 
 Prerrequisitos por SO:
 
-| SO      | Necesita además de `bun`/`make`/Python 3.12                             |
-| ------- | ----------------------------------------------------------------------- |
-| macOS   | Xcode Command Line Tools (`xcode-select --install`)                     |
-| Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado |
-| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`            |
+| SO      | Necesita además de `bun`/`make`/Python 3.12                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| macOS   | Xcode Command Line Tools (`xcode-select --install`)                                                                                            |
+| Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado. **Modo de desarrollador ON** (o correr el build como Administrador): electron-builder extrae `winCodeSign` con symlinks y Windows los bloquea sin ese permiso. |
+| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`                                                                                   |
+
+> Python **debe ser 3.12 exacto** (numpy 1.26.4 no publica wheels para otra minor; con 3.13+ pip cae a compilar desde source y falla). Si tu 3.12 no está como `python`, pasá `PYTHON_BIN` — p. ej. `make dist-win PYTHON_BIN="py -3.12"`. `make doctor` valida todo esto.
 
 CI (`.github/workflows/build-desktop.yml`) corre esta misma matriz en runners
 nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`) en
