@@ -93,6 +93,22 @@ export const AppSelect = React.forwardRef<AppSelectHandle, AppSelectProps>(
       }
     }, [open]);
 
+    /**
+     * Trae a la vista la opción resaltada al navegar con las flechas.
+     *
+     * Con las 8 opciones fijas del enum viejo esto era invisible: entraban
+     * enteras en los 260px de `.vehicle-suggestions`. Ahora los tipos son por
+     * estacionamiento y pueden ser N, así que sin esto el highlight se camina
+     * fuera de pantalla y el usuario navega a ciegas.
+     */
+    useEffect(() => {
+      if (!open) return;
+      const item = listRef.current?.children[highlighted];
+      if (item instanceof HTMLElement) {
+        item.scrollIntoView({ block: 'nearest' });
+      }
+    }, [highlighted, open]);
+
     // Close on outside click
     useEffect(() => {
       if (!open) return;
@@ -108,11 +124,46 @@ export const AppSelect = React.forwardRef<AppSelectHandle, AppSelectProps>(
       return () => document.removeEventListener('mousedown', handleOutside);
     }, [open]);
 
-    // Close on scroll (dropdown would drift)
+    /**
+     * El dropdown vive en un portal con `position: fixed`, así que hay que
+     * reacomodarlo cuando algo se mueve debajo.
+     *
+     * Antes esto simplemente cerraba la lista en cualquier scroll, y como el
+     * listener corre en CAPTURA también veía el scroll de sus propios hijos:
+     * scrollear dentro de la lista de opciones la cerraba en la cara del
+     * usuario. Ahora se ignora el scroll interno y se reposiciona en vez de
+     * cerrar, que además es mejor que perder la selección a mitad de camino.
+     */
     useEffect(() => {
       if (!open) return;
-      window.addEventListener('scroll', closeDropdown, true);
-      return () => window.removeEventListener('scroll', closeDropdown, true);
+
+      function handleReposition(event: Event) {
+        if (
+          event.target instanceof Node &&
+          listRef.current?.contains(event.target)
+        ) {
+          return;
+        }
+
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        // Si el campo se fue de la pantalla, un dropdown flotando solo sería
+        // un huérfano: ahí sí conviene cerrarlo.
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+          closeDropdown();
+          return;
+        }
+
+        calcPosition();
+      }
+
+      window.addEventListener('scroll', handleReposition, true);
+      window.addEventListener('resize', handleReposition);
+      return () => {
+        window.removeEventListener('scroll', handleReposition, true);
+        window.removeEventListener('resize', handleReposition);
+      };
     }, [open]);
 
     function handleKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {

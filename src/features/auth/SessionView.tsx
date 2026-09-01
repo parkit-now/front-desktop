@@ -5,6 +5,7 @@ import {
   CreditCard,
   DollarSign,
   Home,
+  Layers,
   Truck,
   Archive,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
 import { RatesPanel } from '../rates/RatesPanel';
 import { VehiclesPanel } from '../vehicles/VehiclesPanel';
+import { VehicleTypesPanel } from '../vehicle-types/VehicleTypesPanel';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
 import { LprStatusIndicator } from '../lpr/LprStatusIndicator';
@@ -51,6 +53,7 @@ type WorkspaceSection =
   | 'historial'
   | 'payment-methods'
   | 'vehicles'
+  | 'vehicle-types'
   | 'caja';
 
 function asNonEmptyString(value: unknown): string | null {
@@ -375,6 +378,7 @@ export function SessionView({ session }: Props) {
     rates: 'Gestión de Tasas',
     'payment-methods': 'Métodos de Pago',
     vehicles: 'Catálogo de Vehículos',
+    'vehicle-types': 'Tipos de Vehículo',
     caja: 'Caja',
   };
 
@@ -384,6 +388,7 @@ export function SessionView({ session }: Props) {
     if (s === 'historial') return <Car size={20} aria-hidden />;
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
+    if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
@@ -481,6 +486,17 @@ export function SessionView({ session }: Props) {
               >
                 <Truck size={18} aria-hidden="true" />
                 {!sidebarCollapsed ? <span>Vehículos</span> : null}
+              </button>
+            ) : null}
+
+            {canShowRatesNav ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'vehicle-types' ? 'active' : ''}`}
+                onClick={() => setSection('vehicle-types')}
+              >
+                <Layers size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Tipos de vehículo</span> : null}
               </button>
             ) : null}
           </nav>
@@ -620,6 +636,22 @@ export function SessionView({ session }: Props) {
                   <p className="muted">
                     Seleccioná un estacionamiento para ver el catálogo de
                     vehículos.
+                  </p>
+                </section>
+              )
+            ) : section === 'vehicle-types' ? (
+              activeTenantId ? (
+                <VehicleTypesPanel
+                  accessToken={session.access_token}
+                  tenantId={activeTenantId}
+                  canManage={ratesManageAllowed}
+                />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para ver los tipos de
+                    vehículo.
                   </p>
                 </section>
               )

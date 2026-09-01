@@ -1,3 +1,4 @@
+import { splitTombstones } from './tombstones';
 import {
   type LocalCashSession,
   type LocalEntry,
@@ -6,6 +7,7 @@ import {
   type LocalPaymentTransaction,
   type LocalRate,
   type LocalVehicle,
+  type LocalVehicleType,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -23,12 +25,19 @@ import {
   type RateDto,
 } from '../api/rates';
 import {
-  pullVehicleCatalog,
+  pullVehicleChanges,
   createTenantVehicle,
   updateTenantVehicle,
   deleteTenantVehicle,
-  type VehicleCatalogItemDto,
+  type VehicleDto,
 } from '../api/vehicles';
+import {
+  createVehicleType,
+  deleteVehicleType,
+  pullVehicleTypeChanges,
+  updateVehicleType,
+  type VehicleTypeDto,
+} from '../api/vehicle-types';
 import {
   createPaymentMethod,
   deletePaymentMethod,
@@ -139,17 +148,32 @@ function paymentTransactionToLocal(
   };
 }
 
-function vehicleCatalogToLocal(v: VehicleCatalogItemDto): LocalVehicle {
+export function vehicleToLocal(v: VehicleDto): LocalVehicle {
   return {
     id: v.id,
     brand: v.brand,
     model: v.model,
-    type: v.type ?? undefined,
-    tenantId: v.tenantId ?? undefined,
+    typeId: v.typeId,
+    tenantId: v.tenantId,
     deletedAt: v.deletedAt ?? undefined,
+    version: v.version,
     syncSeq: v.syncSeq,
     updatedAt: v.updatedAt,
     createdAt: v.createdAt,
+  };
+}
+
+export function vehicleTypeToLocal(t: VehicleTypeDto): LocalVehicleType {
+  return {
+    id: t.id,
+    tenantId: t.tenantId,
+    name: t.name,
+    accepted: t.accepted,
+    deletedAt: t.deletedAt ?? undefined,
+    version: t.version,
+    syncSeq: t.syncSeq,
+    updatedAt: t.updatedAt,
+    createdAt: t.createdAt,
   };
 }
 
@@ -232,10 +256,9 @@ class SyncService {
     if (response.items.length > 0) {
       // A rate with `deletedAt` set is a tombstone: the backend soft-deleted it
       // and this is the only signal we get that it must go. Same split as
-      // pullVehicleCatalog — without it a deleted rate would linger locally
+      // pullVehicles — without it a deleted rate would linger locally
       // forever, still showing up and still chargeable.
-      const deleted = response.items.filter((r) => r.deletedAt != null);
-      const active = response.items.filter((r) => r.deletedAt == null);
+      const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
         'rw',
         localDb.rates,
@@ -299,7 +322,54 @@ class SyncService {
     }
   }
 
-  async pullVehicleCatalog(): Promise<void> {
+  /**
+   * Feed de tipos de vehículo. Molde idéntico al del catálogo: split de
+   * tombstones, `bulkPut` de lo activo y `bulkDelete` de las bajas.
+   */
+  async pullVehicleTypes(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const tenantId = this.tenantId;
+    const stateKey = `vehicleTypes:${tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullVehicleTypeChanges({
+      tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      const { active, deleted } = splitTombstones(response.items);
+      await localDb.transaction(
+        'rw',
+        localDb.vehicleTypes,
+        localDb.syncState,
+        async () => {
+          if (active.length > 0) {
+            await localDb.vehicleTypes.bulkPut(active.map(vehicleTypeToLocal));
+          }
+          if (deleted.length > 0) {
+            await localDb.vehicleTypes.bulkDelete(deleted.map((t) => t.id));
+          }
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  async pullVehicles(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
     const tenantId = this.tenantId;
@@ -307,22 +377,21 @@ class SyncService {
     const state = await localDb.syncState.get(stateKey);
     const afterSeq = state?.lastSeq ?? 0;
 
-    const response = await pullVehicleCatalog({
+    const response = await pullVehicleChanges({
       tenantId,
       bearer: this.accessToken,
       query: { afterSeq },
     });
 
     if (response.items.length > 0) {
-      const deleted = response.items.filter((v) => v.deletedAt != null);
-      const active = response.items.filter((v) => v.deletedAt == null);
+      const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
         'rw',
         localDb.vehicles,
         localDb.syncState,
         async () => {
           if (active.length > 0) {
-            await localDb.vehicles.bulkPut(active.map(vehicleCatalogToLocal));
+            await localDb.vehicles.bulkPut(active.map(vehicleToLocal));
           }
           if (deleted.length > 0) {
             await localDb.vehicles.bulkDelete(deleted.map((v) => v.id));
@@ -583,6 +652,7 @@ class SyncService {
           | LocalEntry
           | LocalPaymentMethod
           | LocalVehicle
+          | LocalVehicleType
           | LocalCashSession
           | LocalLprDetectionEvent
           | undefined;
@@ -593,6 +663,8 @@ class SyncService {
           serverEntity = await this.applyEntryOp(op);
         } else if (op.entityType === 'vehicle') {
           serverEntity = await this.applyVehicleOp(op);
+        } else if (op.entityType === 'vehicleType') {
+          serverEntity = await this.applyVehicleTypeOp(op);
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
@@ -608,6 +680,7 @@ class SyncService {
             localDb.rates,
             localDb.entries,
             localDb.vehicles,
+            localDb.vehicleTypes,
             localDb.paymentMethods,
             localDb.cashSessions,
             localDb.lprDetectionEvents,
@@ -622,6 +695,10 @@ class SyncService {
                 await localDb.entries.put(serverEntity as LocalEntry);
               } else if (op.entityType === 'vehicle') {
                 await localDb.vehicles.put(serverEntity as LocalVehicle);
+              } else if (op.entityType === 'vehicleType') {
+                await localDb.vehicleTypes.put(
+                  serverEntity as LocalVehicleType,
+                );
               } else if (op.entityType === 'paymentMethod') {
                 await localDb.paymentMethods.put(
                   serverEntity as LocalPaymentMethod,
@@ -663,28 +740,95 @@ class SyncService {
         bearer,
         body: payload,
       });
-      return vehicleCatalogToLocal(result);
+      return vehicleToLocal(result);
     }
 
+    // El backend exige `expectedVersion` en PATCH y DELETE, así que el panel lo
+    // encola junto al body al guardar offline. Sin él, la op saldría con
+    // `expectedVersion=undefined` y volvería con 400.
     if (op.operation === 'update') {
-      const payload = op.payload as Parameters<
-        typeof updateTenantVehicle
-      >[0]['body'];
+      const payload = op.payload as {
+        expectedVersion: number;
+        body: Parameters<typeof updateTenantVehicle>[0]['body'];
+      };
       const result = await updateTenantVehicle({
         tenantId,
         bearer,
-        id: op.entityId,
-        body: payload,
+        vehicleId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+        body: payload.body,
       });
-      return vehicleCatalogToLocal(result);
+      return vehicleToLocal(result);
     }
 
     if (op.operation === 'delete') {
-      await deleteTenantVehicle({ tenantId, bearer, id: op.entityId });
+      const payload = op.payload as { expectedVersion: number };
+      await deleteTenantVehicle({
+        tenantId,
+        bearer,
+        vehicleId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+      });
       return undefined;
     }
 
     throw new Error(`Unknown vehicle operation: ${String(op.operation)}`);
+  }
+
+  /**
+   * Calcado de `applyVehicleOp`.
+   *
+   * OJO: el borrado NO acepta `reassignToTypeId` acá. Borrar un tipo en uso son
+   * dos llamadas dependientes con un bulk update del lado del servidor, y su
+   * modo de falla offline es una divergencia silenciosa entre los `typeId`
+   * locales y los del backend. El panel gatea esa acción con `isOnline`; altas,
+   * renombres y borrados simples (0 vehículos) sí funcionan offline.
+   */
+  private async applyVehicleTypeOp(
+    op: PendingOp,
+  ): Promise<LocalVehicleType | undefined> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+
+    if (op.operation === 'create') {
+      const payload = op.payload as Parameters<
+        typeof createVehicleType
+      >[0]['body'];
+      const result = await createVehicleType({
+        tenantId,
+        bearer,
+        body: payload,
+      });
+      return vehicleTypeToLocal(result);
+    }
+
+    if (op.operation === 'update') {
+      const payload = op.payload as {
+        expectedVersion: number;
+        body: Parameters<typeof updateVehicleType>[0]['body'];
+      };
+      const result = await updateVehicleType({
+        tenantId,
+        bearer,
+        typeId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+        body: payload.body,
+      });
+      return vehicleTypeToLocal(result);
+    }
+
+    if (op.operation === 'delete') {
+      const payload = op.payload as { expectedVersion: number };
+      await deleteVehicleType({
+        tenantId,
+        bearer,
+        typeId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+      });
+      return undefined;
+    }
+
+    throw new Error(`Unknown vehicleType operation: ${String(op.operation)}`);
   }
 
   private async applyRateOp(op: PendingOp): Promise<LocalRate | undefined> {
@@ -848,16 +992,61 @@ class SyncService {
     throw new Error(`Unknown paymentMethod operation: ${String(op.operation)}`);
   }
 
+  /**
+   * Sincronización completa.
+   *
+   * Cada etapa corre AISLADA. Antes eran nueve `await` en secuencia y sin
+   * try/catch: la primera que fallaba abortaba todas las siguientes. Con
+   * `pullVehicles` en la octava posición, un 500 en `pullEntries` dejaba
+   * el catálogo de vehículos sin bajar — y como el formulario de ingreso exige
+   * elegir un vehículo del catálogo, el operador no podía registrar NINGÚN
+   * ingreso hasta el próximo sync exitoso. Una falla en un dato accesorio
+   * volteaba la operación entera.
+   *
+   * El orden también cambió: primero se sube lo pendiente, y enseguida van los
+   * dos catálogos que el ingreso necesita sí o sí (vehículos y tarifas). Lo
+   * accesorio queda para el final.
+   *
+   * Si alguna etapa falla se sigue con las demás y recién al terminar se lanza
+   * un error con todas las que fallaron, para que el SyncButton lo muestre.
+   */
   async fullSync(): Promise<void> {
-    await this.pushPendingOps();
-    await this.pullCashSessions();
-    await this.pullRates();
-    await this.pullEntries();
-    await this.pullLprDetectionEvents();
-    await this.pushLprDetectionEventImages();
-    await this.pullPaymentMethods();
-    await this.pullVehicleCatalog();
-    await this.pullPaymentTransactions();
+    const stages: [string, () => Promise<void>][] = [
+      ['cambios pendientes', () => this.pushPendingOps()],
+      // Los dos catálogos que bloquean el alta de ingresos van primero.
+      //
+      // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así
+      // que si los tipos fallan pero los vehículos entran, cada fila aterriza
+      // con una FK que no resuelve y la columna Tipo se va a "—" en bloque —
+      // que se lee como "me borraron las categorías". Las etapas son
+      // independientes a propósito, así que esto achica la ventana, no la
+      // elimina: el panel igual tiene que renderizar con gracia un typeId
+      // irresoluble.
+      ['tipos de vehículo', () => this.pullVehicleTypes()],
+      ['catálogo de vehículos', () => this.pullVehicles()],
+      ['tarifas', () => this.pullRates()],
+      ['métodos de pago', () => this.pullPaymentMethods()],
+      ['cajas', () => this.pullCashSessions()],
+      ['ingresos', () => this.pullEntries()],
+      ['detecciones', () => this.pullLprDetectionEvents()],
+      ['imágenes de detecciones', () => this.pushLprDetectionEventImages()],
+      ['pagos', () => this.pullPaymentTransactions()],
+    ];
+
+    const failures: string[] = [];
+
+    for (const [label, run] of stages) {
+      try {
+        await run();
+      } catch (error) {
+        failures.push(label);
+        console.error(`[sync] Falló la etapa "${label}"`, error);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`No se pudo sincronizar: ${failures.join(', ')}.`);
+    }
   }
 }
 
