@@ -1,6 +1,9 @@
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
+# Si una receta falla, borrar el target a medio generar (p. ej. el stamp del
+# venv) para que la próxima corrida reintente en vez de darlo por hecho.
+.DELETE_ON_ERROR:
 
 CYAN  := \033[36m
 RESET := \033[0m
@@ -17,6 +20,10 @@ PYTHON  := $(VENV_BIN)/python
 # `python -m pip` (no el wrapper pip.exe): en Windows el wrapper no puede
 # actualizarse a sí mismo con `pip install --upgrade pip`.
 PIP     := $(PYTHON) -m pip
+# Marcador propio: se toca SOLO tras instalar deps OK. No usamos
+# $(VENV_BIN)/activate porque `python -m venv` lo crea antes del `pip install`,
+# y un install fallido dejaba el target "al día" salteando las deps.
+VENV_STAMP := $(VENV)/.deps-installed
 PORT    ?= 8765
 PIDFILE := .lpr.pid
 LOGFILE := .lpr.log
@@ -29,13 +36,13 @@ help: ## Mostrar comandos disponibles
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
-$(VENV_BIN)/activate: requirements.txt
+$(VENV_STAMP): requirements.txt
 	$(PYTHON_BIN) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
-	@touch $(VENV_BIN)/activate
+	@touch $(VENV_STAMP)
 
-lpr-install: $(VENV_BIN)/activate ## Crear venv e instalar dependencias Python
+lpr-install: $(VENV_STAMP) ## Crear venv e instalar dependencias Python
 
 # ── Model download ────────────────────────────────────────────────────────────
 
