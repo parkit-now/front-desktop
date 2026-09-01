@@ -256,7 +256,7 @@ class SyncService {
     if (response.items.length > 0) {
       // A rate with `deletedAt` set is a tombstone: the backend soft-deleted it
       // and this is the only signal we get that it must go. Same split as
-      // pullVehicleCatalog — without it a deleted rate would linger locally
+      // pullVehicles — without it a deleted rate would linger locally
       // forever, still showing up and still chargeable.
       const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
@@ -369,7 +369,7 @@ class SyncService {
     }
   }
 
-  async pullVehicleCatalog(): Promise<void> {
+  async pullVehicles(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
     const tenantId = this.tenantId;
@@ -997,7 +997,7 @@ class SyncService {
    *
    * Cada etapa corre AISLADA. Antes eran nueve `await` en secuencia y sin
    * try/catch: la primera que fallaba abortaba todas las siguientes. Con
-   * `pullVehicleCatalog` en la octava posición, un 500 en `pullEntries` dejaba
+   * `pullVehicles` en la octava posición, un 500 en `pullEntries` dejaba
    * el catálogo de vehículos sin bajar — y como el formulario de ingreso exige
    * elegir un vehículo del catálogo, el operador no podía registrar NINGÚN
    * ingreso hasta el próximo sync exitoso. Una falla en un dato accesorio
@@ -1023,7 +1023,7 @@ class SyncService {
       // elimina: el panel igual tiene que renderizar con gracia un typeId
       // irresoluble.
       ['tipos de vehículo', () => this.pullVehicleTypes()],
-      ['catálogo de vehículos', () => this.pullVehicleCatalog()],
+      ['catálogo de vehículos', () => this.pullVehicles()],
       ['tarifas', () => this.pullRates()],
       ['métodos de pago', () => this.pullPaymentMethods()],
       ['cajas', () => this.pullCashSessions()],
