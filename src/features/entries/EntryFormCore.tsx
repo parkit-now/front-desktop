@@ -302,10 +302,22 @@ export function EntryFormCore({
     [tenantId],
   );
 
-  // Catalog vehicles visible to this tenant (global + own). Exclude soft-deleted.
+  // Catálogo de ESTE estacionamiento, sin bajas lógicas.
+  //
+  // Antes esta query no filtraba por tenant y las deps estaban vacías. Eran dos
+  // bugs en uno: al cambiar de estacionamiento sin limpiar IndexedDB el
+  // operador veía el catálogo ajeno —y como el formulario OBLIGA a elegir del
+  // catálogo, un pick errado escribía el snapshot de marca/modelo de otra playa
+  // en un ingreso real— y con `deps: []` la query ni siquiera se re-ejecutaba
+  // al cambiar de tenant. `VehiclesPanel` ya lo hacía bien; era asimetría pura.
   const catalogVehicles = useLiveQuery(
-    () => localDb.vehicles.filter((v) => !v.deletedAt).toArray(),
-    [],
+    () =>
+      localDb.vehicles
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((v) => !v.deletedAt)
+        .toArray(),
+    [tenantId],
   );
 
   useEffect(() => {

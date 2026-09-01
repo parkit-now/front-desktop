@@ -2,7 +2,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable, type DataTableFilterOption } from '../data-table';
+import { DataTable } from '../data-table';
 import {
   createTenantVehicle,
   updateTenantVehicle,
@@ -17,6 +17,7 @@ import { useSync } from '../../lib/sync/SyncContext';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { generateUuidV7 } from '../entries/entryUtils';
+import { vehicleToLocal } from '../../lib/sync/SyncService';
 
 type Props = {
   accessToken: string;
@@ -30,74 +31,46 @@ type EditorMode = 'create' | 'edit';
 type FormState = {
   brand: string;
   model: string;
-  type: string;
+  /** Id del tipo. El tipo es obligatorio: nunca queda un vehículo sin tipo. */
+  typeId: string;
 };
 
 type FormErrors = {
   brand?: string;
   model?: string;
+  typeId?: string;
 };
 
 type VehicleRow = {
   id: string;
   brand: string;
   model: string;
-  type: string | null;
-  tenantId: string | null;
+  typeId: string;
   version: number;
   syncSeq: number;
   updatedAt: string;
   createdAt: string;
-  isOwn: boolean;
 };
 
-// Espeja el enum `VehicleType` del backend. `camioneta` se quitó: se pisaba con
-// `pickup` y con `suv`. Se sumaron `bici` y `camion`, que son categorías con
-// plazas asignables (ServiceCode.VEHICLE_BICYCLE / VEHICLE_TRUCK).
-const VEHICLE_TYPE_OPTIONS = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'moto', label: 'Moto' },
-  { value: 'bici', label: 'Bicicleta' },
-  { value: 'suv', label: 'SUV' },
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'van', label: 'Utilitario' },
-  { value: 'camion', label: 'Camión' },
-  { value: 'otro', label: 'Otro' },
-];
-
-const TYPE_LABEL: Record<string, string> = Object.fromEntries(
-  VEHICLE_TYPE_OPTIONS.map((o) => [o.value, o.label]),
-);
-
-const ORIGIN_FILTER_OPTIONS: DataTableFilterOption[] = [
-  { value: 'Global', label: 'Global' },
-  { value: 'Propio', label: 'Propio' },
-];
-
-function localToRow(v: LocalVehicle, tenantId: string): VehicleRow {
+function localToRow(v: LocalVehicle): VehicleRow {
   return {
     id: v.id,
     brand: v.brand,
     model: v.model,
-    type: v.type ?? null,
-    tenantId: v.tenantId ?? null,
-    // Las filas sincronizadas antes de la v10 del schema no la traen. El
-    // upgrade resetea el cursor para que el próximo pull las rellene; hasta
-    // entonces 1 es el valor con el que nace toda fila nueva.
-    version: v.version ?? 1,
+    typeId: v.typeId,
+    version: v.version,
     syncSeq: v.syncSeq,
     updatedAt: v.updatedAt,
     createdAt: v.createdAt,
-    isOwn: v.tenantId === tenantId,
   };
 }
 
 function emptyForm(): FormState {
-  return { brand: '', model: '', type: '' };
+  return { brand: '', model: '', typeId: '' };
 }
 
 function fromRow(v: VehicleRow): FormState {
-  return { brand: v.brand, model: v.model, type: v.type ?? '' };
+  return { brand: v.brand, model: v.model, typeId: v.typeId };
 }
 
 export function VehiclesPanel({
@@ -117,17 +90,45 @@ export function VehiclesPanel({
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [errors, setErrors] = useState<FormErrors>({});
 
+  // `.where()` indexado en vez de un scan de tabla completa. Y se cae el
+  // `!v.tenantId ||` que dejaba pasar los globales: ya no existen.
   const localVehicles = useLiveQuery(
     () =>
       localDb.vehicles
-        .filter((v) => !v.deletedAt && (!v.tenantId || v.tenantId === tenantId))
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((v) => !v.deletedAt)
         .toArray(),
     [tenantId],
   );
 
+  const localTypes = useLiveQuery(
+    () =>
+      localDb.vehicleTypes
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((t) => !t.deletedAt)
+        .toArray(),
+    [tenantId],
+  );
+
+  const typeOptions = useMemo(
+    () =>
+      (localTypes ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        .map((t) => ({ value: t.id, label: t.name })),
+    [localTypes],
+  );
+
+  const typeNameById = useMemo(
+    () => new Map((localTypes ?? []).map((t) => [t.id, t.name])),
+    [localTypes],
+  );
+
   const vehicles: VehicleRow[] = useMemo(
-    () => (localVehicles ?? []).map((v) => localToRow(v, tenantId)),
-    [localVehicles, tenantId],
+    () => (localVehicles ?? []).map(localToRow),
+    [localVehicles],
   );
 
   const loading = localVehicles === undefined || isSyncing;
@@ -170,7 +171,7 @@ export function VehiclesPanel({
   }
 
   function beginEdit(v: VehicleRow): void {
-    if (!canManage || !v.isOwn) return;
+    if (!canManage) return;
     setEditorMode('edit');
     setEditingVehicle(v);
     setForm(fromRow(v));
@@ -186,9 +187,12 @@ export function VehiclesPanel({
     else if (brand.length > 120) nextErrors.brand = 'Máximo 120 caracteres.';
     if (model.length === 0) nextErrors.model = 'El modelo es obligatorio.';
     else if (model.length > 120) nextErrors.model = 'Máximo 120 caracteres.';
+    // Obligatorio: borrar un tipo fuerza a reasignar, así que un vehículo nunca
+    // queda sin tipo. "Otro" es el balde para lo que no encaja.
+    if (form.typeId === '') nextErrors.typeId = 'Elegí un tipo de vehículo.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return {};
-    return { payload: { brand, model, type: form.type } };
+    return { payload: { brand, model, typeId: form.typeId } };
   }
 
   /**
@@ -224,8 +228,6 @@ export function VehiclesPanel({
     const { payload } = validateForm();
     if (!payload) return;
 
-    const typeValue = payload.type || undefined;
-
     setSaving(true);
     try {
       if (editorMode === 'create') {
@@ -239,20 +241,10 @@ export function VehiclesPanel({
               id,
               brand: payload.brand,
               model: payload.model,
-              type: typeValue,
+              typeId: payload.typeId,
             },
           });
-          await localDb.vehicles.put({
-            id: result.id,
-            brand: result.brand,
-            model: result.model,
-            type: result.type ?? undefined,
-            tenantId: result.tenantId ?? undefined,
-            version: result.version,
-            syncSeq: result.syncSeq,
-            updatedAt: result.updatedAt,
-            createdAt: result.createdAt,
-          });
+          await localDb.vehicles.put(vehicleToLocal(result));
         } else {
           await localDb.transaction(
             'rw',
@@ -262,7 +254,7 @@ export function VehiclesPanel({
                 id,
                 brand: payload.brand,
                 model: payload.model,
-                type: typeValue,
+                typeId: payload.typeId,
                 tenantId,
                 // Provisoria: el servidor asigna la real cuando la op se sube.
                 version: 1,
@@ -279,7 +271,7 @@ export function VehiclesPanel({
                   id,
                   brand: payload.brand,
                   model: payload.model,
-                  type: typeValue,
+                  typeId: payload.typeId,
                 },
                 status: 'pending',
                 createdAt: Date.now(),
@@ -299,7 +291,7 @@ export function VehiclesPanel({
         const changed =
           payload.brand !== editingVehicle.brand ||
           payload.model !== editingVehicle.model ||
-          (typeValue ?? null) !== editingVehicle.type;
+          payload.typeId !== editingVehicle.typeId;
         if (!changed) {
           showToast({ message: 'No hay cambios para guardar.', kind: 'info' });
           setSaving(false);
@@ -309,18 +301,18 @@ export function VehiclesPanel({
           const result = await updateTenantVehicle({
             tenantId,
             bearer: accessToken,
-            id: editingVehicle.id,
+            vehicleId: editingVehicle.id,
             expectedVersion: editingVehicle.version,
             body: {
               brand: payload.brand,
               model: payload.model,
-              type: typeValue,
+              typeId: payload.typeId,
             },
           });
           await localDb.vehicles.update(editingVehicle.id, {
             brand: result.brand,
             model: result.model,
-            type: result.type ?? undefined,
+            typeId: result.typeId,
             version: result.version,
             syncSeq: result.syncSeq,
             updatedAt: result.updatedAt,
@@ -333,7 +325,7 @@ export function VehiclesPanel({
               await localDb.vehicles.update(editingVehicle.id, {
                 brand: payload.brand,
                 model: payload.model,
-                type: typeValue,
+                typeId: payload.typeId,
                 updatedAt: now,
               });
               await localDb.pendingOps.add({
@@ -348,7 +340,7 @@ export function VehiclesPanel({
                   body: {
                     brand: payload.brand,
                     model: payload.model,
-                    type: typeValue,
+                    typeId: payload.typeId,
                   },
                 },
                 status: 'pending',
@@ -382,7 +374,7 @@ export function VehiclesPanel({
         await deleteTenantVehicle({
           tenantId,
           bearer: accessToken,
-          id: confirmDelete.id,
+          vehicleId: confirmDelete.id,
           expectedVersion: confirmDelete.version,
         });
         await localDb.vehicles.delete(confirmDelete.id);
@@ -436,25 +428,11 @@ export function VehiclesPanel({
       {
         id: 'type',
         header: 'Tipo',
-        accessorFn: (v) => (v.type ? (TYPE_LABEL[v.type] ?? v.type) : '—'),
-        size: 120,
-        cell: ({ row }) =>
-          row.original.type
-            ? (TYPE_LABEL[row.original.type] ?? row.original.type)
-            : '—',
-      },
-      {
-        id: 'origin',
-        header: 'Origen',
-        accessorFn: (v) => (v.isOwn ? 'Propio' : 'Global'),
-        size: 110,
-        cell: ({ row }) => (
-          <span
-            className={`status-badge ${row.original.isOwn ? 'status-ok' : 'status-muted'}`}
-          >
-            {row.original.isOwn ? 'Propio' : 'Global'}
-          </span>
-        ),
+        // Un typeId irresoluble significa que la etapa de tipos del sync no
+        // llegó todavía (o falló). Mejor un guion que un uuid crudo.
+        accessorFn: (v) => typeNameById.get(v.typeId) ?? '—',
+        size: 140,
+        cell: ({ row }) => typeNameById.get(row.original.typeId) ?? '—',
       },
     ];
 
@@ -470,7 +448,6 @@ export function VehiclesPanel({
         size: 120,
         cell: ({ row }) => {
           const v = row.original;
-          if (!v.isOwn) return null;
           return (
             <div className="dt-row-actions">
               <button
@@ -498,7 +475,7 @@ export function VehiclesPanel({
         },
       },
     ];
-  }, [canManage, saving]);
+  }, [canManage, saving, typeNameById]);
 
   return (
     <section className="rates-panel">
@@ -508,7 +485,7 @@ export function VehiclesPanel({
             data={vehicles}
             columns={columns}
             title="Catálogo de vehículos"
-            subtitle="Vehículos globales del sistema y los propios de este estacionamiento."
+            subtitle="Los vehículos que este estacionamiento puede registrar."
             isLoading={loading}
             emptyMessage={
               canManage
@@ -517,8 +494,7 @@ export function VehiclesPanel({
             }
             searchPlaceholder="Buscar por marca o modelo..."
             searchableKeys={['brand', 'model']}
-            filterableColumns={['origin']}
-            filterOptionsByColumn={{ origin: ORIGIN_FILTER_OPTIONS }}
+            filterableColumns={['type']}
             getRowId={(v) => v.id}
             initialPageSize={15}
             templateScope={{ userId, tenantId, tableKey: 'vehicles' }}
@@ -624,14 +600,27 @@ export function VehiclesPanel({
               </div>
 
               <div className="form-field">
+                <label className="field-label" htmlFor="vehicle-type">
+                  Tipo
+                </label>
                 <AppSelect
-                  value={form.type}
+                  id="vehicle-type"
+                  value={form.typeId}
                   onChange={(value) =>
-                    setForm((prev) => ({ ...prev, type: value }))
+                    setForm((prev) => ({ ...prev, typeId: value }))
                   }
-                  placeholder="Sin tipo especificado"
-                  options={VEHICLE_TYPE_OPTIONS}
+                  placeholder={
+                    typeOptions.length === 0
+                      ? 'No hay tipos configurados'
+                      : 'Elegí un tipo'
+                  }
+                  options={typeOptions}
+                  error={Boolean(errors.typeId)}
+                  disabled={saving || typeOptions.length === 0}
                 />
+                {errors.typeId ? (
+                  <p className="field-error">{errors.typeId}</p>
+                ) : null}
               </div>
 
               <div className="rate-dialog-actions">

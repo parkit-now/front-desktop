@@ -1,3 +1,4 @@
+import { splitTombstones } from './tombstones';
 import {
   type LocalCashSession,
   type LocalEntry,
@@ -6,6 +7,7 @@ import {
   type LocalPaymentTransaction,
   type LocalRate,
   type LocalVehicle,
+  type LocalVehicleType,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -23,12 +25,19 @@ import {
   type RateDto,
 } from '../api/rates';
 import {
-  pullVehicleCatalog,
+  pullVehicleChanges,
   createTenantVehicle,
   updateTenantVehicle,
   deleteTenantVehicle,
-  type VehicleCatalogItemDto,
+  type VehicleDto,
 } from '../api/vehicles';
+import {
+  createVehicleType,
+  deleteVehicleType,
+  pullVehicleTypeChanges,
+  updateVehicleType,
+  type VehicleTypeDto,
+} from '../api/vehicle-types';
 import {
   createPaymentMethod,
   deletePaymentMethod,
@@ -139,18 +148,32 @@ function paymentTransactionToLocal(
   };
 }
 
-function vehicleCatalogToLocal(v: VehicleCatalogItemDto): LocalVehicle {
+export function vehicleToLocal(v: VehicleDto): LocalVehicle {
   return {
     id: v.id,
     brand: v.brand,
     model: v.model,
-    type: v.type ?? undefined,
-    tenantId: v.tenantId ?? undefined,
+    typeId: v.typeId,
+    tenantId: v.tenantId,
     deletedAt: v.deletedAt ?? undefined,
     version: v.version,
     syncSeq: v.syncSeq,
     updatedAt: v.updatedAt,
     createdAt: v.createdAt,
+  };
+}
+
+export function vehicleTypeToLocal(t: VehicleTypeDto): LocalVehicleType {
+  return {
+    id: t.id,
+    tenantId: t.tenantId,
+    name: t.name,
+    accepted: t.accepted,
+    deletedAt: t.deletedAt ?? undefined,
+    version: t.version,
+    syncSeq: t.syncSeq,
+    updatedAt: t.updatedAt,
+    createdAt: t.createdAt,
   };
 }
 
@@ -235,8 +258,7 @@ class SyncService {
       // and this is the only signal we get that it must go. Same split as
       // pullVehicleCatalog — without it a deleted rate would linger locally
       // forever, still showing up and still chargeable.
-      const deleted = response.items.filter((r) => r.deletedAt != null);
-      const active = response.items.filter((r) => r.deletedAt == null);
+      const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
         'rw',
         localDb.rates,
@@ -300,6 +322,53 @@ class SyncService {
     }
   }
 
+  /**
+   * Feed de tipos de vehículo. Molde idéntico al del catálogo: split de
+   * tombstones, `bulkPut` de lo activo y `bulkDelete` de las bajas.
+   */
+  async pullVehicleTypes(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const tenantId = this.tenantId;
+    const stateKey = `vehicleTypes:${tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    const afterSeq = state?.lastSeq ?? 0;
+
+    const response = await pullVehicleTypeChanges({
+      tenantId,
+      bearer: this.accessToken,
+      query: { afterSeq },
+    });
+
+    if (response.items.length > 0) {
+      const { active, deleted } = splitTombstones(response.items);
+      await localDb.transaction(
+        'rw',
+        localDb.vehicleTypes,
+        localDb.syncState,
+        async () => {
+          if (active.length > 0) {
+            await localDb.vehicleTypes.bulkPut(active.map(vehicleTypeToLocal));
+          }
+          if (deleted.length > 0) {
+            await localDb.vehicleTypes.bulkDelete(deleted.map((t) => t.id));
+          }
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+    } else {
+      await localDb.syncState.put({
+        key: stateKey,
+        lastSeq: afterSeq,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
   async pullVehicleCatalog(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
@@ -308,22 +377,21 @@ class SyncService {
     const state = await localDb.syncState.get(stateKey);
     const afterSeq = state?.lastSeq ?? 0;
 
-    const response = await pullVehicleCatalog({
+    const response = await pullVehicleChanges({
       tenantId,
       bearer: this.accessToken,
       query: { afterSeq },
     });
 
     if (response.items.length > 0) {
-      const deleted = response.items.filter((v) => v.deletedAt != null);
-      const active = response.items.filter((v) => v.deletedAt == null);
+      const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
         'rw',
         localDb.vehicles,
         localDb.syncState,
         async () => {
           if (active.length > 0) {
-            await localDb.vehicles.bulkPut(active.map(vehicleCatalogToLocal));
+            await localDb.vehicles.bulkPut(active.map(vehicleToLocal));
           }
           if (deleted.length > 0) {
             await localDb.vehicles.bulkDelete(deleted.map((v) => v.id));
@@ -584,6 +652,7 @@ class SyncService {
           | LocalEntry
           | LocalPaymentMethod
           | LocalVehicle
+          | LocalVehicleType
           | LocalCashSession
           | LocalLprDetectionEvent
           | undefined;
@@ -594,6 +663,8 @@ class SyncService {
           serverEntity = await this.applyEntryOp(op);
         } else if (op.entityType === 'vehicle') {
           serverEntity = await this.applyVehicleOp(op);
+        } else if (op.entityType === 'vehicleType') {
+          serverEntity = await this.applyVehicleTypeOp(op);
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
@@ -609,6 +680,7 @@ class SyncService {
             localDb.rates,
             localDb.entries,
             localDb.vehicles,
+            localDb.vehicleTypes,
             localDb.paymentMethods,
             localDb.cashSessions,
             localDb.lprDetectionEvents,
@@ -623,6 +695,10 @@ class SyncService {
                 await localDb.entries.put(serverEntity as LocalEntry);
               } else if (op.entityType === 'vehicle') {
                 await localDb.vehicles.put(serverEntity as LocalVehicle);
+              } else if (op.entityType === 'vehicleType') {
+                await localDb.vehicleTypes.put(
+                  serverEntity as LocalVehicleType,
+                );
               } else if (op.entityType === 'paymentMethod') {
                 await localDb.paymentMethods.put(
                   serverEntity as LocalPaymentMethod,
@@ -664,7 +740,7 @@ class SyncService {
         bearer,
         body: payload,
       });
-      return vehicleCatalogToLocal(result);
+      return vehicleToLocal(result);
     }
 
     // El backend exige `expectedVersion` en PATCH y DELETE, así que el panel lo
@@ -678,11 +754,11 @@ class SyncService {
       const result = await updateTenantVehicle({
         tenantId,
         bearer,
-        id: op.entityId,
+        vehicleId: op.entityId,
         expectedVersion: payload.expectedVersion,
         body: payload.body,
       });
-      return vehicleCatalogToLocal(result);
+      return vehicleToLocal(result);
     }
 
     if (op.operation === 'delete') {
@@ -690,13 +766,69 @@ class SyncService {
       await deleteTenantVehicle({
         tenantId,
         bearer,
-        id: op.entityId,
+        vehicleId: op.entityId,
         expectedVersion: payload.expectedVersion,
       });
       return undefined;
     }
 
     throw new Error(`Unknown vehicle operation: ${String(op.operation)}`);
+  }
+
+  /**
+   * Calcado de `applyVehicleOp`.
+   *
+   * OJO: el borrado NO acepta `reassignToTypeId` acá. Borrar un tipo en uso son
+   * dos llamadas dependientes con un bulk update del lado del servidor, y su
+   * modo de falla offline es una divergencia silenciosa entre los `typeId`
+   * locales y los del backend. El panel gatea esa acción con `isOnline`; altas,
+   * renombres y borrados simples (0 vehículos) sí funcionan offline.
+   */
+  private async applyVehicleTypeOp(
+    op: PendingOp,
+  ): Promise<LocalVehicleType | undefined> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+
+    if (op.operation === 'create') {
+      const payload = op.payload as Parameters<
+        typeof createVehicleType
+      >[0]['body'];
+      const result = await createVehicleType({
+        tenantId,
+        bearer,
+        body: payload,
+      });
+      return vehicleTypeToLocal(result);
+    }
+
+    if (op.operation === 'update') {
+      const payload = op.payload as {
+        expectedVersion: number;
+        body: Parameters<typeof updateVehicleType>[0]['body'];
+      };
+      const result = await updateVehicleType({
+        tenantId,
+        bearer,
+        typeId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+        body: payload.body,
+      });
+      return vehicleTypeToLocal(result);
+    }
+
+    if (op.operation === 'delete') {
+      const payload = op.payload as { expectedVersion: number };
+      await deleteVehicleType({
+        tenantId,
+        bearer,
+        typeId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+      });
+      return undefined;
+    }
+
+    throw new Error(`Unknown vehicleType operation: ${String(op.operation)}`);
   }
 
   private async applyRateOp(op: PendingOp): Promise<LocalRate | undefined> {
@@ -882,6 +1014,15 @@ class SyncService {
     const stages: [string, () => Promise<void>][] = [
       ['cambios pendientes', () => this.pushPendingOps()],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
+      //
+      // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así
+      // que si los tipos fallan pero los vehículos entran, cada fila aterriza
+      // con una FK que no resuelve y la columna Tipo se va a "—" en bloque —
+      // que se lee como "me borraron las categorías". Las etapas son
+      // independientes a propósito, así que esto achica la ventana, no la
+      // elimina: el panel igual tiene que renderizar con gracia un typeId
+      // irresoluble.
+      ['tipos de vehículo', () => this.pullVehicleTypes()],
       ['catálogo de vehículos', () => this.pullVehicleCatalog()],
       ['tarifas', () => this.pullRates()],
       ['métodos de pago', () => this.pullPaymentMethods()],

@@ -93,6 +93,22 @@ export const AppSelect = React.forwardRef<AppSelectHandle, AppSelectProps>(
       }
     }, [open]);
 
+    /**
+     * Trae a la vista la opción resaltada al navegar con las flechas.
+     *
+     * Con las 8 opciones fijas del enum viejo esto era invisible: entraban
+     * enteras en los 260px de `.vehicle-suggestions`. Ahora los tipos son por
+     * estacionamiento y pueden ser N, así que sin esto el highlight se camina
+     * fuera de pantalla y el usuario navega a ciegas.
+     */
+    useEffect(() => {
+      if (!open) return;
+      const item = listRef.current?.children[highlighted];
+      if (item instanceof HTMLElement) {
+        item.scrollIntoView({ block: 'nearest' });
+      }
+    }, [highlighted, open]);
+
     // Close on outside click
     useEffect(() => {
       if (!open) return;

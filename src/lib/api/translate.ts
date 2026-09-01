@@ -35,11 +35,14 @@ const NETWORK_MESSAGE =
 // Fuente: backend/src/utils/exceptions/error-codes.ts
 const CODE_MESSAGES: Record<string, string> = {
   VEHICLE_NOT_FOUND: 'No encontramos el vehículo.',
-  VEHICLE_NOT_OWNED_BY_TENANT:
-    'Este vehículo es del catálogo global: no se puede editar ni eliminar.',
   VEHICLE_DUPLICATE: 'Ya tenés un vehículo con esa marca y modelo.',
-  VEHICLE_ALREADY_IN_GLOBAL_CATALOG:
-    'Ese vehículo ya está en el catálogo global, no hace falta cargarlo.',
+  // Tipos de vehículo (ABM por estacionamiento)
+  VEHICLE_TYPE_NOT_FOUND: 'No encontramos el tipo de vehículo.',
+  VEHICLE_TYPE_DUPLICATE: 'Ya tenés un tipo de vehículo con ese nombre.',
+  VEHICLE_TYPE_IN_USE:
+    'Hay vehículos usando este tipo. Elegí a cuál moverlos antes de eliminarlo.',
+  VEHICLE_TYPE_REASSIGN_TARGET_INVALID:
+    'El tipo elegido para reasignar no es válido. Actualizá la lista y probá de nuevo.',
   // Auth
   AUTH_INVALID_CREDENTIALS: 'Email o contraseña incorrectos.',
   AUTH_REFRESH_INVALID: 'Tu sesión expiró. Volvé a iniciar sesión.',

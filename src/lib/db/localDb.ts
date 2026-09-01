@@ -75,20 +75,42 @@ export interface LocalVehicle {
   id: string;
   brand: string;
   model: string;
-  type?: string;
-  tenantId?: string;
+  /** FK a `LocalVehicleType` del mismo tenant. */
+  typeId: string;
+  /**
+   * Ya no es opcional: se acabó el catálogo global (`tenantId` nulo). La v11
+   * borra las filas viejas que lo tenían en null.
+   */
+  tenantId: string;
   deletedAt?: string;
   /**
    * Versión de la fila para optimistic locking. El backend exige
-   * `?expectedVersion=N` en PATCH y DELETE; sin esto el request sale con
-   * `undefined` y el ValidationPipe lo rechaza con 400.
+   * `?expectedVersion=N` en PATCH y DELETE.
    *
-   * Opcional porque las filas sincronizadas antes de la v10 del schema no la
-   * tienen. El `upgrade` de esa versión resetea el cursor para que el próximo
-   * pull las rellene, pero una fila puede llegar acá sin `version` si el pull
-   * todavía no corrió.
+   * Dejó de ser opcional: la v10 y la v11 forzaron sendos re-pull completos,
+   * así que no puede quedar una fila sin `version`. Un `version: 1` puesto por
+   * un fallback silencioso es peor que un error visible — chocaría contra el
+   * optimistic locking y el operador vería un 409 sin entender por qué.
    */
-  version?: number;
+  version: number;
+  syncSeq: number;
+  updatedAt: string;
+  createdAt: string;
+}
+
+/**
+ * Tipo de vehículo, uno por estacionamiento. Reemplaza al enum `vehicle_type`
+ * que la plataforma decidía por todos.
+ */
+export interface LocalVehicleType {
+  id: string;
+  tenantId: string;
+  name: string;
+  /** Si el estacionamiento acepta este tipo. Reemplaza a ServiceCode.VEHICLE_*. */
+  accepted: boolean;
+  /** Defensa: el pull borra los tombstones en vez de persistirlos. */
+  deletedAt?: string;
+  version: number;
   syncSeq: number;
   updatedAt: string;
   createdAt: string;
@@ -165,6 +187,7 @@ export type PendingOpEntity =
   | 'rate'
   | 'entry'
   | 'vehicle'
+  | 'vehicleType'
   | 'paymentMethod'
   | 'cashSession'
   | 'lprDetectionEvent';
@@ -187,6 +210,7 @@ class ParkitLocalDb extends Dexie {
   rates!: Table<LocalRate>;
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
+  vehicleTypes!: Table<LocalVehicleType>;
   paymentMethods!: Table<LocalPaymentMethod>;
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
   cashSessions!: Table<LocalCashSession>;
@@ -289,6 +313,56 @@ class ParkitLocalDb extends Dexie {
           .table('pendingOps')
           .toCollection()
           .filter((op: PendingOp) => op.entityType === 'vehicle')
+          .delete();
+      });
+
+    // v11: se elimina el catálogo GLOBAL y el tipo de vehículo pasa de un enum
+    // a la tabla `vehicleTypes`, una por estacionamiento.
+    //
+    // `LocalVehicle` cambia `type` (string del enum) por `typeId` (FK), y
+    // `tenantId`/`version` dejan de ser opcionales.
+    this.version(11)
+      .stores({ vehicleTypes: 'id, syncSeq, tenantId' })
+      .upgrade(async (tx) => {
+        // 1. Reset del cursor: las filas viejas traen `type`, no `typeId`.
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' && s.key.startsWith('vehicles:'),
+          )
+          .delete();
+
+        // 2. Las ops de vehículo encoladas llevan `type` en el payload, que el
+        //    backend nuevo rechaza con 400 -> quedarían en `failed` para
+        //    siempre y `pendingCount` las seguiría contando. Mismo argumento
+        //    que la v10.
+        await tx
+          .table('pendingOps')
+          .toCollection()
+          .filter((op: PendingOp) => op.entityType === 'vehicle')
+          .delete();
+
+        // 3. ESTE es el paso que no es obvio. Resetear el cursor sirve para
+        //    RELLENAR campos, porque el servidor reenvía cada fila. NO sirve
+        //    para filas que dejaron de existir: el pull hace `bulkPut` de lo
+        //    activo y `bulkDelete` de los tombstones, así que una fila sobre la
+        //    que el servidor no tiene opinión es INVISIBLE al sync.
+        //
+        //    Los vehículos globales son exactamente ese caso: post-migración el
+        //    backend tiene copias por tenant con ids NUEVOS y nunca vuelve a
+        //    mencionar los viejos. Sin este borrado sobreviven para siempre y
+        //    el autocompletado del ingreso los sigue ofreciendo.
+        //
+        //    Borrado dirigido y no `.clear()`: alguien que esté OFFLINE durante
+        //    el upgrade se quedaría sin catálogo hasta reconectar, y el
+        //    formulario de ingreso bloquea el alta con catálogo vacío. Así
+        //    conserva las filas propias del tenant durante esa ventana.
+        await tx
+          .table('vehicles')
+          .toCollection()
+          .filter((v: { tenantId?: string }) => v.tenantId == null)
           .delete();
       });
   }
