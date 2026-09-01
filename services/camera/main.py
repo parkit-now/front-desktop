@@ -26,6 +26,7 @@ Environment variables (all optional):
 """
 
 import asyncio
+import hmac
 import logging
 import os
 import sys
@@ -33,11 +34,12 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from contextlib import suppress
 from datetime import datetime, timezone
 
 import cv2
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
@@ -57,6 +59,7 @@ logger = logging.getLogger(__name__)
 # ── Config ────────────────────────────────────────────────────────────────────
 
 PORT             = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
+SHUTDOWN_TOKEN   = os.environ.get("PARKIT_SHUTDOWN_TOKEN")
 CAMERA_SOURCE    = os.environ.get("CAMERA_SOURCE", "0")
 CAMERA_FPS       = int(os.environ.get("CAMERA_FPS", "10"))
 CAMERA_WIDTH     = int(os.environ.get("CAMERA_WIDTH", "1280"))
@@ -137,6 +140,17 @@ _storage:      LocalStorage   | None = None
 _watchdog:     CameraWatchdog | None = None
 _motion:       MotionDetector | None = None
 _lpr_executor: ThreadPoolExecutor | None = None
+_server:       uvicorn.Server | None = None
+_shutting_down = False
+
+PROCESS_LOOP_SHUTDOWN_TIMEOUT = 3.0
+
+
+def _require_shutdown_token(token: str | None) -> None:
+    if not SHUTDOWN_TOKEN or token is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not hmac.compare_digest(token, SHUTDOWN_TOKEN):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 # Last successful detection — read by GET /detection/latest.
 _last_detection: dict | None = None
@@ -401,7 +415,7 @@ async def _process_loop() -> None:
     last_fallback = time.monotonic()
     camera_was_down = False
 
-    while True:
+    while not _shutting_down:
         await asyncio.sleep(0.1)  # ~10 Hz — matches capture FPS
         flushed = _flush_settled_clusters(time.monotonic())
         if flushed:
@@ -444,7 +458,7 @@ async def _process_loop() -> None:
             snapshot = frame.copy()
             logger.info("lpr_fallback_scan")
 
-        if not triggered or lpr_busy:
+        if _shutting_down or not triggered or lpr_busy:
             continue
 
         # Reset fallback clock on every actual LPR call (motion or fallback).
@@ -486,7 +500,7 @@ async def _process_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _capture, _storage, _watchdog, _motion, _lpr_executor
+    global _capture, _storage, _watchdog, _motion, _lpr_executor, _shutting_down
 
     # Single-worker executor: at most one ONNX inference at a time.
     # On a low-end parking-lot PC this prevents CPU saturation when multiple
@@ -509,10 +523,14 @@ async def lifespan(app: FastAPI):
     )
     yield
 
+    _shutting_down = True
     task.cancel()
+    with suppress(asyncio.CancelledError, asyncio.TimeoutError):
+        await asyncio.wait_for(task, timeout=PROCESS_LOOP_SHUTDOWN_TIMEOUT)
     _watchdog.stop()
     _capture.stop()
-    _lpr_executor.shutdown(wait=False)
+    _lpr_executor.shutdown(wait=True, cancel_futures=True)
+    _storage.close()
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -530,6 +548,24 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/shutdown", status_code=202)
+def shutdown(x_parkit_shutdown_token: str | None = Header(default=None)):
+    """Trigger uvicorn's own graceful-shutdown path from inside the process.
+
+    Electron calls this instead of relying on OS signals: on Windows, Node's
+    ChildProcess.kill() ignores the signal argument and always force-kills
+    (TerminateProcess), which would skip the `lifespan` cleanup above
+    entirely. Flipping `should_exit` drives the same shutdown path uvicorn
+    uses for SIGTERM/SIGINT, and works identically on every platform.
+    """
+    global _shutting_down
+    _require_shutdown_token(x_parkit_shutdown_token)
+    _shutting_down = True
+    if _server is not None:
+        _server.should_exit = True
+    return {"status": "shutting down"}
 
 
 @app.get("/stream/status")
@@ -677,4 +713,6 @@ def detection_latest_clear():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    _config = uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info")
+    _server = uvicorn.Server(_config)
+    _server.run()

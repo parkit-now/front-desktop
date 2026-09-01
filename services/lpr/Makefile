@@ -1,13 +1,29 @@
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
+# Si una receta falla, borrar el target a medio generar (p. ej. el stamp del
+# venv) para que la próxima corrida reintente en vez de darlo por hecho.
+.DELETE_ON_ERROR:
 
 CYAN  := \033[36m
 RESET := \033[0m
 
 VENV    := .venv
-PYTHON  := $(VENV)/bin/python
-PIP     := $(VENV)/bin/pip
+ifeq ($(OS),Windows_NT)
+  VENV_BIN   := $(VENV)/Scripts
+  PYTHON_BIN ?= python
+else
+  VENV_BIN   := $(VENV)/bin
+  PYTHON_BIN ?= python3
+endif
+PYTHON  := $(VENV_BIN)/python
+# `python -m pip` (no el wrapper pip.exe): en Windows el wrapper no puede
+# actualizarse a sí mismo con `pip install --upgrade pip`.
+PIP     := $(PYTHON) -m pip
+# Marcador propio: se toca SOLO tras instalar deps OK. No usamos
+# $(VENV_BIN)/activate porque `python -m venv` lo crea antes del `pip install`,
+# y un install fallido dejaba el target "al día" salteando las deps.
+VENV_STAMP := $(VENV)/.deps-installed
 PORT    ?= 8765
 PIDFILE := .lpr.pid
 LOGFILE := .lpr.log
@@ -20,13 +36,17 @@ help: ## Mostrar comandos disponibles
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
-$(VENV)/bin/activate: requirements.txt
-	python3 -m venv $(VENV)
+# --only-binary=:all: en el install de requirements: todo el stack (numpy,
+# opencv, onnxruntime, fast-alpr) publica wheels. Si falta uno (típico: Python
+# != 3.12) queremos un error claro y al toque, no que pip caiga a compilar
+# desde source y reviente sin compilador.
+$(VENV_STAMP): requirements.txt
+	$(PYTHON_BIN) -m venv $(VENV)
 	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
-	@touch $(VENV)/bin/activate
+	$(PIP) install --only-binary=:all: -r requirements.txt
+	@touch $(VENV_STAMP)
 
-lpr-install: $(VENV)/bin/activate ## Crear venv e instalar dependencias Python
+lpr-install: $(VENV_STAMP) ## Crear venv e instalar dependencias Python
 
 # ── Model download ────────────────────────────────────────────────────────────
 

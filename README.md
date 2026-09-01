@@ -108,6 +108,50 @@ bun run dist   # instalador completo → dist-electron/*.dmg / *.exe / *.AppImag
 > Si los binarios Python no existen, el comando falla con un mensaje claro
 > antes de que electron-builder arranque.
 
+### Build multiplataforma (mac / win / linux)
+
+**No se puede generar el `.exe` de Windows (ni el `.AppImage` de Linux) desde
+macOS.** Los binarios de `lpr-service`/`camera-service` se compilan con
+PyInstaller, que empaqueta binarios nativos y no cross-compila — el `.exe`
+solo sale corriendo en Windows, el `.dmg` solo corriendo en macOS, etc. Por
+eso cada teammate empaqueta en su propio SO, usando el target explícito:
+
+```bash
+make dist-mac     # o: bun run dist:mac    — corre en macOS   → .dmg
+make dist-win     # o: bun run dist:win    — corre en Windows → .exe (nsis)
+make dist-linux   # o: bun run dist:linux  — corre en Linux   → .AppImage
+```
+
+Cada uno de estos targets corre primero `make doctor` (preflight de entorno),
+después compila los binarios Python nativos (`make services-build`) y por
+último empaqueta con `electron-builder` solo para ese SO — no toca los otros
+targets ni requiere binarios de los otros SO.
+
+> **`make doctor`** (podés correrlo suelto) valida en ~1 s que estén `bun`,
+> `node 22`, Python 3.12 con `venv`/`ensurepip`, `bash`, GNU make, y avisa de
+> cosas no bloqueantes (`upx`, `.env`, VS Build Tools). Falla con un mensaje
+> accionable en vez de reventar 10 min adentro del build. Si tu Python 3.12 no
+> se llama `python3.12`, el preflight te dice el `PYTHON_BIN=...` a usar.
+
+Prerrequisitos por SO:
+
+| SO      | Necesita además de `bun`/`make`/Python 3.12                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| macOS   | Xcode Command Line Tools (`xcode-select --install`)                                                                                            |
+| Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado. **Modo de desarrollador ON** (o correr el build como Administrador): electron-builder extrae `winCodeSign` con symlinks y Windows los bloquea sin ese permiso. |
+| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`                                                                                   |
+
+> Python **debe ser 3.12 exacto** (numpy 1.26.4 no publica wheels para otra minor; con 3.13+ pip cae a compilar desde source y falla). Si tu 3.12 no está como `python`, pasá `PYTHON_BIN` — p. ej. `make dist-win PYTHON_BIN="py -3.12"`. `make doctor` valida todo esto.
+
+CI (`.github/workflows/build-desktop.yml`) corre esta misma matriz en runners
+nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`) en
+cada tag `v*.*.*` o manualmente (`workflow_dispatch`), y sube los 3
+instaladores como artifacts. Sirve para validar el build sin depender de que
+alguien tenga las 3 máquinas — pero **no firma los binarios**: son válidos
+para pruebas internas, no para distribuir a clientes todavía (falta
+Authenticode en Windows y notarización de Apple en macOS; ver comentarios al
+final del workflow).
+
 Los binarios `lpr-service[.exe]` y `camera-service[.exe]` se copian desde
 `services/*/dist/` a `resources/` dentro del bundle via `extraResources`.
 Electron los lee desde `process.resourcesPath` al arrancar.

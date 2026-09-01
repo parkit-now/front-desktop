@@ -9,8 +9,9 @@ ENV_LOCAL := .env.local
 ENV_PROD  := .env.production
 
 .PHONY: help install install-all dev prod build lint typecheck test format \
-        env-check env-use-local env-use-prod \
-        sync-types clean
+        env-check env-use-local env-use-prod doctor \
+        sync-types clean \
+        services-build dist-mac dist-win dist-linux
 
 help: ## Mostrar comandos disponibles
 	@awk 'BEGIN {FS = ":.*?## "} \
@@ -88,6 +89,25 @@ env-check: ## Validar variables mínimas del .env activo
 
 sync-types: ## Generar tipos TypeScript desde OpenAPI
 	@bun run sync-types
+
+doctor: ## Preflight: valida que el entorno puede correr make dist-<os> (rápido, no buildea)
+	@node scripts/check-build-env.mjs
+
+services-build: ## Compilar binarios NATIVOS de lpr/camera para el SO actual (PyInstaller no cross-compila)
+	@$(MAKE) -C services/lpr lpr-build
+	@$(MAKE) -C services/camera camera-build
+
+# CSC_IDENTITY_AUTO_DISCOVERY=false: mismo valor que usa CI. Todavía no hay
+# certificados, así que evitamos que electron-builder intente descubrir/usar
+# uno (los binarios quedan sin firmar, válidos para pruebas internas).
+dist-mac: doctor services-build ## Empaquetar .dmg — solo funciona corriendo en macOS
+	@CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist:mac
+
+dist-win: doctor services-build ## Empaquetar .exe (nsis) — solo funciona corriendo en Windows
+	@CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist:win
+
+dist-linux: doctor services-build ## Empaquetar AppImage — solo funciona corriendo en Linux
+	@CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist:linux
 
 clean: ## Limpiar artefactos locales
 	@rm -rf dist dist-electron coverage .expo .vite

@@ -90,8 +90,10 @@ class CameraCapture(threading.Thread):
         """Ask the capture thread to release and reopen the camera source."""
         self._reconnect_requested = True
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 2.0) -> None:
         self._stop_event.set()
         if self._cap:
             self._cap.release()
             self._cap = None
+        if threading.current_thread() is not self and self.is_alive():
+            self.join(timeout=timeout)
