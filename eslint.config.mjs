@@ -36,7 +36,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['electron/**/*.ts'],
+    files: ['electron/**/*.{ts,cts}'],
     languageOptions: {
       parserOptions: {
         project: ['tsconfig.main.json'],

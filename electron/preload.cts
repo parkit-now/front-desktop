@@ -33,4 +33,23 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     ipcRenderer.on('services:crashed', handler);
     return () => ipcRenderer.removeListener('services:crashed', handler);
   },
+
+  /**
+   * Open a URL in the user's default browser. Used by the OAuth flow so the
+   * provider consent screen runs outside the Electron window (which is served
+   * from `file://` and cannot be a valid Supabase redirect target).
+   */
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke('shell:openExternal', url),
+
+  /**
+   * Subscribe to the `parkit://auth/callback` deep link that carries the OAuth
+   * tokens back from the browser. Returns an unsubscribe function.
+   */
+  onOAuthCallback: (callback: (url: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, url: string) =>
+      callback(url);
+    ipcRenderer.on('oauth:callback', handler);
+    return () => ipcRenderer.removeListener('oauth:callback', handler);
+  },
 });

@@ -13,7 +13,7 @@
     "build": "bun run build:renderer && bun run build:main",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
-    "lint": "eslint \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\"",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \"electron/**/*.{ts,cts}\"",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -30,6 +30,14 @@
   "build": {
     "appId": "com.parkit.desktop",
     "productName": "Parkit",
+    "protocols": [
+      {
+        "name": "Parkit",
+        "schemes": [
+          "parkit"
+        ]
+      }
+    ],
     "directories": {
       "output": "dist-electron"
     },
