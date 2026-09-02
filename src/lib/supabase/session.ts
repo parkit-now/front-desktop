@@ -13,22 +13,81 @@ import { supabase } from './client';
 
 export type { AppRole, MeResponseDto } from '../api/auth';
 
-function resolveRedirectUrl(): string | undefined {
-  const customRedirectRaw: unknown = import.meta.env
-    .VITE_SUPABASE_OAUTH_REDIRECT_URL;
+const DEFAULT_OAUTH_REDIRECT_URL = 'parkit://auth/callback';
 
-  const customRedirect =
-    typeof customRedirectRaw === 'string' ? customRedirectRaw : undefined;
+function getOAuthRedirectUrl(): string {
+  const raw: unknown = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_URL;
+  return typeof raw === 'string' && raw.length > 0
+    ? raw
+    : DEFAULT_OAUTH_REDIRECT_URL;
+}
 
-  if (typeof customRedirect === 'string' && customRedirect.length > 0) {
-    return customRedirect;
+function parseUrlParams(url: string): Record<string, string> {
+  const hashStart = url.indexOf('#');
+  const queryStart = url.indexOf('?');
+
+  const rawParams =
+    hashStart >= 0
+      ? url.slice(hashStart + 1)
+      : queryStart >= 0
+        ? url.slice(queryStart + 1)
+        : '';
+
+  if (!rawParams) {
+    return {};
   }
 
-  if (typeof window !== 'undefined') {
-    return window.location.origin;
+  return rawParams.split('&').reduce<Record<string, string>>((acc, pair) => {
+    if (!pair) {
+      return acc;
+    }
+
+    const [rawKey, rawValue = ''] = pair.split('=');
+    if (!rawKey) {
+      return acc;
+    }
+
+    acc[decodeURIComponent(rawKey)] = decodeURIComponent(
+      rawValue.replace(/\+/g, '%20'),
+    );
+
+    return acc;
+  }, {});
+}
+
+/**
+ * Applies the OAuth tokens carried back by the `parkit://auth/callback` deep
+ * link (see `electron/main.ts`). Wired to `window.parkitDesktop.onOAuthCallback`
+ * in `App.tsx`.
+ */
+export async function hydrateSessionFromUrl(
+  url?: string | null,
+): Promise<void> {
+  if (!url) {
+    return;
   }
 
-  return undefined;
+  const params = parseUrlParams(url);
+
+  if (params.error_description) {
+    throw new Error(params.error_description);
+  }
+
+  const accessToken = params.access_token;
+  const refreshToken = params.refresh_token;
+
+  if (!accessToken || !refreshToken) {
+    return;
+  }
+
+  const { error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+
+  if (error) {
+    throw error;
+  }
 }
 
 async function applyBackendSession(tokens: SessionDto): Promise<Session> {
@@ -71,16 +130,35 @@ export function onSessionChange(
 }
 
 export async function signInWithProvider(provider: Provider): Promise<void> {
-  const redirectTo = resolveRedirectUrl();
+  const bridge =
+    typeof window !== 'undefined' ? window.parkitDesktop : undefined;
 
-  const { error } = await supabase.auth.signInWithOAuth({
+  if (!bridge?.openExternal) {
+    throw new Error(
+      'El login social solo está disponible en la app de escritorio.',
+    );
+  }
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: redirectTo ? { redirectTo } : undefined,
+    options: {
+      redirectTo: getOAuthRedirectUrl(),
+      skipBrowserRedirect: true,
+    },
   });
 
   if (error) {
     throw error;
   }
+
+  if (!data?.url) {
+    throw new Error('Supabase no devolvió una URL de OAuth.');
+  }
+
+  // Open the provider consent screen in the user's real browser. The session
+  // is applied later, when Supabase redirects to `parkit://auth/callback` and
+  // `onOAuthCallback` (App.tsx) forwards the tokens to `hydrateSessionFromUrl`.
+  await bridge.openExternal(data.url);
 }
 
 export async function signInWithEmail(

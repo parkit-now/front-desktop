@@ -7,7 +7,11 @@ import { RegisterScreen } from './features/auth/RegisterScreen';
 import { SessionView } from './features/auth/SessionView';
 import { getErrorMessage } from './features/auth/errors';
 import { useToast } from './lib/notifications/ToastProvider';
-import { getSession, onSessionChange } from './lib/supabase/session';
+import {
+  getSession,
+  hydrateSessionFromUrl,
+  onSessionChange,
+} from './lib/supabase/session';
 
 type View = 'login' | 'register' | 'forgot';
 
@@ -50,9 +54,20 @@ export function App() {
       }
     });
 
+    // Social login: the browser redirects to `parkit://auth/callback` and main
+    // forwards the tokens here so we can apply the session.
+    const unsubscribeOAuth = window.parkitDesktop?.onOAuthCallback((url) => {
+      void hydrateSessionFromUrl(url).catch((error) => {
+        if (isMounted) {
+          showToast({ message: getErrorMessage(error), kind: 'error' });
+        }
+      });
+    });
+
     return () => {
       isMounted = false;
       unsubscribe();
+      unsubscribeOAuth?.();
     };
   }, [showToast]);
 

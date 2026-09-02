@@ -34,6 +34,7 @@ import {
   type MeMembershipDto,
   type MeResponseDto,
 } from '../../lib/api/auth';
+import { listAdminParkings, type ParkingDto } from '../../lib/api/tenants';
 import { translateApiError, translateRole } from '../../lib/api/translate';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
@@ -173,6 +174,8 @@ export function SessionView({ session }: Props) {
   const [activeTenantId, setActiveTenantId] = useState<string | null>(() => {
     return readStoredValue(tenantStorageKey(session.user.id));
   });
+  // Platform admins have no memberships; they pick a lot from the full list.
+  const [adminParkings, setAdminParkings] = useState<ParkingDto[] | null>(null);
 
   const tenantKey = useMemo(
     () => tenantStorageKey(session.user.id),
@@ -200,6 +203,16 @@ export function SessionView({ session }: Props) {
   }, [activeTenantId, memberships]);
   const effectiveGlobalRole =
     profile?.role ?? readGlobalRoleFromSession(session);
+  const isAdminWithoutMemberships =
+    effectiveGlobalRole === 'admin' && memberships.length === 0;
+  const activeTenantName = useMemo(() => {
+    if (activeMembership) return activeMembership.tenantName;
+    if (!activeTenantId) return null;
+    return (
+      adminParkings?.find((parking) => parking.id === activeTenantId)?.name ??
+      null
+    );
+  }, [activeMembership, activeTenantId, adminParkings]);
   const activeRole = entityRoleForRates(profile, activeMembership);
   const ratesAllowed = canAccessRates(
     profile,
@@ -287,6 +300,35 @@ export function SessionView({ session }: Props) {
     };
   }, [session.access_token, session.user.id, showToast]);
 
+  useEffect(() => {
+    if (!isAdminWithoutMemberships) {
+      setAdminParkings(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadParkings(): Promise<void> {
+      try {
+        const parkings = await listAdminParkings(session.access_token);
+        if (isMounted) {
+          setAdminParkings(parkings);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAdminParkings([]);
+          showToast({ message: translateApiError(error), kind: 'error' });
+        }
+      }
+    }
+
+    void loadParkings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAdminWithoutMemberships, session.access_token, showToast]);
+
   async function handleSignOut() {
     setPendingSignOut(true);
     try {
@@ -349,18 +391,40 @@ export function SessionView({ session }: Props) {
           </span>
         </div>
       ) : effectiveGlobalRole === 'admin' ? (
-        <button
-          type="button"
-          className="entity-current entity-current-button"
-          onClick={handleSelectTenant}
-        >
-          <span className="entity-current-name">
-            {activeTenantId
-              ? `Tenant ${shortTenantId(activeTenantId)}`
-              : 'Definir tenant'}
-          </span>
-          <span className="entity-current-role">Admin</span>
-        </button>
+        adminParkings && adminParkings.length > 0 ? (
+          <label className="entity-select-wrap">
+            <select
+              className="entity-select sidebar-entity-select"
+              value={activeTenantId ?? ''}
+              onChange={(event) => {
+                setActiveTenantId(event.target.value || null);
+              }}
+            >
+              <option value="">Elegí un estacionamiento…</option>
+              {adminParkings.map((parking) => (
+                <option key={parking.id} value={parking.id}>
+                  {parking.name}
+                </option>
+              ))}
+            </select>
+            <span className="entity-current-role">Admin</span>
+          </label>
+        ) : (
+          <button
+            type="button"
+            className="entity-current entity-current-button"
+            onClick={handleSelectTenant}
+          >
+            <span className="entity-current-name">
+              {activeTenantId
+                ? `Tenant ${shortTenantId(activeTenantId)}`
+                : adminParkings === null
+                  ? 'Cargando estacionamientos…'
+                  : 'Definir tenant'}
+            </span>
+            <span className="entity-current-role">Admin</span>
+          </button>
+        )
       ) : (
         <div className="entity-current empty">
           <span className="entity-current-name">Sin asignación</span>
@@ -537,10 +601,8 @@ export function SessionView({ session }: Props) {
             <div className="workspace-header-icon">{sectionIcon(section)}</div>
             <div>
               <h1>{sectionTitle[section]}</h1>
-              {activeMembership ? (
-                <p className="workspace-header-parking">
-                  {activeMembership.tenantName}
-                </p>
+              {activeTenantName ? (
+                <p className="workspace-header-parking">{activeTenantName}</p>
               ) : null}
             </div>
           </header>
@@ -574,18 +636,24 @@ export function SessionView({ session }: Props) {
                 )
               ) : (
                 <section
-                  className={`dashboard-card ${hasMemberships ? '' : 'warning'}`}
+                  className={`dashboard-card ${
+                    hasMemberships || isAdminWithoutMemberships ? '' : 'warning'
+                  }`}
                 >
                   <h2>
                     {hasMemberships
                       ? (activeMembership?.tenantName ??
                         'Estacionamiento activo')
-                      : 'Sin estacionamientos asignados'}
+                      : isAdminWithoutMemberships
+                        ? 'Elegí un estacionamiento'
+                        : 'Sin estacionamientos asignados'}
                   </h2>
                   <p className="muted">
                     {hasMemberships
                       ? `Seleccioná un estacionamiento para operar.`
-                      : 'Tu usuario no tiene una relación owner/operator con un estacionamiento.'}
+                      : isAdminWithoutMemberships
+                        ? 'Como administrador, elegí el estacionamiento a operar en el selector del panel lateral.'
+                        : 'Tu usuario no tiene una relación owner/operator con un estacionamiento.'}
                   </p>
                 </section>
               )
