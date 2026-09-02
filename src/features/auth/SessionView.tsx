@@ -7,6 +7,7 @@ import {
   Home,
   Truck,
   Archive,
+  History,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -15,6 +16,7 @@ import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { EntryForm } from '../entries/EntryForm';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
+import { LprEventHistoryPanel } from '../lpr/LprEventHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
 import { RatesPanel } from '../rates/RatesPanel';
 import { VehiclesPanel } from '../vehicles/VehiclesPanel';
@@ -49,6 +51,7 @@ type WorkspaceSection =
   | 'operativo'
   | 'camara'
   | 'historial'
+  | 'eventos'
   | 'payment-methods'
   | 'vehicles'
   | 'caja';
@@ -372,6 +375,7 @@ export function SessionView({ session }: Props) {
     operativo: 'Panel Operativo',
     camara: 'Cámara',
     historial: 'Historial',
+    eventos: 'Historial de eventos',
     rates: 'Gestión de Tasas',
     'payment-methods': 'Métodos de Pago',
     vehicles: 'Catálogo de Vehículos',
@@ -382,6 +386,7 @@ export function SessionView({ session }: Props) {
     if (s === 'rates') return <DollarSign size={20} aria-hidden />;
     if (s === 'camara') return <Cctv size={20} aria-hidden />;
     if (s === 'historial') return <Car size={20} aria-hidden />;
+    if (s === 'eventos') return <History size={20} aria-hidden />;
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
@@ -438,6 +443,15 @@ export function SessionView({ session }: Props) {
             >
               <Car size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Historial</span> : null}
+            </button>
+
+            <button
+              type="button"
+              className={`nav-item ${section === 'eventos' ? 'active' : ''}`}
+              onClick={() => setSection('eventos')}
+            >
+              <History size={18} aria-hidden="true" />
+              {!sidebarCollapsed ? <span>Historial de eventos</span> : null}
             </button>
 
             {hasMemberships || effectiveGlobalRole === 'admin' ? (
@@ -586,6 +600,21 @@ export function SessionView({ session }: Props) {
                   <h2>Falta estacionamiento activo</h2>
                   <p className="muted">
                     Seleccioná un estacionamiento para ver el historial.
+                  </p>
+                </section>
+              )
+            ) : section === 'eventos' ? (
+              activeTenantId ? (
+                <LprEventHistoryPanel
+                  tenantId={activeTenantId}
+                  accessToken={session.access_token}
+                />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para ver el historial de
+                    eventos.
                   </p>
                 </section>
               )
