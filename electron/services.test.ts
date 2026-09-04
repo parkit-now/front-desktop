@@ -118,9 +118,9 @@ describe('ServiceManager — spawn', () => {
   });
 });
 
-describe('ServiceManager — retry on startup', () => {
-  it('marks service as healthy when it responds on the first attempt', async () => {
-    // Fail the pre-spawn ping (so it spawns), succeed once the process exists.
+describe('ServiceManager — startup wait', () => {
+  it('goes healthy once /health answers, without respawning a slow process', async () => {
+    // Ping (pre-spawn) fails so it spawns; then /health answers ok.
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
@@ -137,18 +137,11 @@ describe('ServiceManager — retry on startup', () => {
     await vi.runAllTimersAsync();
 
     expect(await done).toEqual([]);
-    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockSpawn).toHaveBeenCalledTimes(1); // never killed/respawned
   });
 
-  it('retries once and marks healthy when the second attempt succeeds', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        mockSpawn.mock.calls.length < 2
-          ? Promise.reject(new Error('not ready'))
-          : Promise.resolve({ ok: true } as Response),
-      ),
-    );
+  it('does NOT respawn a process that is alive but slow to boot', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('booting')));
 
     const manager = new ServiceManager([config()]);
     await manager.spawnAll();
@@ -156,15 +149,49 @@ describe('ServiceManager — retry on startup', () => {
     const done = manager.waitAllHealthy();
     await vi.runAllTimersAsync();
 
-    expect(await done).toEqual([]);
-    expect(mockSpawn).toHaveBeenCalledTimes(2); // initial + 1 retry
+    expect(await done).toEqual(['lpr-service']); // gave up after the grace window
+    expect(mockSpawn).toHaveBeenCalledTimes(1); // alive → not respawned
   });
 
-  it('marks service as failed after all 3 attempts time out', async () => {
+  it('respawns a service that exits during startup, then goes healthy', async () => {
+    const procs: FakeProcess[] = [];
+    mockSpawn.mockImplementation(() => {
+      const p = new FakeProcess();
+      procs.push(p);
+      return p;
+    });
+    // Ping fails; /health fails until the 2nd process exists.
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockRejectedValue(new Error('service down')),
+      vi.fn(() =>
+        procs.length >= 2
+          ? Promise.resolve({ ok: true } as Response)
+          : Promise.reject(new Error('down')),
+      ),
     );
+
+    const manager = new ServiceManager([config()]);
+    await manager.spawnAll();
+    // First process crashes mid-startup.
+    procs[0].exitCode = 1;
+    procs[0].emit('exit', 1, null);
+
+    const done = manager.waitAllHealthy();
+    await vi.runAllTimersAsync();
+
+    expect(await done).toEqual([]);
+    expect(mockSpawn).toHaveBeenCalledTimes(2); // initial + 1 respawn
+  });
+
+  it('gives up after MAX_RESPAWNS repeated crashes', async () => {
+    const procs: FakeProcess[] = [];
+    mockSpawn.mockImplementation(() => {
+      const p = new FakeProcess();
+      p.exitCode = 1; // every spawn is already dead
+      procs.push(p);
+      return p;
+    });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
 
     const manager = new ServiceManager([config()]);
     await manager.spawnAll();
@@ -173,7 +200,7 @@ describe('ServiceManager — retry on startup', () => {
     await vi.runAllTimersAsync();
 
     expect(await done).toEqual(['lpr-service']);
-    expect(mockSpawn).toHaveBeenCalledTimes(3); // initial + 2 retries
+    expect(mockSpawn).toHaveBeenCalledTimes(3); // initial + 2 respawns
   });
 });
 
