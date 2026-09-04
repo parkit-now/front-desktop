@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ServiceManager } from './services.js';
+import { ServiceManager, type ServiceConfig } from './services.js';
+import { resolveServiceRuntime, type ServiceName } from './serviceRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,22 +118,48 @@ if (!gotTheLock) {
     // userData is only available after app is ready.
     const userData = app.getPath('userData');
 
-    const services = new ServiceManager([
-      { name: 'lpr-service', port: 8765 },
-      {
-        name: 'camera-service',
-        port: 8766,
-        // Point the camera service at a writable directory so it works in
-        // a signed/packaged app where the bundle itself is read-only.
-        env: {
-          CAMERA_DB_PATH: path.join(userData, 'camera.db'),
-          CAMERA_IMAGES_DIR: path.join(userData, 'images'),
-        },
+    // Runtime-dependent env, layered on top of whatever the resolver decided.
+    const runtimeEnv: Partial<Record<ServiceName, Record<string, string>>> = {
+      'camera-service': {
+        // Writable data dir so the service works when the bundle is read-only.
+        CAMERA_DB_PATH: path.join(userData, 'camera.db'),
+        CAMERA_IMAGES_DIR: path.join(userData, 'images'),
       },
-    ]);
+    };
+    const ports: Record<ServiceName, number> = {
+      'lpr-service': 8765,
+      'camera-service': 8766,
+    };
 
+    const runtime = resolveServiceRuntime();
+    const serviceConfigs: ServiceConfig[] = (
+      Object.entries(runtime.launchers) as [
+        ServiceName,
+        ServiceConfig['launcher'],
+      ][]
+    ).map(([name, launcher]) => ({
+      name,
+      port: ports[name],
+      launcher,
+      env: runtimeEnv[name],
+    }));
+
+    if (runtime.manage) {
+      for (const cfg of serviceConfigs) {
+        console.log(
+          `[main] ${cfg.name}: ${cfg.launcher.source} → ${cfg.launcher.cmd}`,
+        );
+      }
+    } else {
+      console.log(
+        '[main] service supervision disabled — camera/LPR are expected to be ' +
+          'started externally (e.g. `make dev`, PARKIT_MANAGE_SERVICES=0)',
+      );
+    }
+
+    const services = new ServiceManager(serviceConfigs);
     services.spawnAll();
-    const failed = app.isPackaged ? await services.waitAllHealthy() : [];
+    const failed = runtime.manage ? await services.waitAllHealthy() : [];
 
     const win = createWindow();
     mainWindow = win;

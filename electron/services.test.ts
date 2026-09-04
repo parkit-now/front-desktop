@@ -1,16 +1,27 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ServiceManager } from './services.js';
+import { ServiceManager, type ServiceConfig } from './services.js';
+import type { ServiceLauncher } from './serviceRuntime.js';
 
 vi.mock('electron', () => ({
-  app: { isPackaged: true },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
 }));
 
 // vi.hoisted ensures mockSpawn is initialized before vi.mock factories run.
 const mockSpawn = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ spawn: mockSpawn }));
+
+const launcher: ServiceLauncher = {
+  cmd: '/fake/lpr-service',
+  args: [],
+  cwd: '/fake',
+  source: 'built-binary',
+};
+
+function config(overrides: Partial<ServiceConfig> = {}): ServiceConfig {
+  return { name: 'lpr-service', port: 8765, launcher, ...overrides };
+}
 
 // ── Fake ChildProcess ──────────────────────────────────────────────────────
 
@@ -33,10 +44,6 @@ class FakeProcess extends EventEmitter {
 // ── Setup ──────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  Object.defineProperty(process, 'resourcesPath', {
-    value: '/fake/resources',
-    configurable: true,
-  });
   vi.useFakeTimers();
   mockSpawn.mockReset();
   mockSpawn.mockReturnValue(new FakeProcess());
@@ -49,11 +56,38 @@ afterEach(() => {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+describe('ServiceManager — spawn', () => {
+  it('launches each service via its resolved launcher, port as the last arg', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+
+    const manager = new ServiceManager([
+      config({
+        launcher: {
+          cmd: '/venv/bin/python',
+          args: ['main.py'],
+          cwd: '/repo/services/lpr',
+          source: 'dev-source',
+        },
+      }),
+    ]);
+    manager.spawnAll();
+
+    const [cmd, args, options] = mockSpawn.mock.calls[0] as [
+      string,
+      string[],
+      { cwd: string },
+    ];
+    expect(cmd).toBe('/venv/bin/python');
+    expect(args).toEqual(['main.py', '8765']);
+    expect(options.cwd).toBe('/repo/services/lpr');
+  });
+});
+
 describe('ServiceManager — retry on startup', () => {
   it('marks service as healthy when it responds on the first attempt', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
 
-    const manager = new ServiceManager([{ name: 'lpr-service', port: 8765 }]);
+    const manager = new ServiceManager([config()]);
     manager.spawnAll();
 
     const done = manager.waitAllHealthy();
@@ -74,7 +108,7 @@ describe('ServiceManager — retry on startup', () => {
       }),
     );
 
-    const manager = new ServiceManager([{ name: 'lpr-service', port: 8765 }]);
+    const manager = new ServiceManager([config()]);
     manager.spawnAll();
 
     const done = manager.waitAllHealthy();
@@ -90,7 +124,7 @@ describe('ServiceManager — retry on startup', () => {
       vi.fn().mockRejectedValue(new Error('service down')),
     );
 
-    const manager = new ServiceManager([{ name: 'lpr-service', port: 8765 }]);
+    const manager = new ServiceManager([config()]);
     manager.spawnAll();
 
     const done = manager.waitAllHealthy();
@@ -106,7 +140,7 @@ describe('ServiceManager — shutdown', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
 
     const manager = new ServiceManager(
-      [{ name: 'lpr-service', port: 8765, env: { EXTRA: '1' } }],
+      [config({ env: { EXTRA: '1' } })],
       'test-token',
     );
     manager.spawnAll();
@@ -136,10 +170,7 @@ describe('ServiceManager — shutdown', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const manager = new ServiceManager(
-      [{ name: 'lpr-service', port: 8765 }],
-      'test-token',
-    );
+    const manager = new ServiceManager([config()], 'test-token');
     manager.spawnAll();
 
     const done = manager.stopAll();
@@ -157,10 +188,7 @@ describe('ServiceManager — shutdown', () => {
     mockSpawn.mockReturnValue(proc);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
 
-    const manager = new ServiceManager(
-      [{ name: 'lpr-service', port: 8765 }],
-      'test-token',
-    );
+    const manager = new ServiceManager([config()], 'test-token');
     manager.spawnAll();
 
     const done = manager.stopAll();

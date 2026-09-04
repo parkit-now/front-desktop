@@ -45,9 +45,11 @@ install-all: install ## Instalar dependencias de los 3 servicios (bun + camera +
 
 dev: install-all sync-types env-use-local ## Instalar todo, sync tipos y levantar los 3 servicios juntos
 	@echo "→ Levantando camera (:8766), lpr (:8765) y electron/vite (:5174)..."
+	@# Este target supervisa los servicios Python (con hot-reload); Electron NO
+	@# los gestiona en este modo. Ver PARKIT_MANAGE_SERVICES en .env.example.
 	@$(MAKE) -C services/camera camera-dev & \
 	$(MAKE) -C services/lpr lpr-dev & \
-	bun run dev; \
+	PARKIT_MANAGE_SERVICES=0 bun run dev; \
 	wait
 
 prod: env-use-prod ## Build de prod + abrir la app empaquetada con Electron

@@ -1,12 +1,17 @@
-import { app, BrowserWindow } from 'electron';
+import { BrowserWindow } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import path from 'node:path';
+import type { ServiceLauncher } from './serviceRuntime.js';
 
 export interface ServiceConfig {
   name: string;
   port: number;
-  /** Extra env vars merged into the child process environment. */
+  /** How to launch the process — resolved by `resolveServiceRuntime`. */
+  launcher: ServiceLauncher;
+  /**
+   * Runtime-dependent env merged on top of `launcher.env` (e.g. writable data
+   * dirs that are only known after `app.whenReady`).
+   */
   env?: Record<string, string>;
 }
 
@@ -22,13 +27,13 @@ const SHUTDOWN_TOKEN_ENV = 'PARKIT_SHUTDOWN_TOKEN';
 const SHUTDOWN_TOKEN_HEADER = 'X-Parkit-Shutdown-Token';
 
 /**
- * Manages the lifecycle of Python microservices spawned by Electron.
+ * Supervises the lifecycle of the camera / LPR sidecar processes.
  *
- * In dev mode (app.isPackaged === false) all methods are no-ops: developers
- * start services manually via `make lpr-dev` / `make camera-dev`.
- *
- * In production the binaries are expected at process.resourcesPath/<name>[.exe],
- * placed there by electron-builder's extraResources config.
+ * The manager is deliberately dumb about *where* a service comes from: it is
+ * handed a fully-resolved `launcher` per service (see `serviceRuntime.ts`) and
+ * only owns spawning, health-checking with retry, and cooperative shutdown.
+ * Whether supervision happens at all is decided by the caller (an empty
+ * service list = nothing to manage).
  */
 export class ServiceManager {
   private readonly processes = new Map<string, ChildProcess>();
@@ -44,7 +49,6 @@ export class ServiceManager {
   }
 
   spawnAll(): void {
-    if (!app.isPackaged) return;
     for (const svc of this.services) {
       this.spawnOne(svc);
     }
@@ -55,13 +59,17 @@ export class ServiceManager {
     const existing = this.processes.get(svc.name);
     if (existing && !existing.killed) existing.kill();
 
-    const ext = process.platform === 'win32' ? '.exe' : '';
-    const bin = path.join(process.resourcesPath, `${svc.name}${ext}`);
+    const { launcher } = svc;
+    // The port is always the final argument (matches every launcher: the
+    // PyInstaller binary, `python main.py <port>`, and an env-var command).
+    const args = [...launcher.args, String(svc.port)];
 
-    const proc = spawn(bin, [String(svc.port)], {
+    const proc = spawn(launcher.cmd, args, {
+      cwd: launcher.cwd,
       stdio: 'pipe',
       env: {
         ...process.env,
+        ...(launcher.env ?? {}),
         ...(svc.env ?? {}),
         [SHUTDOWN_TOKEN_ENV]: this.shutdownToken,
       },
@@ -97,7 +105,8 @@ export class ServiceManager {
 
     this.processes.set(svc.name, proc);
     console.log(
-      `[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid})`,
+      `[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid}) ` +
+        `via ${launcher.source}: ${launcher.cmd}`,
     );
   }
 
