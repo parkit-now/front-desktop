@@ -39,6 +39,8 @@ export class ServiceManager {
   private readonly processes = new Map<string, ChildProcess>();
   private readonly failed = new Set<string>();
   private readonly healthy = new Set<string>();
+  /** Services already listening when we started — not ours to spawn or stop. */
+  private readonly adopted = new Set<string>();
   private readonly shutdownToken: string;
 
   constructor(
@@ -48,9 +50,44 @@ export class ServiceManager {
     this.shutdownToken = shutdownToken;
   }
 
-  spawnAll(): void {
-    for (const svc of this.services) {
-      this.spawnOne(svc);
+  /**
+   * Starts every service, or adopts one that is already healthy on its port.
+   *
+   * Idempotent supervision (crash-only): a port answering `/health` is a
+   * healthy service no matter who started it — a leftover from a `kill -9`ed
+   * run, a manual `make *-dev`, a debugger. Spawning over it would just hit
+   * EADDRINUSE and get marked failed. We adopt it instead (and leave it be on
+   * shutdown, since its lifecycle isn't ours). Same idea as a kubelet picking
+   * up already-running containers after a restart.
+   */
+  async spawnAll(): Promise<void> {
+    await Promise.all(
+      this.services.map(async (svc) => {
+        if (await this.pingHealth(svc.port)) {
+          this.adopted.add(svc.name);
+          this.healthy.add(svc.name);
+          console.warn(
+            `[main] adopted an already-running ${svc.name} on :${svc.port} ` +
+              `— started externally, will not be stopped on quit`,
+          );
+          return;
+        }
+        this.spawnOne(svc);
+      }),
+    );
+  }
+
+  private async pingHealth(port: number): Promise<boolean> {
+    try {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 1_500);
+      const res = await fetch(`http://127.0.0.1:${port}/health`, {
+        signal: ac.signal,
+      });
+      clearTimeout(timer);
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 
@@ -119,6 +156,9 @@ export class ServiceManager {
   async waitAllHealthy(): Promise<string[]> {
     await Promise.all(
       this.services.map(async (svc) => {
+        // Adopted (or otherwise already-verified) services need no polling.
+        if (this.healthy.has(svc.name)) return;
+
         for (let attempt = 0; attempt <= MAX_SPAWN_RETRIES; attempt++) {
           if (attempt > 0) {
             console.log(

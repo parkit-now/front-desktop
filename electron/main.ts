@@ -158,7 +158,7 @@ if (!gotTheLock) {
     }
 
     const services = new ServiceManager(serviceConfigs);
-    services.spawnAll();
+    await services.spawnAll();
     const failed = runtime.manage ? await services.waitAllHealthy() : [];
 
     const win = createWindow();

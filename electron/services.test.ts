@@ -23,6 +23,30 @@ function config(overrides: Partial<ServiceConfig> = {}): ServiceConfig {
   return { name: 'lpr-service', port: 8765, launcher, ...overrides };
 }
 
+/**
+ * Routes `fetch` by URL. `/health` defaults to failing so `spawnAll` actually
+ * spawns (rather than adopting); pass `health: 'ok'` to exercise adoption.
+ */
+function stubFetch(
+  opts: {
+    health?: 'ok' | 'down';
+    onShutdown?: () => void;
+  } = {},
+) {
+  const health = opts.health ?? 'down';
+  const fn = vi.fn((url: string) => {
+    if (url.endsWith('/health')) {
+      return health === 'ok'
+        ? Promise.resolve({ ok: true } as Response)
+        : Promise.reject(new Error('down'));
+    }
+    opts.onShutdown?.(); // /shutdown
+    return Promise.resolve({ ok: true } as Response);
+  });
+  vi.stubGlobal('fetch', fn);
+  return fn;
+}
+
 // ── Fake ChildProcess ──────────────────────────────────────────────────────
 
 class FakeProcess extends EventEmitter {
@@ -57,8 +81,8 @@ afterEach(() => {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('ServiceManager — spawn', () => {
-  it('launches each service via its resolved launcher, port as the last arg', () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  it('launches each service via its resolved launcher, port as the last arg', async () => {
+    stubFetch();
 
     const manager = new ServiceManager([
       config({
@@ -70,7 +94,7 @@ describe('ServiceManager — spawn', () => {
         },
       }),
     ]);
-    manager.spawnAll();
+    await manager.spawnAll();
 
     const [cmd, args, options] = mockSpawn.mock.calls[0] as [
       string,
@@ -81,14 +105,33 @@ describe('ServiceManager — spawn', () => {
     expect(args).toEqual(['main.py', '8765']);
     expect(options.cwd).toBe('/repo/services/lpr');
   });
+
+  it('adopts an already-running service instead of spawning over it', async () => {
+    stubFetch({ health: 'ok' });
+
+    const manager = new ServiceManager([config()]);
+    await manager.spawnAll();
+    const failed = await manager.waitAllHealthy();
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(failed).toEqual([]);
+  });
 });
 
 describe('ServiceManager — retry on startup', () => {
   it('marks service as healthy when it responds on the first attempt', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    // Fail the pre-spawn ping (so it spawns), succeed once the process exists.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        mockSpawn.mock.calls.length === 0
+          ? Promise.reject(new Error('not ready'))
+          : Promise.resolve({ ok: true } as Response),
+      ),
+    );
 
     const manager = new ServiceManager([config()]);
-    manager.spawnAll();
+    await manager.spawnAll();
 
     const done = manager.waitAllHealthy();
     await vi.runAllTimersAsync();
@@ -98,18 +141,17 @@ describe('ServiceManager — retry on startup', () => {
   });
 
   it('retries once and marks healthy when the second attempt succeeds', async () => {
-    // Fail while only the initial spawn exists; succeed after the retry respawn.
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => {
-        if (mockSpawn.mock.calls.length < 2)
-          return Promise.reject(new Error('not ready'));
-        return Promise.resolve({ ok: true } as Response);
-      }),
+      vi.fn(() =>
+        mockSpawn.mock.calls.length < 2
+          ? Promise.reject(new Error('not ready'))
+          : Promise.resolve({ ok: true } as Response),
+      ),
     );
 
     const manager = new ServiceManager([config()]);
-    manager.spawnAll();
+    await manager.spawnAll();
 
     const done = manager.waitAllHealthy();
     await vi.runAllTimersAsync();
@@ -125,7 +167,7 @@ describe('ServiceManager — retry on startup', () => {
     );
 
     const manager = new ServiceManager([config()]);
-    manager.spawnAll();
+    await manager.spawnAll();
 
     const done = manager.waitAllHealthy();
     await vi.runAllTimersAsync();
@@ -136,14 +178,14 @@ describe('ServiceManager — retry on startup', () => {
 });
 
 describe('ServiceManager — shutdown', () => {
-  it('passes a per-run shutdown token to spawned services', () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  it('passes a per-run shutdown token to spawned services', async () => {
+    stubFetch();
 
     const manager = new ServiceManager(
       [config({ env: { EXTRA: '1' } })],
       'test-token',
     );
-    manager.spawnAll();
+    await manager.spawnAll();
 
     const [, , options] = mockSpawn.mock.calls[0] as [
       string,
@@ -161,20 +203,19 @@ describe('ServiceManager — shutdown', () => {
   it('requests cooperative shutdown with the shutdown token header', async () => {
     const proc = new FakeProcess();
     mockSpawn.mockReturnValue(proc);
-    const fetchMock = vi.fn().mockImplementation(() => {
-      queueMicrotask(() => {
-        proc.exitCode = 0;
-        proc.emit('exit', 0, null);
-      });
-      return Promise.resolve({ ok: true });
+    const fetchMock = stubFetch({
+      onShutdown: () => {
+        queueMicrotask(() => {
+          proc.exitCode = 0;
+          proc.emit('exit', 0, null);
+        });
+      },
     });
-    vi.stubGlobal('fetch', fetchMock);
 
     const manager = new ServiceManager([config()], 'test-token');
-    manager.spawnAll();
+    await manager.spawnAll();
 
-    const done = manager.stopAll();
-    await done;
+    await manager.stopAll();
 
     expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8765/shutdown', {
       method: 'POST',
@@ -186,10 +227,10 @@ describe('ServiceManager — shutdown', () => {
   it('force-kills the process if cooperative shutdown never exits', async () => {
     const proc = new FakeProcess();
     mockSpawn.mockReturnValue(proc);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    stubFetch();
 
     const manager = new ServiceManager([config()], 'test-token');
-    manager.spawnAll();
+    await manager.spawnAll();
 
     const done = manager.stopAll();
     await vi.runAllTimersAsync();
