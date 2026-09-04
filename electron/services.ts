@@ -15,9 +15,13 @@ export interface ServiceConfig {
   env?: Record<string, string>;
 }
 
-const MAX_SPAWN_RETRIES = 2; // 3 total attempts (0, 1, 2)
-const RETRY_DELAY_MS = 2_000;
-const HEALTH_TIMEOUT_MS = 10_000; // per attempt
+// A PyInstaller onefile binary (numpy + opencv + onnxruntime, ~100 MB)
+// unpacks to a temp dir on first launch — cold start can take a minute. Give
+// startup a long grace window (like a k8s startupProbe) and never kill a
+// process that is merely slow; only respawn one that actually exited.
+const STARTUP_GRACE_MS = 90_000;
+const RESPAWN_DELAY_MS = 2_000;
+const MAX_RESPAWNS = 2;
 const HEALTH_POLL_MS = 500;
 // Budget: PROCESS_LOOP_SHUTDOWN_TIMEOUT (3s, camera main.py) + watchdog.stop()
 // join (2s) + capture.stop() join (2s) + storage.close()'s WAL checkpoint,
@@ -148,59 +152,54 @@ export class ServiceManager {
   }
 
   /**
-   * Polls each service's /health endpoint until it responds 200 or the
-   * timeout expires. Retries up to MAX_SPAWN_RETRIES times (killing and
-   * respawning the process between attempts) before marking as failed.
-   * Returns the names of services that failed all attempts.
+   * Waits (up to STARTUP_GRACE_MS) for every service's `/health` to answer 200.
+   * A process that is merely slow to boot is left alone; one that *exits*
+   * during startup is respawned up to MAX_RESPAWNS times. Returns the names
+   * that never became healthy.
    */
   async waitAllHealthy(): Promise<string[]> {
-    await Promise.all(
-      this.services.map(async (svc) => {
-        // Adopted (or otherwise already-verified) services need no polling.
-        if (this.healthy.has(svc.name)) return;
-
-        for (let attempt = 0; attempt <= MAX_SPAWN_RETRIES; attempt++) {
-          if (attempt > 0) {
-            console.log(
-              `[${svc.name}] retrying (attempt ${attempt + 1}/${MAX_SPAWN_RETRIES + 1})…`,
-            );
-            const proc = this.processes.get(svc.name);
-            if (proc && !proc.killed) proc.kill();
-            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-            this.spawnOne(svc);
-          }
-
-          const ok = await this.pollHealth(svc.port);
-          if (ok) {
-            this.healthy.add(svc.name);
-            return;
-          }
-
-          console.error(
-            `[${svc.name}] health check failed (attempt ${attempt + 1}/${MAX_SPAWN_RETRIES + 1})`,
-          );
-        }
-
-        this.failed.add(svc.name);
-      }),
-    );
+    await Promise.all(this.services.map((svc) => this.awaitHealthy(svc)));
     return [...this.failed];
   }
 
-  private async pollHealth(port: number): Promise<boolean> {
-    const url = `http://127.0.0.1:${port}/health`;
-    const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+  private async awaitHealthy(svc: ServiceConfig): Promise<void> {
+    // Adopted (or otherwise already-verified) services need no polling.
+    if (this.healthy.has(svc.name)) return;
+
+    let respawns = 0;
+    const deadline = Date.now() + STARTUP_GRACE_MS;
 
     while (Date.now() < deadline) {
+      const proc = this.processes.get(svc.name);
+
+      if (proc && proc.exitCode !== null) {
+        // Actually crashed while starting — respawn, bounded.
+        if (respawns >= MAX_RESPAWNS) break;
+        respawns += 1;
+        console.warn(
+          `[${svc.name}] exited during startup — respawn ${respawns}/${MAX_RESPAWNS}`,
+        );
+        await new Promise((r) => setTimeout(r, RESPAWN_DELAY_MS));
+        this.spawnOne(svc);
+        continue;
+      }
+
       try {
-        const res = await fetch(url);
-        if (res.ok) return true;
+        const res = await fetch(`http://127.0.0.1:${svc.port}/health`);
+        if (res.ok) {
+          this.healthy.add(svc.name);
+          return;
+        }
       } catch {
-        // service not ready yet — keep polling
+        // not up yet — keep polling
       }
       await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
     }
-    return false;
+
+    console.error(
+      `[${svc.name}] not healthy after ${Math.round(STARTUP_GRACE_MS / 1000)}s`,
+    );
+    this.failed.add(svc.name);
   }
 
   async stopAll(): Promise<void> {
