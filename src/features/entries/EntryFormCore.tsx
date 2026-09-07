@@ -20,6 +20,8 @@ import { type LocalRate } from '../../lib/db/localDb';
 
 export type EntryFormVariant = 'manual' | 'auto';
 
+const ACTIVE_ENTRY_MESSAGE = 'El vehículo ya tiene un ingreso activo.';
+
 interface Props {
   tenantId: string;
   accessToken: string;
@@ -271,6 +273,7 @@ export function EntryFormCore({
   const [vehicleError, setVehicleError] = useState('');
   const [colorError, setColorError] = useState('');
   const [rateError, setRateError] = useState('');
+  const [plateHasActiveEntry, setPlateHasActiveEntry] = useState(false);
 
   // Highlighted suggestion index for keyboard navigation
   const [highlightedSuggestionIdx, setHighlightedSuggestionIdx] = useState(0);
@@ -415,8 +418,26 @@ export function EntryFormCore({
     void prefillFromPlate();
   }, [variant, initialPlate, activeRates, prefillFromPlate]);
 
+  const checkActivePlate = useCallback(async () => {
+    const normalized = plate.trim().toUpperCase();
+    if (!normalized) {
+      setPlateHasActiveEntry(false);
+      return;
+    }
+    const active = await localDb.entries
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((e) => e.plate === normalized && !e.leftAt)
+      .first();
+    setPlateHasActiveEntry(Boolean(active));
+    if (active) {
+      setPlateError(ACTIVE_ENTRY_MESSAGE);
+    }
+  }, [plate, tenantId]);
+
   function handlePlateBlur() {
     void prefillFromPlate();
+    void checkActivePlate();
   }
 
   // 0 = prefix match, 1 = word-boundary match, 2 = contains match
@@ -807,6 +828,7 @@ export function EntryFormCore({
   const canSubmit =
     plate.trim().length >= 3 &&
     plate.trim().length <= 7 &&
+    !plateHasActiveEntry &&
     vehicleSelected &&
     colorSelected &&
     rateSelected;
@@ -838,6 +860,19 @@ export function EntryFormCore({
 
   async function submitEntry(): Promise<void> {
     const normalizedPlate = plate.trim().toUpperCase();
+
+    const stillActive = await localDb.entries
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((e) => e.plate === normalizedPlate && !e.leftAt)
+      .first();
+    if (stillActive) {
+      setPlateHasActiveEntry(true);
+      setPlateError(ACTIVE_ENTRY_MESSAGE);
+      showToast({ message: ACTIVE_ENTRY_MESSAGE, kind: 'error' });
+      return;
+    }
+
     const finalBrand = vehicleSelected ? brand : '';
     const finalModel = vehicleSelected ? model : vehicleInput.trim();
 
@@ -1013,6 +1048,7 @@ export function EntryFormCore({
             onChange={(e) => {
               setPlate(e.target.value.toUpperCase());
               setPlateError('');
+              setPlateHasActiveEntry(false);
               resetConfirm();
             }}
             onBlur={handlePlateBlur}
