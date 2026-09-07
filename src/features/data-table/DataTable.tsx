@@ -101,8 +101,10 @@ export function DataTable<TData>({
   filterOptionsByColumn,
   filterSwitches,
   initialPageSize = 10,
+  initialColumnFilters,
   pageSizeOptions = [5, 10, 20, 30, 50],
   getRowId,
+  onRowClick,
   templateScope,
   headerAction,
   toolbarExtra,
@@ -111,7 +113,9 @@ export function DataTable<TData>({
   serverState,
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState('');
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+    initialColumnFilters ?? [],
+  );
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
@@ -444,7 +448,13 @@ export function DataTable<TData>({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className={onRowClick ? 'dt-row-clickable' : undefined}
+                  onClick={
+                    onRowClick ? () => onRowClick(row.original) : undefined
+                  }
+                >
                   {row.getVisibleCells().map((cell) => {
                     const pinned = cell.column.getIsPinned();
                     return (

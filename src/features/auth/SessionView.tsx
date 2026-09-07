@@ -168,6 +168,9 @@ export function SessionView({ session }: Props) {
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
+  const [historialCashSessionId, setHistorialCashSessionId] = useState<
+    string | null
+  >(null);
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
   );
@@ -503,7 +506,10 @@ export function SessionView({ session }: Props) {
             <button
               type="button"
               className={`nav-item ${section === 'historial' ? 'active' : ''}`}
-              onClick={() => setSection('historial')}
+              onClick={() => {
+                setHistorialCashSessionId(null);
+                setSection('historial');
+              }}
             >
               <Car size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Historial</span> : null}
@@ -664,6 +670,15 @@ export function SessionView({ session }: Props) {
                 <EntryHistoryPanel
                   tenantId={activeTenantId}
                   userId={session.user.id}
+                  initialCashSessionId={historialCashSessionId ?? undefined}
+                  onBackToCaja={
+                    historialCashSessionId
+                      ? () => {
+                          setHistorialCashSessionId(null);
+                          setSection('caja');
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <section className="dashboard-card warning">
@@ -730,7 +745,13 @@ export function SessionView({ session }: Props) {
                     tenantId={activeTenantId}
                     accessToken={session.access_token}
                   />
-                  <CashSessionHistoryPanel tenantId={activeTenantId} />
+                  <CashSessionHistoryPanel
+                    tenantId={activeTenantId}
+                    onSelectSession={(cashSession) => {
+                      setHistorialCashSessionId(cashSession.id);
+                      setSection('historial');
+                    }}
+                  />
                 </div>
               ) : (
                 <section className="dashboard-card warning">

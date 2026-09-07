@@ -7,6 +7,7 @@ import { DataTable } from '../data-table';
 
 interface Props {
   tenantId: string;
+  onSelectSession?: (session: LocalCashSession) => void;
 }
 
 const FILTERABLE_COLUMNS = ['openedAt', 'closedAt'];
@@ -61,7 +62,7 @@ const COLUMNS: ColumnDef<LocalCashSession, unknown>[] = [
   },
 ];
 
-export function CashSessionHistoryPanel({ tenantId }: Props) {
+export function CashSessionHistoryPanel({ tenantId, onSelectSession }: Props) {
   const sessions = useLiveQuery(
     () =>
       localDb.cashSessions
@@ -83,12 +84,18 @@ export function CashSessionHistoryPanel({ tenantId }: Props) {
   return (
     <div className="cash-session-history">
       <h3 className="section-subheading">Historial de cajas</h3>
+      {onSelectSession ? (
+        <p className="muted cash-session-history-hint">
+          Tocá una caja para ver sus movimientos en el historial.
+        </p>
+      ) : null}
       <DataTable
         columns={columns}
         data={sessions ?? []}
         isLoading={sessions === undefined}
         emptyMessage="No hay cajas cerradas registradas."
         filterableColumns={FILTERABLE_COLUMNS}
+        onRowClick={onSelectSession}
       />
     </div>
   );

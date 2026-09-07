@@ -1,20 +1,41 @@
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, ColumnFiltersState } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { ArrowLeft } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
-import { DataTable } from '../data-table';
+import { cashSessionLabel } from '../../lib/format/cashSession';
+import { DataTable, type DataTableFilterOption } from '../data-table';
 
 interface Props {
   tenantId: string;
   userId: string;
+  initialCashSessionId?: string;
+  onBackToCaja?: () => void;
 }
 
 function dateOnly(iso: string | undefined): string {
   return iso ? iso.slice(0, 10) : '';
 }
 
-const COLUMNS: ColumnDef<LocalEntry, unknown>[] = [
+function buildCashSessionColumn(
+  sessionLabelById: Map<string, string>,
+): ColumnDef<LocalEntry, unknown> {
+  return {
+    id: 'cashSessionId',
+    accessorFn: (row) => row.cashSessionId ?? '',
+    header: 'Caja',
+    size: 190,
+    filterFn: 'includesSome',
+    cell: ({ row }) => {
+      const cashSessionId = row.original.cashSessionId;
+      const label = cashSessionId ? sessionLabelById.get(cashSessionId) : null;
+      return label ? label : <span className="muted">—</span>;
+    },
+  };
+}
+
+const COLUMNS_HEAD: ColumnDef<LocalEntry, unknown>[] = [
   {
     accessorKey: 'plate',
     header: 'Patente',
@@ -75,6 +96,9 @@ const COLUMNS: ColumnDef<LocalEntry, unknown>[] = [
         <span className="muted">—</span>
       ),
   },
+];
+
+const COLUMNS_TAIL: ColumnDef<LocalEntry, unknown>[] = [
   {
     accessorKey: 'rateSnapshotName',
     header: 'Tarifa',
@@ -127,6 +151,7 @@ const COLUMNS: ColumnDef<LocalEntry, unknown>[] = [
 const FILTERABLE_COLUMNS = [
   'enteredAt',
   'leftAt',
+  'cashSessionId',
   'rateSnapshotName',
   'vehicleBrand',
   'vehicleModel',
@@ -135,18 +160,65 @@ const FILTERABLE_COLUMNS = [
 
 const SEARCHABLE_KEYS = ['plate', 'notes'];
 
-export function EntryHistoryPanel({ tenantId, userId }: Props) {
+export function EntryHistoryPanel({
+  tenantId,
+  userId,
+  initialCashSessionId,
+  onBackToCaja,
+}: Props) {
   const [onlyCurrentSession, setOnlyCurrentSession] = useState(false);
   const [includeInLot, setIncludeInLot] = useState(false);
 
-  const activeCashSession = useLiveQuery(
+  const allSessions = useLiveQuery(
     () =>
       localDb.cashSessions
         .where('tenantId')
         .equals(tenantId)
-        .filter((s) => !s.closedAt)
-        .first(),
+        .toArray()
+        .then((arr) =>
+          arr.sort(
+            (a, b) =>
+              new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime(),
+          ),
+        ),
     [tenantId],
+  );
+
+  const activeCashSession = useMemo(
+    () => allSessions?.find((s) => !s.closedAt),
+    [allSessions],
+  );
+
+  const sessionLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    (allSessions ?? []).forEach((s) => map.set(s.id, cashSessionLabel(s)));
+    return map;
+  }, [allSessions]);
+
+  const cashSessionFilterOptions = useMemo<DataTableFilterOption[]>(
+    () =>
+      (allSessions ?? []).map((s) => ({
+        value: s.id,
+        label: cashSessionLabel(s),
+      })),
+    [allSessions],
+  );
+
+  const columns = useMemo(
+    () => [
+      ...COLUMNS_HEAD,
+      buildCashSessionColumn(sessionLabelById),
+      ...COLUMNS_TAIL,
+    ],
+    [sessionLabelById],
+  );
+
+  const initialColumnFilters = useMemo<ColumnFiltersState>(
+    () =>
+      initialCashSessionId
+        ? [{ id: 'cashSessionId', value: [initialCashSessionId] }]
+        : [],
+    [initialCashSessionId],
   );
 
   const allEntries = useLiveQuery(
@@ -177,12 +249,14 @@ export function EntryHistoryPanel({ tenantId, userId }: Props) {
   return (
     <DataTable
       data={entries ?? []}
-      columns={COLUMNS}
+      columns={columns}
       isLoading={entries === undefined}
       emptyMessage="No hay movimientos registrados todavía."
       searchPlaceholder="Buscar por patente o notas…"
       searchableKeys={SEARCHABLE_KEYS}
       filterableColumns={FILTERABLE_COLUMNS}
+      filterOptionsByColumn={{ cashSessionId: cashSessionFilterOptions }}
+      initialColumnFilters={initialColumnFilters}
       initialPageSize={20}
       pageSizeOptions={[10, 20, 50, 100]}
       getRowId={(row) => row.id}
@@ -201,6 +275,23 @@ export function EntryHistoryPanel({ tenantId, userId }: Props) {
           onChange: setIncludeInLot,
         },
       ]}
+      subtitle={
+        initialCashSessionId
+          ? 'Mostrando los movimientos de la caja seleccionada.'
+          : undefined
+      }
+      headerAction={
+        onBackToCaja ? (
+          <button
+            type="button"
+            className="dt-secondary-action"
+            onClick={onBackToCaja}
+          >
+            <ArrowLeft size={15} />
+            Volver a Caja
+          </button>
+        ) : undefined
+      }
     />
   );
 }
