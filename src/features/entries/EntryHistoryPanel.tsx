@@ -1,5 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useMemo, useState } from 'react';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
 import { DataTable } from '../data-table';
@@ -135,21 +136,43 @@ const FILTERABLE_COLUMNS = [
 const SEARCHABLE_KEYS = ['plate', 'notes'];
 
 export function EntryHistoryPanel({ tenantId, userId }: Props) {
-  const entries = useLiveQuery(
+  const [onlyCurrentSession, setOnlyCurrentSession] = useState(false);
+  const [includeInLot, setIncludeInLot] = useState(false);
+
+  const activeCashSession = useLiveQuery(
     () =>
-      localDb.entries
+      localDb.cashSessions
         .where('tenantId')
         .equals(tenantId)
-        .filter((e) => Boolean(e.leftAt))
-        .toArray()
-        .then((arr) =>
-          arr.sort(
-            (a, b) =>
-              new Date(b.leftAt!).getTime() - new Date(a.leftAt!).getTime(),
-          ),
-        ),
+        .filter((s) => !s.closedAt)
+        .first(),
     [tenantId],
   );
+
+  const allEntries = useLiveQuery(
+    () => localDb.entries.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
+  const entries = useMemo(() => {
+    if (!allEntries) return undefined;
+
+    let filtered = includeInLot
+      ? allEntries
+      : allEntries.filter((e) => Boolean(e.leftAt));
+
+    if (onlyCurrentSession) {
+      filtered = activeCashSession
+        ? filtered.filter((e) => e.cashSessionId === activeCashSession.id)
+        : [];
+    }
+
+    return [...filtered].sort(
+      (a, b) =>
+        new Date(b.leftAt ?? b.enteredAt).getTime() -
+        new Date(a.leftAt ?? a.enteredAt).getTime(),
+    );
+  }, [allEntries, includeInLot, onlyCurrentSession, activeCashSession]);
 
   return (
     <DataTable
@@ -164,6 +187,20 @@ export function EntryHistoryPanel({ tenantId, userId }: Props) {
       pageSizeOptions={[10, 20, 50, 100]}
       getRowId={(row) => row.id}
       templateScope={{ userId, tenantId, tableKey: 'entry-history' }}
+      filterSwitches={[
+        {
+          id: 'onlyCurrentSession',
+          label: 'Solo caja actual',
+          checked: onlyCurrentSession,
+          onChange: setOnlyCurrentSession,
+        },
+        {
+          id: 'includeInLot',
+          label: 'Incluir autos en base',
+          checked: includeInLot,
+          onChange: setIncludeInLot,
+        },
+      ]}
     />
   );
 }

@@ -1207,6 +1207,75 @@ h2 {
   min-width: 0;
 }
 
+/* Reusable toggle switch (filters, settings) */
+.ui-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-switch-track {
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--color-border);
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.ui-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.ui-switch input:checked + .ui-switch-track {
+  background: var(--color-brand);
+}
+
+.ui-switch input:checked + .ui-switch-track .ui-switch-thumb {
+  transform: translateX(14px);
+}
+
+.ui-switch input:focus-visible + .ui-switch-track {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.ui-switch input:disabled ~ .ui-switch-track,
+.ui-switch input:disabled ~ .ui-switch-label {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-switch-label {
+  white-space: nowrap;
+}
+
 .dt-toolbar-button,
 .dt-icon-button,
 .dt-secondary-action,
@@ -1428,6 +1497,30 @@ h2 {
   color: #1d2939;
   font-weight: 700;
   font-size: 13px;
+}
+
+.dt-filter-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 11px;
+  border-radius: 12px;
+  background: #f7f8fa;
+}
+
+.dt-filter-switch-label {
+  color: #1d2939;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dt-filter-switch-row .ui-switch {
+  min-height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 .dt-filter-section-header {

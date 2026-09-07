@@ -7,6 +7,13 @@ export type DataTableFilterOption = {
   label: string;
 };
 
+export type DataTableFilterSwitch = {
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+};
+
 export type DataTableServerState = {
   rowCount: number;
   isFetching?: boolean;
@@ -24,6 +31,7 @@ export type DataTableProps<TData> = {
   searchableKeys?: string[];
   filterableColumns?: string[];
   filterOptionsByColumn?: Record<string, DataTableFilterOption[]>;
+  filterSwitches?: DataTableFilterSwitch[];
   initialPageSize?: number;
   pageSizeOptions?: number[];
   getRowId?: (row: TData, index: number) => string;
