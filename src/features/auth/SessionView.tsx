@@ -46,6 +46,11 @@ type Props = {
   session: Session;
 };
 
+/** Cómo se abrió Historial cuando se entra desde la sección Caja. */
+type HistorialFocus =
+  | { kind: 'cashSession'; sessionId: string }
+  | { kind: 'activeCashSession' };
+
 type WorkspaceSection =
   | 'dashboard'
   | 'rates'
@@ -168,6 +173,9 @@ export function SessionView({ session }: Props) {
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
+  const [historialFocus, setHistorialFocus] = useState<HistorialFocus | null>(
+    null,
+  );
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
   );
@@ -503,7 +511,10 @@ export function SessionView({ session }: Props) {
             <button
               type="button"
               className={`nav-item ${section === 'historial' ? 'active' : ''}`}
-              onClick={() => setSection('historial')}
+              onClick={() => {
+                setHistorialFocus(null);
+                setSection('historial');
+              }}
             >
               <Car size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Historial</span> : null}
@@ -664,6 +675,22 @@ export function SessionView({ session }: Props) {
                 <EntryHistoryPanel
                   tenantId={activeTenantId}
                   userId={session.user.id}
+                  initialCashSessionId={
+                    historialFocus?.kind === 'cashSession'
+                      ? historialFocus.sessionId
+                      : undefined
+                  }
+                  initialOnlyCurrentSession={
+                    historialFocus?.kind === 'activeCashSession'
+                  }
+                  onBackToCaja={
+                    historialFocus
+                      ? () => {
+                          setHistorialFocus(null);
+                          setSection('caja');
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <section className="dashboard-card warning">
@@ -729,8 +756,22 @@ export function SessionView({ session }: Props) {
                   <CashSessionPanel
                     tenantId={activeTenantId}
                     accessToken={session.access_token}
+                    onViewMovements={() => {
+                      setHistorialFocus({ kind: 'activeCashSession' });
+                      setSection('historial');
+                    }}
                   />
-                  <CashSessionHistoryPanel tenantId={activeTenantId} />
+                  <CashSessionHistoryPanel
+                    tenantId={activeTenantId}
+                    accessToken={session.access_token}
+                    onSelectSession={(cashSession) => {
+                      setHistorialFocus({
+                        kind: 'cashSession',
+                        sessionId: cashSession.id,
+                      });
+                      setSection('historial');
+                    }}
+                  />
                 </div>
               ) : (
                 <section className="dashboard-card warning">

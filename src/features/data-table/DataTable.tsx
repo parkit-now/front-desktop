@@ -9,6 +9,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   type PaginationState,
+  type RowData,
   type SortingFn,
   type SortingState,
   type Updater,
@@ -40,6 +41,13 @@ declare module '@tanstack/react-table' {
   interface FilterFns {
     includesSome: FilterFn<unknown>;
     dateRange: FilterFn<unknown>;
+  }
+
+  // Los type params son obligatorios para el declaration merging, aunque este
+  // campo no los use.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    filterLabel?: string;
   }
 }
 
@@ -99,9 +107,13 @@ export function DataTable<TData>({
   searchableKeys,
   filterableColumns = [],
   filterOptionsByColumn,
+  filterSwitches,
   initialPageSize = 10,
+  initialColumnFilters,
+  initialSorting,
   pageSizeOptions = [5, 10, 20, 30, 50],
   getRowId,
+  onRowClick,
   templateScope,
   headerAction,
   toolbarExtra,
@@ -110,8 +122,10 @@ export function DataTable<TData>({
   serverState,
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState('');
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+    initialColumnFilters ?? [],
+  );
+  const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [columnPinning, setColumnPinning] = useState<{ left?: string[] }>({
@@ -228,7 +242,7 @@ export function DataTable<TData>({
       if (!sanitized) {
         setGlobalFilter('');
         setColumnFilters([]);
-        setSorting([]);
+        setSorting(initialSorting ?? []);
         setColumnVisibility({});
         setColumnOrder([]);
         setColumnPinning({ left: [] });
@@ -244,7 +258,7 @@ export function DataTable<TData>({
       setColumnPinning({ left: sanitized.columns.pinnedLeft });
       setPagination({ pageIndex: 0, pageSize: sanitized.pagination.pageSize });
     },
-    [initialPageSize, knownColumnIds],
+    [initialPageSize, initialSorting, knownColumnIds],
   );
 
   useEffect(() => {
@@ -361,6 +375,7 @@ export function DataTable<TData>({
             table={table}
             filterableColumns={filterableColumns}
             filterOptionsByColumn={filterOptionsByColumn}
+            filterSwitches={filterSwitches}
           />
           {toolbarExtra}
           <TemplateSelector
@@ -442,7 +457,13 @@ export function DataTable<TData>({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className={onRowClick ? 'dt-row-clickable' : undefined}
+                  onClick={
+                    onRowClick ? () => onRowClick(row.original) : undefined
+                  }
+                >
                   {row.getVisibleCells().map((cell) => {
                     const pinned = cell.column.getIsPinned();
                     return (

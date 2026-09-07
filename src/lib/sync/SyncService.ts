@@ -48,6 +48,7 @@ import {
 import {
   createCashSession,
   pullCashSessionChanges,
+  updateCashSession,
   type CashSessionDto,
 } from '../api/cash-sessions';
 import {
@@ -116,7 +117,7 @@ function entryToLocal(e: EntryDto): LocalEntry {
   };
 }
 
-function cashSessionToLocal(s: CashSessionDto): LocalCashSession {
+export function cashSessionToLocal(s: CashSessionDto): LocalCashSession {
   return {
     id: s.id,
     tenantId: s.tenantId,
@@ -913,6 +914,21 @@ class SyncService {
         tenantId,
         bearer,
         body: payload,
+      });
+      return cashSessionToLocal(result);
+    }
+
+    if (op.operation === 'update') {
+      const payload = op.payload as {
+        expectedVersion: number;
+        body: Parameters<typeof updateCashSession>[0]['body'];
+      };
+      const result = await updateCashSession({
+        tenantId,
+        bearer,
+        sessionId: op.entityId,
+        expectedVersion: payload.expectedVersion,
+        body: payload.body,
       });
       return cashSessionToLocal(result);
     }

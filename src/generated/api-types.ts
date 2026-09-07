@@ -640,6 +640,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/cash-sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a cash session using optimistic locking (expectedVersion)
+         * @description Updates the shift notes of an open or closed session.
+         */
+        patch: operations["CashSessionsController_update"];
+        trace?: never;
+    };
     "/tenants/{tenantId}/cash-sessions/{sessionId}/close": {
         parameters: {
             query?: never;
@@ -2597,6 +2617,10 @@ export interface components {
              * @example 110
              */
             totalSpots?: number;
+        };
+        UpdateCashSessionDto: {
+            /** @description Shift notes. Send an empty string to clear them. Omitting the field leaves them untouched. */
+            notes?: string;
         };
         UpdateEntityCapacityDto: {
             /**
@@ -4675,6 +4699,36 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateCashSessionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashSessionDto"];
+                };
+            };
+        };
+    };
+    CashSessionsController_update: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                sessionId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCashSessionDto"];
             };
         };
         responses: {

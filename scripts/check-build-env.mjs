@@ -207,10 +207,14 @@ if (target === 'win' && process.platform === 'win32') {
     '/v',
     'AllowDevelopmentWithoutDevLicense',
   ]);
-  const devMode = /AllowDevelopmentWithoutDevLicense\s+REG_DWORD\s+0x1/i.test(reg || '');
+  const devMode = /AllowDevelopmentWithoutDevLicense\s+REG_DWORD\s+0x1/i.test(
+    reg || '',
+  );
   const isAdmin = run('net', ['session']) !== null; // net session solo corre elevado
   if (devMode || isAdmin) {
-    ok(`creación de symlinks OK (${devMode ? 'Modo de desarrollador' : 'consola de Administrador'})`);
+    ok(
+      `creación de symlinks OK (${devMode ? 'Modo de desarrollador' : 'consola de Administrador'})`,
+    );
   } else {
     err(
       'no podés crear symlinks — electron-builder falla extrayendo winCodeSign. ' +

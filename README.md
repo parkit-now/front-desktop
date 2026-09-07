@@ -87,8 +87,30 @@ make camera-install       # solo la primera vez
 make camera-dev
 ```
 
-En producción Electron los levanta automáticamente como binarios empaquetados;
-en dev el `ServiceManager` es un no-op (`app.isPackaged === false`).
+Electron **siempre** supervisa los sidecars con el mismo `ServiceManager`
+(health check + retry + shutdown cooperativo). Lo único que cambia por entorno
+es _qué ejecutable_ arranca, resuelto por `electron/serviceRuntime.ts` en este
+orden:
+
+| Situación                              | De dónde sale el binario                   |
+| -------------------------------------- | ------------------------------------------ |
+| `PARKIT_MANAGE_SERVICES=0`             | Electron no gestiona nada (los corre otro) |
+| `PARKIT_LPR_CMD` / `PARKIT_CAMERA_CMD` | comando explícito                          |
+| App empaquetada                        | binario en `process.resourcesPath`         |
+| Sin empaquetar (`make prod`)           | venv `python main.py` desde fuente         |
+| Sin empaquetar, sin venv               | `services/<svc>/dist/<name>` compilado     |
+
+`app.isPackaged` solo elige el default de las últimas dos filas; no decide si
+hay supervisión. Así `make prod`, la app empaquetada y `make dev` comparten el
+mismo camino de código. Sin empaquetar se prefiere la fuente (es la fuente de
+verdad de un working tree; el binario de `dist/` se recompila a mano y se
+queda viejo). Para probar el binario compilado sin empaquetar, forzalo con
+`PARKIT_LPR_CMD` / `PARKIT_CAMERA_CMD`; la paridad real con producción sale de
+un bundle de verdad (`make dist-mac`).
+
+`make dev` es la excepción deliberada: corre los servicios Python con
+hot-reload y setea `PARKIT_MANAGE_SERVICES=0` para que Electron no los duplique.
+Ver `PARKIT_*` en [`.env.example`](./.env.example).
 
 ## Empaquetado / Distribución
 
@@ -135,11 +157,11 @@ targets ni requiere binarios de los otros SO.
 
 Prerrequisitos por SO:
 
-| SO      | Necesita además de `bun`/`make`/Python 3.12                                                                                                   |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| macOS   | Xcode Command Line Tools (`xcode-select --install`)                                                                                            |
+| SO      | Necesita además de `bun`/`make`/Python 3.12                                                                                                                                                                                             |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS   | Xcode Command Line Tools (`xcode-select --install`)                                                                                                                                                                                     |
 | Windows | GNU make (`choco install make`, o Git Bash/WSL) — no viene preinstalado. **Modo de desarrollador ON** (o correr el build como Administrador): electron-builder extrae `winCodeSign` con symlinks y Windows los bloquea sin ese permiso. |
-| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`                                                                                   |
+| Linux   | `libarchive-tools` (o equivalente) para el target `AppImage`                                                                                                                                                                            |
 
 > Python **debe ser 3.12 exacto** (numpy 1.26.4 no publica wheels para otra minor; con 3.13+ pip cae a compilar desde source y falla). Si tu 3.12 no está como `python`, pasá `PYTHON_BIN` — p. ej. `make dist-win PYTHON_BIN="py -3.12"`. `make doctor` valida todo esto.
 

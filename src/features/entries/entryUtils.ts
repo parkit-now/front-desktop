@@ -18,13 +18,18 @@ export function generateUuidV7(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function formatDuration(enteredAt: string): string {
-  const ms = Date.now() - new Date(enteredAt).getTime();
-  const totalMinutes = Math.floor(ms / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+export function formatMinutes(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes)) return '—';
+  const whole = Math.floor(totalMinutes);
+  const hours = Math.floor(whole / 60);
+  const minutes = whole % 60;
   if (hours === 0) return `${minutes}m`;
   return `${hours}h ${minutes}m`;
+}
+
+export function formatDuration(enteredAt: string): string {
+  const ms = Date.now() - new Date(enteredAt).getTime();
+  return formatMinutes(ms / 60000);
 }
 
 export function isCashMethod(name: string): boolean {

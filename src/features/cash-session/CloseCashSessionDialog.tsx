@@ -162,9 +162,9 @@ export function CloseCashSessionDialog({
             <p className="muted">Sin movimientos en este turno.</p>
           ) : (
             summary.byPm.map((pm) => {
-              const isEfectivo = pm.pmName.toLowerCase().includes('efectivo');
+              const isEfectivo = pm.isCash;
               return (
-                <div key={pm.pmName} className="session-pm-row">
+                <div key={pm.pmId} className="session-pm-row">
                   <div className="session-pm-header">
                     <span className="session-pm-name">{pm.pmName}</span>
                     <span className="session-pm-total">
@@ -190,9 +190,7 @@ export function CloseCashSessionDialog({
             })
           )}
           {session.openingCash > 0 &&
-            summary.byPm.every(
-              (pm) => !pm.pmName.toLowerCase().includes('efectivo'),
-            ) && (
+            summary.byPm.every((pm) => !pm.isCash) && (
               <p className="muted session-opening-cash-note">
                 Fondo inicial sin movimientos en efectivo:{' '}
                 {formatArs(session.openingCash)}
