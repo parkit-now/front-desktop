@@ -46,6 +46,11 @@ type Props = {
   session: Session;
 };
 
+/** Cómo se abrió Historial cuando se entra desde la sección Caja. */
+type HistorialFocus =
+  | { kind: 'cashSession'; sessionId: string }
+  | { kind: 'activeCashSession' };
+
 type WorkspaceSection =
   | 'dashboard'
   | 'rates'
@@ -168,9 +173,9 @@ export function SessionView({ session }: Props) {
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
-  const [historialCashSessionId, setHistorialCashSessionId] = useState<
-    string | null
-  >(null);
+  const [historialFocus, setHistorialFocus] = useState<HistorialFocus | null>(
+    null,
+  );
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
   );
@@ -507,7 +512,7 @@ export function SessionView({ session }: Props) {
               type="button"
               className={`nav-item ${section === 'historial' ? 'active' : ''}`}
               onClick={() => {
-                setHistorialCashSessionId(null);
+                setHistorialFocus(null);
                 setSection('historial');
               }}
             >
@@ -670,11 +675,18 @@ export function SessionView({ session }: Props) {
                 <EntryHistoryPanel
                   tenantId={activeTenantId}
                   userId={session.user.id}
-                  initialCashSessionId={historialCashSessionId ?? undefined}
+                  initialCashSessionId={
+                    historialFocus?.kind === 'cashSession'
+                      ? historialFocus.sessionId
+                      : undefined
+                  }
+                  initialOnlyCurrentSession={
+                    historialFocus?.kind === 'activeCashSession'
+                  }
                   onBackToCaja={
-                    historialCashSessionId
+                    historialFocus
                       ? () => {
-                          setHistorialCashSessionId(null);
+                          setHistorialFocus(null);
                           setSection('caja');
                         }
                       : undefined
@@ -744,11 +756,19 @@ export function SessionView({ session }: Props) {
                   <CashSessionPanel
                     tenantId={activeTenantId}
                     accessToken={session.access_token}
+                    onViewMovements={() => {
+                      setHistorialFocus({ kind: 'activeCashSession' });
+                      setSection('historial');
+                    }}
                   />
                   <CashSessionHistoryPanel
                     tenantId={activeTenantId}
+                    accessToken={session.access_token}
                     onSelectSession={(cashSession) => {
-                      setHistorialCashSessionId(cashSession.id);
+                      setHistorialFocus({
+                        kind: 'cashSession',
+                        sessionId: cashSession.id,
+                      });
                       setSection('historial');
                     }}
                   />

@@ -1,4 +1,8 @@
-import type { ColumnDef, ColumnFiltersState } from '@tanstack/react-table';
+import type {
+  ColumnDef,
+  ColumnFiltersState,
+  SortingState,
+} from '@tanstack/react-table';
 import type { ReactNode } from 'react';
 import type { TableTemplateScope } from '../table-view-template';
 
@@ -34,6 +38,7 @@ export type DataTableProps<TData> = {
   filterSwitches?: DataTableFilterSwitch[];
   initialPageSize?: number;
   initialColumnFilters?: ColumnFiltersState;
+  initialSorting?: SortingState;
   pageSizeOptions?: number[];
   getRowId?: (row: TData, index: number) => string;
   onRowClick?: (row: TData) => void;

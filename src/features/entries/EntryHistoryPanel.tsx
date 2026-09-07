@@ -1,8 +1,16 @@
-import type { ColumnDef, ColumnFiltersState } from '@tanstack/react-table';
+import type {
+  ColumnDef,
+  ColumnFiltersState,
+  FilterFn,
+} from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { localDb, type LocalEntry } from '../../lib/db/localDb';
+import {
+  localDb,
+  type LocalEntry,
+  type LocalPaymentTransaction,
+} from '../../lib/db/localDb';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
 import { cashSessionLabel } from '../../lib/format/cashSession';
 import { DataTable, type DataTableFilterOption } from '../data-table';
@@ -11,16 +19,38 @@ interface Props {
   tenantId: string;
   userId: string;
   initialCashSessionId?: string;
+  initialOnlyCurrentSession?: boolean;
   onBackToCaja?: () => void;
 }
+
+type EntryHistoryRow = LocalEntry & {
+  paymentLines: LocalPaymentTransaction[];
+};
 
 function dateOnly(iso: string | undefined): string {
   return iso ? iso.slice(0, 10) : '';
 }
 
+function paymentMethodFilterValue(line: LocalPaymentTransaction): string {
+  return line.paymentMethodId ?? line.paymentMethodName;
+}
+
+const paymentMethodFilter: FilterFn<EntryHistoryRow> = (
+  row,
+  _columnId,
+  value,
+) => {
+  if (!Array.isArray(value) || value.length === 0) return true;
+  const selected = new Set(value.map(String));
+
+  return row.original.paymentLines.some((line) =>
+    selected.has(paymentMethodFilterValue(line)),
+  );
+};
+
 function buildCashSessionColumn(
   sessionLabelById: Map<string, string>,
-): ColumnDef<LocalEntry, unknown> {
+): ColumnDef<EntryHistoryRow, unknown> {
   return {
     id: 'cashSessionId',
     accessorFn: (row) => row.cashSessionId ?? '',
@@ -35,7 +65,7 @@ function buildCashSessionColumn(
   };
 }
 
-const COLUMNS_HEAD: ColumnDef<LocalEntry, unknown>[] = [
+const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
   {
     accessorKey: 'plate',
     header: 'Patente',
@@ -98,7 +128,7 @@ const COLUMNS_HEAD: ColumnDef<LocalEntry, unknown>[] = [
   },
 ];
 
-const COLUMNS_TAIL: ColumnDef<LocalEntry, unknown>[] = [
+const COLUMNS_TAIL: ColumnDef<EntryHistoryRow, unknown>[] = [
   {
     accessorKey: 'rateSnapshotName',
     header: 'Tarifa',
@@ -112,17 +142,40 @@ const COLUMNS_TAIL: ColumnDef<LocalEntry, unknown>[] = [
   },
   {
     id: 'amountPaid',
-    accessorFn: (row) =>
-      row.amountPaid != null ? parseFloat(row.amountPaid) : null,
+    accessorFn: (row) => {
+      if (row.paymentLines.length > 0) {
+        return row.paymentLines.reduce((total, line) => total + line.amount, 0);
+      }
+      return row.amountPaid != null ? parseFloat(row.amountPaid) : null;
+    },
     header: 'Cobrado',
-    size: 100,
-    enableColumnFilter: false,
-    cell: ({ row }) =>
-      row.original.amountPaid ? (
+    size: 170,
+    filterFn: paymentMethodFilter,
+    meta: {
+      filterLabel: 'Medio de pago',
+    },
+    cell: ({ row }) => {
+      const { paymentLines } = row.original;
+
+      if (paymentLines.length > 0) {
+        return (
+          <div className="entry-payment-breakdown">
+            {paymentLines.map((line) => (
+              <div className="entry-payment-line" key={line.id}>
+                <span>{line.paymentMethodName}</span>
+                <strong>{formatArs(line.amount)}</strong>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      return row.original.amountPaid ? (
         formatArs(row.original.amountPaid)
       ) : (
         <span className="muted">—</span>
-      ),
+      );
+    },
   },
   {
     accessorKey: 'cochera',
@@ -152,6 +205,7 @@ const FILTERABLE_COLUMNS = [
   'enteredAt',
   'leftAt',
   'cashSessionId',
+  'amountPaid',
   'rateSnapshotName',
   'vehicleBrand',
   'vehicleModel',
@@ -164,9 +218,12 @@ export function EntryHistoryPanel({
   tenantId,
   userId,
   initialCashSessionId,
+  initialOnlyCurrentSession = false,
   onBackToCaja,
 }: Props) {
-  const [onlyCurrentSession, setOnlyCurrentSession] = useState(false);
+  const [onlyCurrentSession, setOnlyCurrentSession] = useState(
+    initialOnlyCurrentSession,
+  );
   const [includeInLot, setIncludeInLot] = useState(false);
 
   const allSessions = useLiveQuery(
@@ -226,8 +283,24 @@ export function EntryHistoryPanel({
     [tenantId],
   );
 
+  const allPaymentTransactions = useLiveQuery(
+    () =>
+      localDb.paymentTransactions.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
   const entries = useMemo(() => {
-    if (!allEntries) return undefined;
+    if (!allEntries || !allPaymentTransactions) return undefined;
+
+    const paymentsByEntryId = new Map<string, LocalPaymentTransaction[]>();
+    allPaymentTransactions.forEach((tx) => {
+      const lines = paymentsByEntryId.get(tx.entryId);
+      if (lines) {
+        lines.push(tx);
+      } else {
+        paymentsByEntryId.set(tx.entryId, [tx]);
+      }
+    });
 
     let filtered = includeInLot
       ? allEntries
@@ -239,12 +312,36 @@ export function EntryHistoryPanel({
         : [];
     }
 
-    return [...filtered].sort(
-      (a, b) =>
-        new Date(b.leftAt ?? b.enteredAt).getTime() -
-        new Date(a.leftAt ?? a.enteredAt).getTime(),
-    );
-  }, [allEntries, includeInLot, onlyCurrentSession, activeCashSession]);
+    return filtered
+      .map<EntryHistoryRow>((entry) => ({
+        ...entry,
+        paymentLines: paymentsByEntryId.get(entry.id) ?? [],
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.leftAt ?? b.enteredAt).getTime() -
+          new Date(a.leftAt ?? a.enteredAt).getTime(),
+      );
+  }, [
+    allEntries,
+    allPaymentTransactions,
+    includeInLot,
+    onlyCurrentSession,
+    activeCashSession,
+  ]);
+
+  const paymentMethodFilterOptions = useMemo<DataTableFilterOption[]>(() => {
+    if (!allPaymentTransactions) return [];
+
+    const byValue = new Map<string, string>();
+    allPaymentTransactions.forEach((tx) => {
+      byValue.set(paymentMethodFilterValue(tx), tx.paymentMethodName);
+    });
+
+    return Array.from(byValue.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, 'es'));
+  }, [allPaymentTransactions]);
 
   return (
     <DataTable
@@ -255,7 +352,10 @@ export function EntryHistoryPanel({
       searchPlaceholder="Buscar por patente o notas…"
       searchableKeys={SEARCHABLE_KEYS}
       filterableColumns={FILTERABLE_COLUMNS}
-      filterOptionsByColumn={{ cashSessionId: cashSessionFilterOptions }}
+      filterOptionsByColumn={{
+        amountPaid: paymentMethodFilterOptions,
+        cashSessionId: cashSessionFilterOptions,
+      }}
       initialColumnFilters={initialColumnFilters}
       initialPageSize={20}
       pageSizeOptions={[10, 20, 50, 100]}
@@ -278,7 +378,9 @@ export function EntryHistoryPanel({
       subtitle={
         initialCashSessionId
           ? 'Mostrando los movimientos de la caja seleccionada.'
-          : undefined
+          : initialOnlyCurrentSession
+            ? 'Mostrando los movimientos de la caja activa.'
+            : undefined
       }
       headerAction={
         onBackToCaja ? (

@@ -26,6 +26,10 @@ export interface CloseCashSessionDto {
   notes?: string;
 }
 
+export interface UpdateCashSessionDto {
+  notes?: string;
+}
+
 export interface CloseCashSessionResponseDto {
   closedSession: CashSessionDto;
   newSession: CashSessionDto;
@@ -59,6 +63,24 @@ export function closeCashSession(params: {
   return apiRequest({
     method: 'PATCH',
     path: `/tenants/${params.tenantId}/cash-sessions/${params.sessionId}/close`,
+    bearer: params.bearer,
+    body: params.body,
+  });
+}
+
+export function updateCashSession(params: {
+  tenantId: string;
+  bearer: string;
+  sessionId: string;
+  expectedVersion: number;
+  body: UpdateCashSessionDto;
+}): Promise<CashSessionDto> {
+  const qs = new URLSearchParams({
+    expectedVersion: String(params.expectedVersion),
+  });
+  return apiRequest({
+    method: 'PATCH',
+    path: `/tenants/${params.tenantId}/cash-sessions/${params.sessionId}?${qs}`,
     bearer: params.bearer,
     body: params.body,
   });

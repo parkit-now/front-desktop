@@ -31,6 +31,9 @@ type FilterPanelProps<TData> = {
 };
 
 function resolveColumnLabel<TData>(column: Column<TData, unknown>): string {
+  const filterLabel = column.columnDef.meta?.filterLabel;
+  if (filterLabel?.trim()) return filterLabel;
+
   const header = column.columnDef.header;
   return typeof header === 'string' && header.trim().length > 0
     ? header
