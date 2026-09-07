@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '../data-table';
 import { localDb, type LocalVehicleType } from '../../lib/db/localDb';
@@ -426,10 +426,11 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
               canManage ? (
                 <button
                   type="button"
-                  className="primary-button compact"
+                  className="primary-button compact rates-new-button"
                   onClick={beginCreate}
                   disabled={saving}
                 >
+                  <Plus size={17} />
                   Nuevo tipo
                 </button>
               ) : null
