@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createCashSession } from '../../lib/api/cash-sessions';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalCashSession } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { generateUuidV7 } from '../entries/entryUtils';
@@ -59,15 +60,13 @@ export function NoCashSessionScreen({ tenantId, accessToken }: Props) {
           localDb.pendingOps,
           async () => {
             await localDb.cashSessions.put(local);
-            await localDb.pendingOps.add({
+            await enqueuePendingOp({
               entityType: 'cashSession',
               operation: 'create',
               tenantId,
               entityId: sessionId,
               payload: { id: sessionId, openedAt: now, openingCash: cash },
               status: 'pending',
-              createdAt: Date.now(),
-              retryCount: 0,
             });
           },
         );

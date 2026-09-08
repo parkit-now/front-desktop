@@ -1,3 +1,4 @@
+import { classifyPushFailure } from './retryPolicy';
 import { splitTombstones } from './tombstones';
 import {
   type LocalCashSession,
@@ -237,6 +238,8 @@ function lprDetectionEventToLocal(
 class SyncService {
   private tenantId = '';
   private accessToken = '';
+  /** Ver `recoverStalledOps`: el rescate de huérfanas depende de esto. */
+  private pushInFlight = false;
 
   setCredentials(tenantId: string, accessToken: string): void {
     this.tenantId = tenantId;
@@ -639,19 +642,73 @@ class SyncService {
     }
   }
 
-  async pushPendingOps(): Promise<void> {
-    if (!this.tenantId || !this.accessToken) return;
+  /**
+   * Devuelve a la cola las operaciones que quedaron marcadas 'in-flight'.
+   *
+   * `pushPendingOps` es single-flight (ver `pushInFlight`), así que toda op en
+   * 'in-flight' al ARRANCAR un push es huérfana: la app murió entre el marcado
+   * y el resultado. Quedaban invisibles para el push Y para el badge de
+   * pendientes, o sea pérdida silenciosa de trabajo del operador.
+   *
+   * Re-enviarlas es seguro: los `create` llevan un UUIDv7 generado en el
+   * cliente y los `update`/`delete` viajan con `expectedVersion`, así que un
+   * doble envío termina en 409, no en una fila duplicada.
+   */
+  private async recoverStalledOps(): Promise<void> {
+    const rescued = await localDb.pendingOps
+      .where('[tenantId+status]')
+      .equals([this.tenantId, 'in-flight'])
+      .modify((op) => {
+        op.status = 'pending';
+        delete op.nextAttemptAt;
+      });
 
+    if (rescued > 0) {
+      console.warn(
+        `[sync] Se recuperaron ${rescued} operaciones que quedaron a mitad de camino.`,
+      );
+    }
+  }
+
+  /**
+   * @param ignoreBackoff saltea la espera de `nextAttemptAt`. Para el botón
+   * "Sincronizar": si el operador lo aprieta, espera que salga algo ahora, no
+   * que se respete un backoff que él no ve.
+   */
+  async pushPendingOps(ignoreBackoff = false): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+    // El rescate de huérfanas de abajo asume que no hay otro push corriendo.
+    if (this.pushInFlight) return;
+    this.pushInFlight = true;
+
+    try {
+      await this.recoverStalledOps();
+      await this.drainPendingOps(ignoreBackoff);
+    } finally {
+      this.pushInFlight = false;
+    }
+  }
+
+  private async drainPendingOps(ignoreBackoff: boolean): Promise<void> {
     // 'unreviewed' ops (audit-only LPR detections not yet acted on by the
     // operator) still need to reach the backend — they're just excluded from
     // the user-facing pending-changes count in SyncContext.
-    const pending = await localDb.pendingOps
+    const queued = await localDb.pendingOps
       .where('[tenantId+status]')
       .anyOf([
         [this.tenantId, 'pending'],
         [this.tenantId, 'unreviewed'],
       ])
       .sortBy('localId');
+
+    // `nextAttemptAt` es el backoff de un fallo previo. El techo es de 5 min,
+    // así que una op reintentable nunca se queda mucho fuera de la ventana.
+    const now = Date.now();
+    const pending = ignoreBackoff
+      ? queued
+      : queued.filter(
+          (op) => op.nextAttemptAt === undefined || op.nextAttemptAt <= now,
+        );
 
     for (const op of pending) {
       if (op.localId === undefined) continue;
@@ -727,10 +784,17 @@ class SyncService {
           },
         );
       } catch (error) {
+        // Antes TODO caía en 'failed', que `drainPendingOps` no vuelve a mirar:
+        // un 401 al reconectar enterraba la cola entera del corte. Ahora el
+        // error decide el destino de la op.
+        const retryCount = op.retryCount ?? 0;
+        const outcome = classifyPushFailure(error, retryCount);
+
         await localDb.pendingOps.update(op.localId, {
-          status: 'failed',
+          status: outcome.status,
           error: error instanceof Error ? error.message : String(error),
-          retryCount: (op.retryCount ?? 0) + 1,
+          retryCount: retryCount + (outcome.consumesAttempt ? 1 : 0),
+          nextAttemptAt: outcome.nextAttemptAt,
         });
       }
     }
@@ -1047,9 +1111,9 @@ class SyncService {
    * Si alguna etapa falla se sigue con las demás y recién al terminar se lanza
    * un error con todas las que fallaron, para que el SyncButton lo muestre.
    */
-  async fullSync(): Promise<void> {
+  async fullSync(ignoreBackoff = false): Promise<void> {
     const stages: [string, () => Promise<void>][] = [
-      ['cambios pendientes', () => this.pushPendingOps()],
+      ['cambios pendientes', () => this.pushPendingOps(ignoreBackoff)],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
       //
       // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así

@@ -8,27 +8,48 @@ import { SessionView } from './features/auth/SessionView';
 import { getErrorMessage } from './features/auth/errors';
 import { useToast } from './lib/notifications/ToastProvider';
 import {
-  getSession,
   hydrateSessionFromUrl,
   onSessionChange,
+  restoreSession,
 } from './lib/supabase/session';
 
 type View = 'login' | 'register' | 'forgot';
+
+const GRACE_EXPIRED_NOTICE =
+  'Pasó demasiado tiempo sin conexión con el servidor. Iniciá sesión para volver a operar y sincronizar los cambios guardados en este equipo.';
 
 export function App() {
   const { showToast } = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('login');
+  // Session came from local storage and the server has not confirmed it yet.
+  const [sessionStale, setSessionStale] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function initializeSession() {
       try {
-        const currentSession = await getSession();
-        if (isMounted) {
-          setSession(currentSession);
+        // NOT `getSession()`: that returns null whenever the refresh call fails,
+        // network outages included, even though the tokens are still on disk.
+        // Trusting it strands the operator on a login screen they cannot use
+        // without connectivity. See `restoreSession`.
+        const result = await restoreSession();
+        if (!isMounted) {
+          return;
+        }
+
+        if (result.kind === 'online' || result.kind === 'offline') {
+          setSession(result.session);
+          setSessionStale(result.kind === 'offline');
+        } else {
+          setSession(null);
+          setSessionStale(false);
+          if (result.kind === 'grace-expired') {
+            setNotice(GRACE_EXPIRED_NOTICE);
+          }
         }
       } catch (error) {
         if (isMounted) {
@@ -44,14 +65,22 @@ export function App() {
     void initializeSession();
 
     const unsubscribe = onSessionChange((nextSession) => {
-      if (!nextSession && !navigator.onLine) {
+      if (nextSession) {
+        // The server answered, so the session is no longer running on trust.
+        setSession(nextSession);
+        setSessionStale(false);
+        setNotice(null);
+        return;
+      }
+
+      if (!navigator.onLine) {
         // Keep the cached session while offline; refresh retries on reconnect.
         return;
       }
-      setSession(nextSession);
-      if (!nextSession) {
-        setView('login');
-      }
+
+      setSession(null);
+      setSessionStale(false);
+      setView('login');
     });
 
     // Social login: the browser redirects to `parkit://auth/callback` and main
@@ -75,7 +104,7 @@ export function App() {
     return (
       <>
         <CameraAlert />
-        <SessionView session={session} />
+        <SessionView session={session} sessionStale={sessionStale} />
       </>
     );
   }
@@ -112,6 +141,7 @@ export function App() {
             onForgotPassword={() => {
               setView('forgot');
             }}
+            notice={notice}
           />
         )}
       </section>

@@ -11,6 +11,7 @@ import {
 import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalVehicle } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { useSync } from '../../lib/sync/SyncContext';
@@ -262,7 +263,7 @@ export function VehiclesPanel({
                 updatedAt: now,
                 createdAt: now,
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'vehicle',
                 operation: 'create',
                 tenantId,
@@ -274,8 +275,6 @@ export function VehiclesPanel({
                   typeId: payload.typeId,
                 },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -328,7 +327,7 @@ export function VehiclesPanel({
                 typeId: payload.typeId,
                 updatedAt: now,
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'vehicle',
                 operation: 'update',
                 tenantId,
@@ -344,8 +343,6 @@ export function VehiclesPanel({
                   },
                 },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -385,15 +382,13 @@ export function VehiclesPanel({
           'rw',
           [localDb.vehicles, localDb.pendingOps],
           async () => {
-            await localDb.pendingOps.add({
+            await enqueuePendingOp({
               entityType: 'vehicle',
               operation: 'delete',
               tenantId,
               entityId: confirmDelete.id,
               payload: { expectedVersion: confirmDelete.version },
               status: 'pending',
-              createdAt: Date.now(),
-              retryCount: 0,
             });
             await localDb.vehicles.delete(confirmDelete.id);
           },
