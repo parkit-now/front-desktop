@@ -14,6 +14,7 @@ import {
 import {
   createEntry,
   closeEntry,
+  correctEntry,
   pullEntryChanges,
   type EntryDto,
 } from '../api/entries';
@@ -146,6 +147,7 @@ function paymentTransactionToLocal(
     version: t.version,
     syncSeq: t.syncSeq,
     updatedAt: t.updatedAt,
+    deletedAt: t.deletedAt ?? undefined,
   };
 }
 
@@ -507,14 +509,22 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
         'rw',
         localDb.paymentTransactions,
         localDb.syncState,
         async () => {
-          await localDb.paymentTransactions.bulkPut(
-            response.items.map(paymentTransactionToLocal),
-          );
+          if (active.length > 0) {
+            await localDb.paymentTransactions.bulkPut(
+              active.map(paymentTransactionToLocal),
+            );
+          }
+          if (deleted.length > 0) {
+            await localDb.paymentTransactions.bulkDelete(
+              deleted.map((tx) => tx.id),
+            );
+          }
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,
@@ -884,9 +894,20 @@ class SyncService {
 
     if (op.operation === 'update') {
       const payload = op.payload as {
+        kind?: 'close' | 'correction';
         expectedVersion: number;
         body: Parameters<typeof closeEntry>[0]['body'];
       };
+      if (payload.kind === 'correction') {
+        const result = await correctEntry({
+          tenantId,
+          entryId: op.entityId,
+          expectedVersion: payload.expectedVersion,
+          bearer,
+          body: payload.body,
+        });
+        return entryToLocal(result);
+      }
       const result = await closeEntry({
         tenantId,
         entryId: op.entityId,

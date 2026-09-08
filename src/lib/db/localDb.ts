@@ -69,6 +69,7 @@ export interface LocalPaymentTransaction {
   version: number;
   syncSeq: number;
   updatedAt: string;
+  deletedAt?: string;
 }
 
 export interface LocalVehicle {

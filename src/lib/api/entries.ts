@@ -7,6 +7,31 @@ export type CloseEntryDto = components['schemas']['CloseEntryDto'];
 export type EntryChangesResponseDto =
   components['schemas']['EntryChangesResponseDto'];
 
+export type CorrectEntryPaymentLineDto = {
+  id: string;
+  paymentMethodId?: string;
+  paymentMethodName: string;
+  amount: number;
+};
+
+export type CorrectEntryDto = {
+  plate?: string;
+  color?: string;
+  cochera?: string;
+  notes?: string;
+  enteredAt?: string;
+  leftAt?: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  rateId?: string;
+  rateSnapshotName?: string;
+  rateSnapshotHourPriceArs?: number;
+  rateSnapshotStayPriceArs?: number;
+  rateSnapshotFractionPriceArs?: number;
+  payments?: CorrectEntryPaymentLineDto[];
+  reason?: string;
+};
+
 type EntryChangesQuery = {
   afterSeq?: number;
   limit?: number;
@@ -63,6 +88,23 @@ export function closeEntry(input: {
   body: CloseEntryDto;
 }): Promise<EntryDto> {
   const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}`;
+  const path = withQuery(basePath, { expectedVersion: input.expectedVersion });
+  return apiRequest<EntryDto>({
+    method: 'PATCH',
+    path,
+    body: input.body,
+    bearer: input.bearer,
+  });
+}
+
+export function correctEntry(input: {
+  tenantId: string;
+  entryId: string;
+  expectedVersion: number;
+  bearer: string;
+  body: CorrectEntryDto;
+}): Promise<EntryDto> {
+  const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/correction`;
   const path = withQuery(basePath, { expectedVersion: input.expectedVersion });
   return apiRequest<EntryDto>({
     method: 'PATCH',

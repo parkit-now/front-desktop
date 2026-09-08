@@ -675,6 +675,8 @@ export function SessionView({ session }: Props) {
                 <EntryHistoryPanel
                   tenantId={activeTenantId}
                   userId={session.user.id}
+                  accessToken={session.access_token}
+                  actorRole={activeRole}
                   initialCashSessionId={
                     historialFocus?.kind === 'cashSession'
                       ? historialFocus.sessionId

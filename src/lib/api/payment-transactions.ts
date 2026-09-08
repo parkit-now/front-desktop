@@ -11,6 +11,7 @@ export interface PaymentTransactionDto {
   version: number;
   syncSeq: number;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 interface PaymentTransactionChangesResponse {
