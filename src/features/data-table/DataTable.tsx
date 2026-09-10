@@ -30,6 +30,7 @@ import {
 import { ColumnPicker } from './components/ColumnPicker';
 import { FilterPanel } from './components/FilterPanel';
 import { Pagination } from './components/Pagination';
+import { Switch } from '../../lib/ui/Switch';
 import type { DataTableProps } from './types';
 import {
   caseInsensitiveSort,
@@ -312,7 +313,9 @@ export function DataTable<TData>({
   const rows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleLeafColumns();
   const hasActiveFilters =
-    columnFilters.length > 0 || globalFilter.trim().length > 0;
+    columnFilters.length > 0 ||
+    globalFilter.trim().length > 0 ||
+    Boolean(filterSwitches?.some((item) => item.checked));
   const showLoading = Boolean(isLoading || serverState?.isFetching);
 
   useEffect(() => {
@@ -370,12 +373,24 @@ export function DataTable<TData>({
           ) : null}
         </div>
 
+        {filterSwitches && filterSwitches.length > 0 ? (
+          <div className="dt-toolbar-switches">
+            {filterSwitches.map((item) => (
+              <Switch
+                key={item.id}
+                checked={item.checked}
+                onChange={item.onChange}
+                label={item.label}
+              />
+            ))}
+          </div>
+        ) : null}
+
         <div className="dt-toolbar-actions">
           <FilterPanel
             table={table}
             filterableColumns={filterableColumns}
             filterOptionsByColumn={filterOptionsByColumn}
-            filterSwitches={filterSwitches}
           />
           {toolbarExtra}
           <TemplateSelector

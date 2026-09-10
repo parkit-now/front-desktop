@@ -73,6 +73,25 @@ function parseMoney(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatSignedArs(value: number): string {
+  const abs = Math.abs(value);
+  if (abs <= 0.005) return formatArs(0);
+  return `${value > 0 ? '+' : '-'}${formatArs(abs)}`;
+}
+
+function isUuid(value: string | undefined): value is string {
+  return Boolean(
+    value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    ),
+  );
+}
+
+function changedText(next: string, current: string | undefined): boolean {
+  return next !== (current ?? '');
+}
+
 function paymentIdentity(lines: PaymentFormLine[]): string {
   return JSON.stringify(
     lines
@@ -124,34 +143,36 @@ function entryToPatch(
   result: LocalEntry,
   body: CorrectEntryDto,
 ): Partial<LocalEntry> {
-  return {
-    plate: body.plate ?? result.plate,
-    color: body.color,
-    cochera: body.cochera,
-    notes: body.notes,
-    enteredAt: body.enteredAt ?? result.enteredAt,
-    leftAt: body.leftAt ?? result.leftAt,
-    vehicleBrand: body.vehicleBrand,
-    vehicleModel: body.vehicleModel,
-    rateId: body.rateId,
-    rateSnapshotName: body.rateSnapshotName,
-    rateSnapshotHourPriceArs:
-      body.rateSnapshotHourPriceArs !== undefined
-        ? String(body.rateSnapshotHourPriceArs)
-        : result.rateSnapshotHourPriceArs,
-    rateSnapshotStayPriceArs:
-      body.rateSnapshotStayPriceArs !== undefined
-        ? String(body.rateSnapshotStayPriceArs)
-        : result.rateSnapshotStayPriceArs,
-    rateSnapshotFractionPriceArs:
-      body.rateSnapshotFractionPriceArs !== undefined
-        ? String(body.rateSnapshotFractionPriceArs)
-        : result.rateSnapshotFractionPriceArs,
-    amountPaid:
-      body.payments !== undefined
-        ? String(body.payments.reduce((sum, line) => sum + line.amount, 0))
-        : result.amountPaid,
-  };
+  const patch: Partial<LocalEntry> = {};
+  if (body.plate !== undefined) patch.plate = body.plate;
+  if (body.color !== undefined) patch.color = body.color;
+  if (body.cochera !== undefined) patch.cochera = body.cochera;
+  if (body.notes !== undefined) patch.notes = body.notes;
+  if (body.enteredAt !== undefined) patch.enteredAt = body.enteredAt;
+  if (body.leftAt !== undefined) patch.leftAt = body.leftAt;
+  if (body.vehicleBrand !== undefined) patch.vehicleBrand = body.vehicleBrand;
+  if (body.vehicleModel !== undefined) patch.vehicleModel = body.vehicleModel;
+  if (body.rateId !== undefined) patch.rateId = body.rateId;
+  if (body.rateSnapshotName !== undefined) {
+    patch.rateSnapshotName = body.rateSnapshotName;
+  }
+  if (body.rateSnapshotHourPriceArs !== undefined) {
+    patch.rateSnapshotHourPriceArs = String(body.rateSnapshotHourPriceArs);
+  }
+  if (body.rateSnapshotStayPriceArs !== undefined) {
+    patch.rateSnapshotStayPriceArs = String(body.rateSnapshotStayPriceArs);
+  }
+  if (body.rateSnapshotFractionPriceArs !== undefined) {
+    patch.rateSnapshotFractionPriceArs = String(
+      body.rateSnapshotFractionPriceArs,
+    );
+  }
+  if (body.payments !== undefined) {
+    patch.amountPaid = String(
+      body.payments.reduce((sum, line) => sum + line.amount, 0),
+    );
+  }
+  return patch;
 }
 
 export function EntryEditDialog({
@@ -173,8 +194,10 @@ export function EntryEditDialog({
   const [color, setColor] = useState(entry.color ?? '');
   const [cochera, setCochera] = useState(entry.cochera ?? '');
   const [notes, setNotes] = useState(entry.notes ?? '');
-  const [enteredAt, setEnteredAt] = useState(isoToInputValue(entry.enteredAt));
-  const [leftAt, setLeftAt] = useState(isoToInputValue(entry.leftAt));
+  const originalEnteredAtInput = isoToInputValue(entry.enteredAt);
+  const originalLeftAtInput = isoToInputValue(entry.leftAt);
+  const [enteredAt, setEnteredAt] = useState(originalEnteredAtInput);
+  const [leftAt, setLeftAt] = useState(originalLeftAtInput);
   const [rateId, setRateId] = useState(entry.rateId ?? '');
   const [reason, setReason] = useState('');
 
@@ -260,12 +283,16 @@ export function EntryEditDialog({
           rateSnapshot.rateSnapshotFractionPriceArs,
         )
       : 0;
-  const amountMismatch =
-    !isActiveEntry &&
-    (enteredAt !== isoToInputValue(entry.enteredAt) ||
-      leftAt !== isoToInputValue(entry.leftAt) ||
-      rateId !== (entry.rateId ?? '')) &&
-    Math.abs(paymentTotal - suggestedAmount) > 0.005;
+  const originalSuggestedAmount =
+    entry.enteredAt && entry.leftAt
+      ? calcSuggestedAmount(
+          entry.enteredAt,
+          entry.leftAt,
+          parseMoney(entry.rateSnapshotHourPriceArs ?? '0'),
+          parseMoney(entry.rateSnapshotStayPriceArs ?? '0'),
+          parseMoney(entry.rateSnapshotFractionPriceArs ?? '0'),
+        )
+      : 0;
   const originalPayments = useMemo(
     () => paymentIdentity(toPaymentLines(entry, pms)),
     [entry, pms],
@@ -281,81 +308,103 @@ export function EntryEditDialog({
   const currentPayments = paymentIdentity(paymentLines);
   const paymentsChanged = currentPayments !== originalPayments;
   const timeChanged =
-    enteredAt !== isoToInputValue(entry.enteredAt) ||
-    leftAt !== isoToInputValue(entry.leftAt);
-  const rateOrTimeChanged = timeChanged || rateChanged;
+    enteredAt !== originalEnteredAtInput || leftAt !== originalLeftAtInput;
   const paymentAmountChanged =
     Math.abs(paymentTotal - originalPaymentTotal) > 0.005;
   const reasonRequired =
     actorRole === 'operator' && (timeChanged || paymentAmountChanged);
-  const hasRateSnapshot = Boolean(
-    rateSnapshot.rateId || rateSnapshot.rateSnapshotName,
-  );
+  const invalidExitTime =
+    !isActiveEntry &&
+    nextEnteredAt !== undefined &&
+    nextLeftAt !== undefined &&
+    new Date(nextLeftAt).getTime() <= new Date(nextEnteredAt).getTime();
+  const showSuggestedImpact =
+    !isActiveEntry &&
+    (timeChanged || rateChanged) &&
+    nextEnteredAt !== undefined &&
+    nextLeftAt !== undefined &&
+    !invalidExitTime;
+  const suggestedImpact = suggestedAmount - originalSuggestedAmount;
 
-  const body: CorrectEntryDto = {
-    plate: plate.trim().toUpperCase(),
-    color: color.trim(),
-    cochera: cochera.trim(),
-    notes: notes.trim(),
-    enteredAt: nextEnteredAt,
-    vehicleBrand: vehicleBrand.trim(),
-    vehicleModel: vehicleModel.trim(),
-    ...(hasRateSnapshot
-      ? {
-          rateId: rateSnapshot.rateId,
-          rateSnapshotName: rateSnapshot.rateSnapshotName,
-          rateSnapshotHourPriceArs: rateSnapshot.rateSnapshotHourPriceArs,
-          rateSnapshotStayPriceArs: rateSnapshot.rateSnapshotStayPriceArs,
-          rateSnapshotFractionPriceArs:
-            rateSnapshot.rateSnapshotFractionPriceArs,
-        }
-      : {}),
-    ...(isActiveEntry ? {} : { leftAt: nextLeftAt }),
-    ...(paymentsChanged || (!isActiveEntry && rateOrTimeChanged)
-      ? {
-          payments: paymentLines
-            .map<CorrectEntryPaymentLineDto>((line) => ({
-              id: generateUuidV7(),
-              paymentMethodId: line.paymentMethodId,
-              paymentMethodName: line.paymentMethodName,
-              amount: Math.round(parseMoney(line.amount) * 100) / 100,
-            }))
-            .filter((line) => line.amount > 0),
-        }
-      : {}),
-    ...(reasonRequired ? { reason: reason.trim() } : {}),
-  };
+  const body: CorrectEntryDto = {};
+  const nextPlate = plate.trim().toUpperCase();
+  const nextColor = color.trim();
+  const nextCochera = cochera.trim();
+  const nextNotes = notes.trim();
+  const nextVehicleBrand = vehicleBrand.trim();
+  const nextVehicleModel = vehicleModel.trim();
+
+  if (nextPlate !== entry.plate) body.plate = nextPlate;
+  if (changedText(nextColor, entry.color)) body.color = nextColor;
+  if (changedText(nextCochera, entry.cochera)) body.cochera = nextCochera;
+  if (changedText(nextNotes, entry.notes)) body.notes = nextNotes;
+  if (nextEnteredAt && enteredAt !== originalEnteredAtInput) {
+    body.enteredAt = nextEnteredAt;
+  }
+  if (!isActiveEntry && nextLeftAt && leftAt !== originalLeftAtInput) {
+    body.leftAt = nextLeftAt;
+  }
+  if (changedText(nextVehicleBrand, entry.vehicleBrand)) {
+    body.vehicleBrand = nextVehicleBrand;
+  }
+  if (changedText(nextVehicleModel, entry.vehicleModel)) {
+    body.vehicleModel = nextVehicleModel;
+  }
+  if (rateChanged && selectedRate) {
+    if (isUuid(selectedRate.id)) {
+      body.rateId = selectedRate.id;
+    }
+    body.rateSnapshotName = selectedRate.name;
+    body.rateSnapshotHourPriceArs = parseMoney(selectedRate.hourPriceArs);
+    body.rateSnapshotStayPriceArs = parseMoney(selectedRate.stayPriceArs);
+    body.rateSnapshotFractionPriceArs = parseMoney(
+      selectedRate.fractionPriceArs,
+    );
+  }
+  if (paymentsChanged) {
+    body.payments = paymentLines
+      .map<CorrectEntryPaymentLineDto>((line) => ({
+        id: generateUuidV7(),
+        ...(isUuid(line.paymentMethodId)
+          ? { paymentMethodId: line.paymentMethodId }
+          : {}),
+        paymentMethodName: line.paymentMethodName,
+        amount: Math.round(parseMoney(line.amount) * 100) / 100,
+      }))
+      .filter((line) => line.amount > 0);
+  }
+  if (reasonRequired) {
+    body.reason = reason.trim();
+  }
 
   const changed =
-    body.plate !== entry.plate ||
-    body.color !== (entry.color ?? '') ||
-    body.cochera !== (entry.cochera ?? '') ||
-    body.notes !== (entry.notes ?? '') ||
-    body.enteredAt !== entry.enteredAt ||
-    body.leftAt !== entry.leftAt ||
-    body.vehicleBrand !== (entry.vehicleBrand ?? '') ||
-    body.vehicleModel !== (entry.vehicleModel ?? '') ||
-    body.rateId !== entry.rateId ||
-    body.rateSnapshotName !== entry.rateSnapshotName ||
-    (body.rateSnapshotHourPriceArs !== undefined &&
-      body.rateSnapshotHourPriceArs !==
-        parseMoney(entry.rateSnapshotHourPriceArs ?? '0')) ||
-    (body.rateSnapshotStayPriceArs !== undefined &&
-      body.rateSnapshotStayPriceArs !==
-        parseMoney(entry.rateSnapshotStayPriceArs ?? '0')) ||
-    (body.rateSnapshotFractionPriceArs !== undefined &&
-      body.rateSnapshotFractionPriceArs !==
-        parseMoney(entry.rateSnapshotFractionPriceArs ?? '0')) ||
-    paymentsChanged;
+    body.plate !== undefined ||
+    body.color !== undefined ||
+    body.cochera !== undefined ||
+    body.notes !== undefined ||
+    body.enteredAt !== undefined ||
+    body.leftAt !== undefined ||
+    body.vehicleBrand !== undefined ||
+    body.vehicleModel !== undefined ||
+    body.rateSnapshotName !== undefined ||
+    body.payments !== undefined;
 
   const valid =
     !readOnly &&
     changed &&
-    !!body.plate &&
-    !!body.enteredAt &&
-    (isActiveEntry || !!body.leftAt) &&
-    !amountMismatch &&
+    !!nextPlate &&
+    !!nextEnteredAt &&
+    (isActiveEntry || !!nextLeftAt) &&
+    !invalidExitTime &&
     (!reasonRequired || reason.trim().length > 0);
+  const missingReason = reasonRequired && reason.trim().length === 0;
+  const saveBlockedMessage = missingReason
+    ? 'Ingresá el motivo del cambio para poder guardar.'
+    : invalidExitTime
+      ? 'La fecha y hora de egreso debe ser mayor a la de ingreso.'
+      : changed
+        ? null
+        : 'No hay cambios para guardar.';
 
   function updatePaymentLine(
     id: string,
@@ -514,7 +563,15 @@ export function EntryEditDialog({
   }
 
   return (
-    <div className="rate-dialog-backdrop" role="presentation">
+    <div
+      className="rate-dialog-backdrop"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !saving) {
+          onClose();
+        }
+      }}
+    >
       <section
         className="rate-dialog entry-edit-dialog"
         role="dialog"
@@ -614,7 +671,13 @@ export function EntryEditDialog({
                 value={leftAt}
                 disabled={readOnly || isActiveEntry}
                 onChange={(event) => setLeftAt(event.target.value)}
+                aria-invalid={invalidExitTime}
               />
+              {invalidExitTime ? (
+                <p className="field-error">
+                  El egreso debe ser posterior al ingreso.
+                </p>
+              ) : null}
             </label>
           </div>
 
@@ -636,6 +699,22 @@ export function EntryEditDialog({
                     Sugerido: {formatArs(suggestedAmount)} · Total:{' '}
                     {formatArs(paymentTotal)}
                   </p>
+                  {showSuggestedImpact ? (
+                    <p
+                      className={
+                        suggestedImpact >= 0
+                          ? 'entry-edit-impact positive'
+                          : 'entry-edit-impact negative'
+                      }
+                    >
+                      Impacto estimado horario/tarifa:{' '}
+                      <strong>{formatSignedArs(suggestedImpact)}</strong>
+                      <span>
+                        {formatArs(originalSuggestedAmount)} -&gt;{' '}
+                        {formatArs(suggestedAmount)}
+                      </span>
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -692,45 +771,42 @@ export function EntryEditDialog({
                   </button>
                 </div>
               ))}
-              {amountMismatch ? (
-                <p className="field-error">
-                  Si cambiás tarifa u horarios, el total debe coincidir con el
-                  sugerido.
-                </p>
-              ) : null}
             </section>
           ) : null}
 
           {reasonRequired ? (
             <label className="form-label">
-              Razón
+              Motivo del cambio
               <textarea
                 value={reason}
                 disabled={readOnly}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="Explicá por qué se corrige el horario o el monto."
+                aria-invalid={missingReason}
               />
+              {missingReason ? (
+                <p className="field-error">
+                  El motivo del cambio es obligatorio para modificar horarios o
+                  importes.
+                </p>
+              ) : null}
             </label>
           ) : null}
         </div>
 
-        <div className="rate-dialog-actions">
+        <div className="rate-dialog-actions entry-edit-actions">
+          {saveBlockedMessage ? (
+            <p className="entry-edit-save-hint">{saveBlockedMessage}</p>
+          ) : null}
           <button
             type="button"
-            className="btn ghost"
-            onClick={onClose}
-            disabled={saving}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            className="btn primary"
+            className="btn primary entry-edit-save-button"
             onClick={() => void handleSave()}
             disabled={!valid || saving}
+            title={saveBlockedMessage ?? 'Guardar cambios'}
           >
             <Save size={16} />
-            Guardar
+            {saving ? 'Guardando...' : 'Guardar cambios'}
           </button>
         </div>
       </section>

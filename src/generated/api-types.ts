@@ -746,6 +746,23 @@ export interface paths {
         patch: operations["EntriesController_close"];
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/{entryId}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct an entry from history using optimistic locking and audit trail */
+        patch: operations["EntriesController_correct"];
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries/changes": {
         parameters: {
             query?: never;
@@ -1547,6 +1564,7 @@ export interface components {
             entityId: string | null;
             entityType: string;
             id: string;
+            metadata: Record<string, never>;
             /** @enum {string} */
             severity: "info" | "warn" | "crit";
         };
@@ -1620,6 +1638,35 @@ export interface components {
             notes?: string;
             /** @description Payment breakdown per method. When provided, amountPaid is set to the sum. */
             payments?: components["schemas"]["PaymentLineDto"][];
+        };
+        CorrectEntryDto: {
+            /** @example Cochera 3 */
+            cochera?: string;
+            /** @example Rojo */
+            color?: string;
+            /** Format: date-time */
+            enteredAt?: string;
+            /** Format: date-time */
+            leftAt?: string;
+            /** @example Cliente frecuente */
+            notes?: string;
+            /** @description Payment breakdown replacing the current active lines. */
+            payments?: components["schemas"]["PaymentLineDto"][];
+            /** @example ABC123 */
+            plate?: string;
+            /** Format: uuid */
+            rateId?: string;
+            rateSnapshotFractionPriceArs?: number;
+            rateSnapshotHourPriceArs?: number;
+            /** @example Tarifa Pick Up */
+            rateSnapshotName?: string;
+            rateSnapshotStayPriceArs?: number;
+            /** @description Required for operator changes to ingreso, egreso or amounts. */
+            reason?: string;
+            /** @example Volkswagen */
+            vehicleBrand?: string;
+            /** @example Bora */
+            vehicleModel?: string;
         };
         CreateApplicationDto: {
             /**
@@ -2375,6 +2422,8 @@ export interface components {
             amount: number;
             /** Format: uuid */
             cashSessionId?: string;
+            /** Format: date-time */
+            deletedAt?: string | null;
             /** Format: uuid */
             entryId: string;
             /** Format: uuid */
@@ -4883,6 +4932,36 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CloseEntryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    EntriesController_correct: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                entryId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectEntryDto"];
             };
         };
         responses: {

@@ -18,16 +18,14 @@ import {
   DateRangeFilter,
   type DateRange,
 } from '../../../lib/ui/DateRangeFilter';
-import { Switch } from '../../../lib/ui/Switch';
 import { useCloseOnOutsideClick } from '../../../lib/ui/useCloseOnOutsideClick';
-import type { DataTableFilterOption, DataTableFilterSwitch } from '../types';
+import type { DataTableFilterOption } from '../types';
 import { normalizeText } from '../utils';
 
 type FilterPanelProps<TData> = {
   table: Table<TData>;
   filterableColumns: string[];
   filterOptionsByColumn?: Record<string, DataTableFilterOption[]>;
-  filterSwitches?: DataTableFilterSwitch[];
 };
 
 function resolveColumnLabel<TData>(column: Column<TData, unknown>): string {
@@ -97,7 +95,6 @@ export function FilterPanel<TData>({
   table,
   filterableColumns,
   filterOptionsByColumn,
-  filterSwitches = [],
 }: FilterPanelProps<TData>) {
   const [open, setOpen] = useState(false);
   const [expandedColumnIds, setExpandedColumnIds] = useState<Set<string>>(
@@ -123,15 +120,10 @@ export function FilterPanel<TData>({
     );
   }, [columns]);
 
-  const activeSwitchCount = filterSwitches.filter(
-    (item) => item.checked,
-  ).length;
-
-  const activeCount =
-    Array.from(activeCountByColumn.values()).reduce(
-      (total, count) => total + count,
-      0,
-    ) + activeSwitchCount;
+  const activeCount = Array.from(activeCountByColumn.values()).reduce(
+    (total, count) => total + count,
+    0,
+  );
 
   const updatePanelPosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -181,7 +173,7 @@ export function FilterPanel<TData>({
     });
   }, [activeCountByColumn, columns, open]);
 
-  if (columns.length === 0 && filterSwitches.length === 0) return null;
+  if (columns.length === 0) return null;
 
   function toggleValue(column: Column<TData, unknown>, value: string): void {
     const current = selectedValues(column as Column<unknown, unknown>);
@@ -235,9 +227,6 @@ export function FilterPanel<TData>({
               onClick={() => {
                 table.resetColumnFilters();
                 setSearchByColumn({});
-                filterSwitches.forEach((item) => {
-                  if (item.checked) item.onChange(false);
-                });
               }}
             >
               <RotateCcw size={14} /> Limpiar
@@ -245,12 +234,6 @@ export function FilterPanel<TData>({
           </div>
 
           <div className="dt-filter-list">
-            {filterSwitches.map((item) => (
-              <div className="dt-filter-switch-row" key={item.id}>
-                <span className="dt-filter-switch-label">{item.label}</span>
-                <Switch checked={item.checked} onChange={item.onChange} />
-              </div>
-            ))}
             {columns.map((column) => {
               const dateColumn = isDateColumn(column);
 
