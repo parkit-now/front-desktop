@@ -8,6 +8,7 @@ import {
   type LocalEntry,
   type LocalPaymentTransaction,
 } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
@@ -255,7 +256,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             if (txs.length > 0) {
               await localDb.paymentTransactions.bulkPut(txs);
             }
-            await localDb.pendingOps.add({
+            await enqueuePendingOp({
               entityType: 'entry',
               operation: 'update',
               tenantId,
@@ -265,8 +266,6 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 body: { leftAt, amountPaid, cashSessionId, payments },
               },
               status: 'pending',
-              createdAt: Date.now(),
-              retryCount: 0,
             });
           },
         );

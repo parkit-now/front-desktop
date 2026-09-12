@@ -3,6 +3,7 @@ import { useCallback, useEffect } from 'react';
 import { updateCashSession } from '../../lib/api/cash-sessions';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalCashSession } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { cashSessionLabel } from '../../lib/format/cashSession';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
@@ -58,7 +59,7 @@ export function CashSessionDetailDialog({
                 notes: notes || undefined,
                 updatedAt: new Date().toISOString(),
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'cashSession',
                 operation: 'update',
                 tenantId,
@@ -68,8 +69,6 @@ export function CashSessionDetailDialog({
                   body: { notes },
                 },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );

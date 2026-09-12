@@ -12,6 +12,7 @@ import {
 import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalPaymentMethod } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { formatArgentinaDateTime } from '../../lib/format/argentina';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
@@ -212,15 +213,13 @@ export function PaymentMethodsPanel({
                 updatedAt: now,
                 createdAt: now,
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'paymentMethod',
                 operation: 'create',
                 tenantId,
                 entityId: id,
                 payload: { name: payload.name },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -255,15 +254,13 @@ export function PaymentMethodsPanel({
                 name: payload.name,
                 updatedAt: new Date().toISOString(),
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'paymentMethod',
                 operation: 'update',
                 tenantId,
                 entityId: editingPm.id,
                 payload: { name: payload.name },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -309,15 +306,13 @@ export function PaymentMethodsPanel({
                 enabled,
                 updatedAt: new Date().toISOString(),
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'paymentMethod',
                 operation: 'update',
                 tenantId,
                 entityId: pm.id,
                 payload: { enabled },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -366,15 +361,13 @@ export function PaymentMethodsPanel({
                 isDefault: true,
                 updatedAt: now,
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'paymentMethod',
                 operation: 'update',
                 tenantId,
                 entityId: pm.id,
                 payload: { isDefault: true },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -399,15 +392,13 @@ export function PaymentMethodsPanel({
             if (!(err instanceof ApiError) || err.status !== 404) throw err;
           }
         } else {
-          await localDb.pendingOps.add({
+          await enqueuePendingOp({
             entityType: 'paymentMethod',
             operation: 'delete',
             tenantId,
             entityId: pm.id,
             payload: {},
             status: 'pending',
-            createdAt: Date.now(),
-            retryCount: 0,
           });
         }
         await localDb.paymentMethods.delete(pm.id);

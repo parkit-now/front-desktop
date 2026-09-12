@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '../data-table';
 import { localDb, type LocalVehicleType } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import {
@@ -213,15 +214,13 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
                 updatedAt: now,
                 createdAt: now,
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'vehicleType',
                 operation: 'create',
                 tenantId,
                 entityId: id,
                 payload: { id, name: clean, accepted },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -258,15 +257,13 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
                 accepted,
                 updatedAt: now,
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'vehicleType',
                 operation: 'update',
                 tenantId,
                 entityId: editing.id,
                 payload: { expectedVersion: editing.version, body },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );

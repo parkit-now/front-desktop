@@ -15,6 +15,7 @@ import {
   type LocalPaymentTransaction,
   type LocalRate,
 } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { formatArs } from '../../lib/format/argentina';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
@@ -531,7 +532,7 @@ export function EntryEditDialog({
                 })),
               );
             }
-            await localDb.pendingOps.add({
+            await enqueuePendingOp({
               entityType: 'entry',
               operation: 'update',
               tenantId,
@@ -542,8 +543,6 @@ export function EntryEditDialog({
                 body,
               },
               status: 'pending',
-              createdAt: Date.now(),
-              retryCount: 0,
             });
           },
         );

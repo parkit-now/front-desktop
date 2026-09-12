@@ -9,11 +9,135 @@ import {
   type MeResponseDto,
   type SessionDto,
 } from '../api/auth';
-import { supabase } from './client';
+import { AUTH_STORAGE_KEY, supabase } from './client';
 
 export type { AppRole, MeResponseDto } from '../api/auth';
 
 const DEFAULT_OAUTH_REDIRECT_URL = 'parkit://auth/callback';
+
+/**
+ * How long the desktop keeps operating on a locally cached session that it
+ * could not validate against the server.
+ *
+ * The first login ALWAYS requires connectivity — there is no offline login. But
+ * once an operator has authenticated on this machine, a dead access token is a
+ * transport problem, not an authentication one, and it must not stop them from
+ * charging a car that is physically at the barrier. The cap exists so a stolen
+ * machine (or a deprovisioned operator) cannot keep operating forever.
+ */
+const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const LAST_ONLINE_AUTH_KEY = 'parkit.desktop.lastOnlineAuthAt';
+
+/**
+ * Margen con el que un access token se considera ya vencido, alineado con el
+ * `EXPIRY_MARGIN_MS` de supabase-js (3 ticks de 30 s).
+ */
+const ACCESS_TOKEN_MARGIN_MS = 90_000;
+
+/** ¿El access token guardado sirve para hablar con la API ahora mismo? */
+function isAccessTokenFresh(session: Session): boolean {
+  const expiresAt = session.expires_at;
+  if (typeof expiresAt !== 'number') {
+    return false;
+  }
+
+  return expiresAt * 1000 - Date.now() > ACCESS_TOKEN_MARGIN_MS;
+}
+
+/**
+ * Stamps "the server vouched for this session just now", restarting the offline
+ * grace window. Called on every login and on every successful token refresh.
+ */
+export function markOnlineAuth(): void {
+  try {
+    localStorage.setItem(LAST_ONLINE_AUTH_KEY, String(Date.now()));
+  } catch {
+    // Storage unavailable: the grace window falls back to "unknown", which
+    // `restoreSession` treats as a fresh stamp rather than locking the user out.
+  }
+}
+
+function readLastOnlineAuthAt(): number | null {
+  try {
+    const raw = localStorage.getItem(LAST_ONLINE_AUTH_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verdict on a cached session that could not be validated against the server.
+ *
+ * - `usable`: still inside the grace window, keep the operator working.
+ * - `expired`: went unvalidated too long, force a real login.
+ * - `unstamped`: no stamp at all — a session persisted by a build that predates
+ *   the grace window, or storage that lost the key. Treated as usable on
+ *   purpose: evicting an operator who did nothing wrong is the worse failure.
+ */
+export type CachedSessionVerdict = 'usable' | 'expired' | 'unstamped';
+
+/**
+ * The offline-session policy, kept pure so it can be tested without a browser.
+ */
+export function judgeCachedSession(
+  lastOnlineAuthAt: number | null,
+  now: number = Date.now(),
+  graceMs: number = OFFLINE_GRACE_MS,
+): CachedSessionVerdict {
+  if (lastOnlineAuthAt === null) {
+    return 'unstamped';
+  }
+
+  return now - lastOnlineAuthAt > graceMs ? 'expired' : 'usable';
+}
+
+/** Reads the persisted session without going through supabase-js. */
+function readStoredSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+
+    const candidate = parsed as Partial<Session>;
+    const usable =
+      typeof candidate.access_token === 'string' &&
+      typeof candidate.refresh_token === 'string' &&
+      typeof candidate.user === 'object' &&
+      candidate.user !== null;
+
+    return usable ? (candidate as Session) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearStoredSession(): Promise<void> {
+  try {
+    // Local scope only: revoking server-side needs connectivity we may not have.
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    // Fall through to the manual cleanup below.
+  }
+
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(LAST_ONLINE_AUTH_KEY);
+  } catch {
+    // Nothing else we can do.
+  }
+}
 
 function getOAuthRedirectUrl(): string {
   const raw: unknown = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_URL;
@@ -104,6 +228,8 @@ async function applyBackendSession(tokens: SessionDto): Promise<Session> {
     throw new Error('No se pudo establecer la sesión local.');
   }
 
+  markOnlineAuth();
+
   return data.session;
 }
 
@@ -115,12 +241,88 @@ export async function getSession(): Promise<Session | null> {
   return session;
 }
 
+/**
+ * Outcome of restoring the session at boot.
+ *
+ * - `online`: supabase-js handed us a session it considers valid.
+ * - `offline`: the server was unreachable, so we fell back to the session
+ *   cached on this machine. Still within the grace window.
+ * - `grace-expired`: cached session found, but it went unvalidated for longer
+ *   than `OFFLINE_GRACE_MS`. Credentials cleared, real login required.
+ * - `none`: nothing to restore.
+ */
+export type RestoreSessionResult =
+  | { kind: 'online'; session: Session }
+  | { kind: 'offline'; session: Session }
+  | { kind: 'grace-expired' }
+  | { kind: 'none' };
+
+/**
+ * Boot-time session recovery. Use this instead of `getSession()` on startup.
+ *
+ * Reads storage FIRST and never lets the network gate the boot. Two reasons,
+ * and the second one is the expensive lesson:
+ *
+ * 1. `supabase.auth.getSession()` returns `null` whenever the refresh call
+ *    fails — including when it fails purely because there is no network. It
+ *    leaves the tokens in storage (it only wipes them on non-retryable
+ *    errors), so that `null` is a lie: the operator authenticated on this
+ *    machine and the credentials are right there. Believing it drops them at a
+ *    login screen they cannot use offline, and the app becomes a brick.
+ *
+ * 2. It does not even fail FAST. Before giving up it runs the
+ *    `_refreshAccessToken` retry loop (exponential backoff, up to ~30s), and
+ *    on top of that competes for the navigator lock. Awaiting it offline froze
+ *    the splash for 30s+ — unusable when a car is waiting at the barrier.
+ *
+ * So the access token's own `exp` decides, straight from storage. When it is
+ * stale we still enter, and the refresh runs in the background: this kicks one
+ * off without awaiting it, and the supabase-js auto-refresh ticker keeps
+ * retrying every 30s. Either way `onSessionChange` reports `TOKEN_REFRESHED`
+ * once the network is back, which clears the degraded flag.
+ */
+export async function restoreSession(): Promise<RestoreSessionResult> {
+  const cached = readStoredSession();
+  if (!cached) {
+    return { kind: 'none' };
+  }
+
+  const verdict = judgeCachedSession(readLastOnlineAuthAt());
+
+  if (verdict === 'expired') {
+    await clearStoredSession();
+    return { kind: 'grace-expired' };
+  }
+
+  if (verdict === 'unstamped') {
+    // Start the clock now so the window is bounded from here on.
+    markOnlineAuth();
+  }
+
+  if (isAccessTokenFresh(cached)) {
+    return { kind: 'online', session: cached };
+  }
+
+  // Deliberately not awaited: with connectivity this resolves in well under a
+  // second and `onSessionChange` upgrades the session; without it, it would
+  // block the boot for half a minute for nothing.
+  void getSession().catch(() => null);
+
+  return { kind: 'offline', session: cached };
+}
+
 export function onSessionChange(
   callback: (session: Session | null) => void,
 ): () => void {
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    // Both events mean the server answered, so the session is validated online
+    // and the offline grace window restarts. `INITIAL_SESSION` is excluded on
+    // purpose: it can be replayed straight from storage without any round trip.
+    if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+      markOnlineAuth();
+    }
     callback(session);
   });
 
@@ -228,6 +430,13 @@ export async function signOut(): Promise<void> {
   }
 
   const { error } = await supabase.auth.signOut();
+
+  try {
+    localStorage.removeItem(LAST_ONLINE_AUTH_KEY);
+  } catch {
+    // Best effort: a stale stamp is harmless without a session next to it.
+  }
+
   if (error) {
     throw error;
   }

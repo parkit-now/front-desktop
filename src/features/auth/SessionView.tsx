@@ -44,6 +44,8 @@ import { getErrorMessage } from './errors';
 
 type Props = {
   session: Session;
+  /** Restored from local cache, not yet re-validated against the server. */
+  sessionStale?: boolean;
 };
 
 /** Cómo se abrió Historial cuando se entra desde la sección Caja. */
@@ -167,7 +169,7 @@ function sameMemberships(a: MeMembershipDto[], b: MeMembershipDto[]): boolean {
   return true;
 }
 
-export function SessionView({ session }: Props) {
+export function SessionView({ session, sessionStale = false }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
   const [pendingSignOut, setPendingSignOut] = useState(false);
@@ -466,7 +468,11 @@ export function SessionView({ session }: Props) {
   };
 
   return (
-    <SyncProvider tenantId={activeTenantId} accessToken={session.access_token}>
+    <SyncProvider
+      tenantId={activeTenantId}
+      accessToken={session.access_token}
+      userId={session.user.id}
+    >
       <div className="app-shell">
         <aside className={`app-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-top">
@@ -606,7 +612,7 @@ export function SessionView({ session }: Props) {
         </aside>
 
         <section className="app-main">
-          {!isOnline && <OfflineBanner />}
+          {!isOnline && <OfflineBanner staleSession={sessionStale} />}
 
           <header className="workspace-header">
             <div className="workspace-header-icon">{sectionIcon(section)}</div>

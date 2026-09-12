@@ -183,7 +183,14 @@ export interface SyncState {
 // 'unreviewed' is for audit-only ops (e.g. a freshly-detected LPR plate the
 // operator hasn't registered/dismissed yet) — they still get pushed like any
 // other op, but are excluded from the user-facing pending-changes count.
-export type PendingOpStatus = 'unreviewed' | 'pending' | 'in-flight' | 'failed';
+// 'conflict' es distinto de 'failed': la op es válida pero el servidor tiene una
+// versión más nueva (409). Reintentar sola no la arregla, necesita una persona.
+export type PendingOpStatus =
+  | 'unreviewed'
+  | 'pending'
+  | 'in-flight'
+  | 'conflict'
+  | 'failed';
 export type PendingOpEntity =
   | 'rate'
   | 'entry'
@@ -205,6 +212,16 @@ export interface PendingOp {
   createdAt: number;
   retryCount: number;
   error?: string;
+  /**
+   * Quién originó la operación. Se captura al ENCOLAR, no al pushear: en una
+   * playa hay cambio de turno, y si el operador A dejó ops en la cola y entra
+   * B, hay que poder decir de quién son.
+   *
+   * Ausente en las ops encoladas antes de la v12.
+   */
+  userId?: string;
+  /** Epoch ms; no reintentar antes de este momento (backoff exponencial). */
+  nextAttemptAt?: number;
 }
 
 class ParkitLocalDb extends Dexie {
@@ -365,6 +382,45 @@ class ParkitLocalDb extends Dexie {
           .toCollection()
           .filter((v: { tenantId?: string }) => v.tenantId == null)
           .delete();
+      });
+
+    // v12: la cola de pendientes deja de morirse en el primer 401.
+    //
+    // `failed` era un estado TERMINAL: `pushPendingOps` solo consultaba
+    // 'pending' y 'unreviewed', así que una op que fallaba una vez no se
+    // reintentaba NUNCA. Y al volver la conexión el sync salía con el access
+    // token vencido (el evento `online` dispara al instante, el ticker de
+    // supabase-js recién a los 30 s), así que TODA la cola del corte se
+    // marcaba `failed` de una. El operador perdía el turno entero.
+    //
+    // Ahora el error se clasifica: lo recuperable vuelve a 'pending' con
+    // `nextAttemptAt` (backoff), el 409 va a 'conflict', y solo el payload
+    // inválido queda en 'failed'.
+    this.version(12)
+      .stores({
+        pendingOps:
+          '++localId, status, entityType, [tenantId+status], [tenantId+userId]',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('pendingOps')
+          .toCollection()
+          .modify((op: PendingOp) => {
+            // Las 'failed' cayeron por el bug de arriba, no porque su payload
+            // fuera inválido (las de payload roto ya las borraron la v10 y la
+            // v11). Merecen otra vuelta: si de verdad están mal, el nuevo
+            // clasificador las manda a 'failed' y esta vez es de verdad.
+            //
+            // Las 'in-flight' son huérfanas: la app murió entre el marcado y
+            // el resultado del push, y quedaron invisibles para el push Y para
+            // el badge de pendientes. Pérdida silenciosa.
+            if (op.status === 'failed' || op.status === 'in-flight') {
+              op.status = 'pending';
+              op.retryCount = 0;
+              delete op.error;
+              delete op.nextAttemptAt;
+            }
+          });
       });
   }
 }

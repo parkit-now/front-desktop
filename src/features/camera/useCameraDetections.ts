@@ -6,6 +6,7 @@ import {
   type LprDetectionStatus,
   type PendingOpStatus,
 } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import type {
   UpdateLprDetectionEventDto,
   UpsertLprDetectionEventDto,
@@ -250,19 +251,22 @@ async function upsertCreateOp(
       payload,
       status: 'unreviewed',
       error: undefined,
+      // El payload se rearmó, así que el backoff y los intentos del fallo
+      // anterior ya no aplican: si no se limpian, el filtro de `nextAttemptAt`
+      // dejaría la op fuera del próximo push.
+      nextAttemptAt: undefined,
+      retryCount: 0,
     });
     return;
   }
 
-  await localDb.pendingOps.add({
+  await enqueuePendingOp({
     entityType: 'lprDetectionEvent',
     operation: 'create',
     tenantId,
     entityId: event.id,
     payload,
     status: 'unreviewed',
-    createdAt: Date.now(),
-    retryCount: 0,
   });
 }
 
@@ -313,6 +317,8 @@ async function queueStatusUpdate(
           payload: toUpsertPayload(next),
           status: opStatus,
           error: undefined,
+          nextAttemptAt: undefined,
+          retryCount: 0,
         });
         return;
       }
@@ -334,19 +340,19 @@ async function queueStatusUpdate(
           payload,
           status: opStatus,
           error: undefined,
+          nextAttemptAt: undefined,
+          retryCount: 0,
         });
         return;
       }
 
-      await localDb.pendingOps.add({
+      await enqueuePendingOp({
         entityType: 'lprDetectionEvent',
         operation: 'update',
         tenantId,
         entityId: event.id,
         payload,
         status: opStatus,
-        createdAt: Date.now(),
-        retryCount: 0,
       });
     },
   );
