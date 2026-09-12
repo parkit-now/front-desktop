@@ -168,11 +168,42 @@ Prerrequisitos por SO:
 CI (`.github/workflows/build-desktop.yml`) corre esta misma matriz en runners
 nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`) en
 cada tag `v*.*.*` o manualmente (`workflow_dispatch`), y sube los 3
-instaladores como artifacts. Sirve para validar el build sin depender de que
-alguien tenga las 3 máquinas — pero **no firma los binarios**: son válidos
-para pruebas internas, no para distribuir a clientes todavía (falta
-Authenticode en Windows y notarización de Apple en macOS; ver comentarios al
-final del workflow).
+instaladores como artifacts de Actions. Si el trigger fue un tag `v*.*.*`
+(los crea `release.yml`, ver sección **Releases** abajo), además adjunta esos
+3 instaladores al GitHub Release de ese tag — con `workflow_dispatch` corre
+igual para pruebas internas, pero no toca ningún Release. Sirve para validar
+el build sin depender de que alguien tenga las 3 máquinas — pero **no firma
+los binarios**: son válidos para pruebas internas/piloto, no todavía para
+distribuir ampliamente (falta Authenticode en Windows y notarización de Apple
+en macOS; ver comentarios al final del workflow).
+
+## Releases
+
+Al mergear a `main`, `.github/workflows/release.yml` corre
+[`semantic-release`](https://semantic-release.gitbook.io/) sobre los commits
+nuevos (Conventional Commits: `feat` → minor, `fix` → patch, `BREAKING CHANGE`
+→ major). Si hay algo liberable:
+
+1. Bumpea `version` en `package.json`, genera `CHANGELOG.md` y commitea
+   `chore(release): X.Y.Z [skip ci]` directo a `main`.
+2. Crea el tag `vX.Y.Z` y el GitHub Release (con las release notes).
+3. Ese tag dispara `build-desktop.yml`, que compila los 3 instaladores y los
+   adjunta al Release creado en el paso anterior.
+
+Si no hay commits liberables (p. ej. solo `chore`/`docs`/`wip`), el workflow
+no hace nada — no se crea versión ni Release.
+
+Para probar el cálculo de versión sin crear nada real: pestaña *Actions* →
+**Release** → *Run workflow* con `dry_run: true` (o local:
+`bun run release:dry-run`).
+
+**Nota:** esto requiere que `main` permita el push directo del commit
+`chore(release)` desde `github-actions[bot]` — revisar la branch protection si
+el job `release` falla en el paso de push. También requiere las variables de
+repo `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` configuradas
+en *Settings → Secrets and variables → Actions → Variables* (mismos valores
+que `.env.production`) — sin esas variables, el instalador queda sin URL de
+backend configurada.
 
 Los binarios `lpr-service[.exe]` y `camera-service[.exe]` se copian desde
 `services/*/dist/` a `resources/` dentro del bundle via `extraResources`.

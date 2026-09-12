@@ -36,6 +36,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -62,6 +65,19 @@ jobs:
 
       - run: bun install
 
+      - name: Write .env de producción
+        shell: bash
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          cat > .env <<EOF
+          VITE_API_URL=${VITE_API_URL}
+          VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+          VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+          EOF
+
       - name: Build Python services (native binaries for this OS)
         run: make services-build
 
@@ -82,11 +98,27 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Solo en tags v*.*.* (los crea el workflow de Release vía
+      # semantic-release): adjunta el instalador de este SO al GitHub Release
+      # ya existente para ese tag. `workflow_dispatch` sigue sirviendo para
+      # pruebas internas sin tocar ningún Release.
+      - name: Adjuntar instalador al GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist-electron/*.dmg
+            dist-electron/*.exe
+            dist-electron/*.AppImage
+
 # Próximos pasos para distribución real a clientes (no bloqueantes para esta
 # branch, pero es el camino estándar de la industria):
 #   - Windows: certificado Authenticode (evita el warning de SmartScreen que
 #     ve el personal de estacionamiento al instalar).
 #   - macOS: Apple Developer ID + notarización (Gatekeeper bloquea apps sin
 #     notarizar incluso fuera de la App Store).
-#   - electron-updater + feed de updates (S3/GitHub Releases) para poder
-#     actualizar la flota de kioscos sin visita técnica a cada estacionamiento.
+#   - electron-updater apuntando al feed de GitHub Releases (ya existe: cada
+#     tag v*.*.* de `release.yml` crea el Release y este workflow le adjunta
+#     los 3 instaladores) para poder actualizar la flota de kioscos sin visita
+#     técnica a cada estacionamiento.
