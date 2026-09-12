@@ -31,6 +31,7 @@
   "build": {
     "appId": "com.parkit.desktop",
     "productName": "Parkit",
+    "publish": null,
     "protocols": [
       {
         "name": "Parkit",
