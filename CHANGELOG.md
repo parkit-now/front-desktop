@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/parkit-now/front-desktop/compare/v1.0.0...v1.0.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **build:** disable electron-builder's own publish auto-detection ([89b17b1](https://github.com/parkit-now/front-desktop/commit/89b17b1a567ff72d1226b912a0d0550173521615))
+* **release:** chain the build job inside release.yml, not a tag-triggered workflow ([5256bf9](https://github.com/parkit-now/front-desktop/commit/5256bf988e929fd2a38378d937e82cff5d68ed4e))
+
 # 1.0.0 (2026-09-12)
 
 
