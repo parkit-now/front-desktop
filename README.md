@@ -166,13 +166,46 @@ Prerrequisitos por SO:
 > Python **debe ser 3.12 exacto** (numpy 1.26.4 no publica wheels para otra minor; con 3.13+ pip cae a compilar desde source y falla). Si tu 3.12 no está como `python`, pasá `PYTHON_BIN` — p. ej. `make dist-win PYTHON_BIN="py -3.12"`. `make doctor` valida todo esto.
 
 CI (`.github/workflows/build-desktop.yml`) corre esta misma matriz en runners
-nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`) en
-cada tag `v*.*.*` o manualmente (`workflow_dispatch`), y sube los 3
-instaladores como artifacts. Sirve para validar el build sin depender de que
-alguien tenga las 3 máquinas — pero **no firma los binarios**: son válidos
-para pruebas internas, no para distribuir a clientes todavía (falta
-Authenticode en Windows y notarización de Apple en macOS; ver comentarios al
-final del workflow).
+nativos de GitHub Actions (`macos-latest`/`windows-latest`/`ubuntu-latest`),
+disparable manualmente (`workflow_dispatch`) o con un tag `v*.*.*` pusheado a
+mano, y sube los 3 instaladores como artifacts de Actions. **No es el camino
+automático de release** (ver sección **Releases** abajo) — sirve para probar
+el build en runners reales sin depender de que alguien tenga las 3 máquinas.
+Tampoco firma los binarios: son válidos para pruebas internas/piloto, no
+todavía para distribuir ampliamente (falta Authenticode en Windows y
+notarización de Apple en macOS; ver comentarios al final del workflow).
+
+## Releases
+
+Al mergear a `main`, `.github/workflows/release.yml` corre
+[`semantic-release`](https://semantic-release.gitbook.io/) sobre los commits
+nuevos (Conventional Commits: `feat` → minor, `fix` → patch, `BREAKING CHANGE`
+→ major). Si hay algo liberable:
+
+1. Bumpea `version` en `package.json`, genera `CHANGELOG.md` y commitea
+   `chore(release): X.Y.Z [skip ci]` directo a `main`.
+2. Crea el tag `vX.Y.Z` y el GitHub Release (con las release notes).
+3. **En la misma corrida** (job `build`, `needs: release`), compila los 3
+   instaladores y los adjunta a ese Release.
+
+El paso 3 vive en el mismo workflow que el paso 1-2, no en uno aparte
+disparado por el tag: cuando `GITHUB_TOKEN` crea un tag, GitHub
+deliberadamente no dispara otros workflows con ese evento (anti-loop), así
+que un `push: tags:` en un archivo distinto nunca se activaría acá.
+
+Si no hay commits liberables (p. ej. solo `chore`/`docs`/`wip`), el workflow
+no hace nada — no se crea versión ni Release.
+
+Para probar el cálculo de versión sin crear nada real: pestaña *Actions* →
+**Release** → *Run workflow* con `dry_run: true` (o local:
+`bun run release:dry-run`).
+
+**Prerrequisitos** (ya resueltos en este repo, dejo la nota por si se mueve a
+otro): variables de repo `VITE_API_URL`, `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_ANON_KEY` en *Settings → Secrets and variables → Actions →
+Variables* (mismos valores que `.env.production`) — sin esas variables, el
+instalador queda sin URL de backend configurada. La branch protection de
+`main` no aplica acá: el plan Free de GitHub no la soporta en repos privados.
 
 Los binarios `lpr-service[.exe]` y `camera-service[.exe]` se copian desde
 `services/*/dist/` a `resources/` dentro del bundle via `extraResources`.
