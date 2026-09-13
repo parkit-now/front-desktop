@@ -1,3 +1,11 @@
+## [1.0.2](https://github.com/parkit-now/front-desktop/compare/v1.0.1...v1.0.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **arqueo:** contar el efectivo por el tipo del medio y no por su nombre ([3e4e2c8](https://github.com/parkit-now/front-desktop/commit/3e4e2c84b8013929ad75daede88cc6490d6405bc))
+* **sync:** no pisar cambios locales pendientes en los pull incrementales ([24f25a5](https://github.com/parkit-now/front-desktop/commit/24f25a5b85b70dcc315163cafffe1772f3963512))
+
 ## [1.0.1](https://github.com/parkit-now/front-desktop/compare/v1.0.0...v1.0.1) (2026-09-12)
 
 
