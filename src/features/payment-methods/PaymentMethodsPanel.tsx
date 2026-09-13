@@ -54,6 +54,10 @@ function pmStatus(pm: PaymentMethodDto): 'Habilitado' | 'Deshabilitado' {
 function localToDisplay(r: LocalPaymentMethod): PaymentMethodDto {
   return {
     id: r.id,
+    // `?? 'other'` sólo para filas anteriores a la v13 de Dexie, que todavía
+    // no bajaron el campo. Es un default de DISPLAY y no toca el arqueo: el
+    // arqueo lee el tipo snapshoteado en la transacción, no esto.
+    type: r.type ?? 'other',
     name: r.name,
     enabled: r.enabled,
     isDefault: r.isDefault,
@@ -69,6 +73,7 @@ function apiToLocal(r: PaymentMethodDto, tenantId: string): LocalPaymentMethod {
   return {
     id: r.id,
     tenantId,
+    type: r.type,
     name: r.name,
     enabled: r.enabled,
     isDefault: r.isDefault,

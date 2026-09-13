@@ -1,4 +1,16 @@
 import Dexie, { type Table } from 'dexie';
+import type { components } from '../../generated/api-types';
+
+/**
+ * Qué ES un medio de pago, contra su `name`, que es cómo el dueño decidió
+ * llamarlo. El arqueo de caja decide con ESTO, nunca con el nombre.
+ *
+ * Se toma del contrato generado (`src/generated/api-types.ts`) y no se
+ * redeclara a mano: si el backend agrega un valor al enum, este tipo se entera
+ * y el `switch` que lo use deja de compilar. Escribirlo a mano sería una
+ * segunda fuente de verdad silenciosa.
+ */
+export type PaymentMethodKind = components['schemas']['PaymentMethodType'];
 
 export interface LocalRate {
   id: string;
@@ -63,8 +75,25 @@ export interface LocalPaymentTransaction {
   tenantId: string;
   entryId: string;
   cashSessionId?: string;
+  /**
+   * El par id/nombre es un SNAPSHOT del medio con el que se cobró: el método
+   * se puede renombrar o borrar, y el comprobante histórico tiene que seguir
+   * diciendo lo que decía.
+   */
   paymentMethodId?: string;
   paymentMethodName: string;
+  /**
+   * Tercer campo del mismo snapshot, y el que usa el arqueo (`isCashMethod`).
+   *
+   * OPCIONAL, aunque en el servidor la columna sea NOT NULL, y no es un
+   * descuido: hay una ventana real en la que la fila local no lo tiene. El
+   * upgrade a la v13 resetea el cursor de `paymentTransactions:` para que el
+   * próximo pull rellene todo, pero entre el upgrade y ese pull —o si el
+   * equipo está OFFLINE, que es el modo normal— las filas viejas siguen sin
+   * tipo. `isCashMethod` cubre esa ventana con la regla vieja por nombre; el
+   * tipo, cuando está, siempre gana.
+   */
+  paymentMethodType?: PaymentMethodKind;
   amount: number;
   version: number;
   syncSeq: number;
@@ -120,6 +149,17 @@ export interface LocalVehicleType {
 export interface LocalPaymentMethod {
   id: string;
   tenantId: string;
+  /**
+   * Lo que el medio ES. `name` es cómo el dueño decidió llamarlo, y puede
+   * cambiarlo cuando quiera; esto no.
+   *
+   * Es lo que el cobro copia al snapshot de la transacción para que el arqueo
+   * no tenga que adivinar. Opcional por la misma ventana de upgrade que
+   * `LocalPaymentTransaction.paymentMethodType`: la v13 resetea el cursor de
+   * `paymentMethods:` y hasta que ese pull entre, las filas viejas no lo
+   * tienen. Mismo precedente que la v6 con `isSystem`.
+   */
+  type?: PaymentMethodKind;
   name: string;
   enabled: boolean;
   isDefault: boolean;
@@ -421,6 +461,58 @@ class ParkitLocalDb extends Dexie {
               delete op.nextAttemptAt;
             }
           });
+      });
+
+    // v13: el arqueo de caja deja de adivinar el efectivo por el NOMBRE.
+    //
+    // `LocalPaymentMethod` gana `type` y `LocalPaymentTransaction` gana
+    // `paymentMethodType` (el snapshot del tipo al cobrar). Ningún cambio de
+    // índice: los dos se leen siempre después de traer la fila entera.
+    //
+    // Se resetean DOS cursores, y los dos hacen falta por razones distintas.
+    //
+    // 1. `paymentMethods:` — el feed es incremental por `sync_seq`, y agregar
+    //    un campo al DTO no bumpea el `sync_seq` de nadie: el servidor no
+    //    volvería a mencionar esas filas nunca. Sin el reset, un método ya
+    //    sincronizado se queda sin `type` para siempre y el cobro no tiene qué
+    //    snapshotear. Mismo patrón que la v6 con `isSystem` y la v10 con
+    //    `version`.
+    //
+    // 2. `paymentTransactions:` — este es más sutil y es EL que evita que el
+    //    bug siga vivo en las máquinas que ya estaban andando. La migración
+    //    del backend (20260913200901) backfillea la columna con un UPDATE, que
+    //    dispara el trigger y bumpea `sync_seq` de cada fila, así que en
+    //    principio el pull incremental las volvería a bajar solas. Pero la
+    //    ventana de deploy no es atómica:
+    //
+    //      a. se aplica la migración -> sync_seq bumpeado;
+    //      b. el desktop, TODAVÍA con la app vieja, pulls: se baja las filas,
+    //         las guarda con el mapper viejo (que no conoce el campo) y AVANZA
+    //         EL CURSOR;
+    //      c. recién ahí se actualiza la app.
+    //
+    //    Resultado: copia local sin tipo y cursor ya pasado. El servidor no
+    //    tiene nada nuevo que contar y el arqueo de ese operador se queda sin
+    //    efectivo. El reset fuerza el re-pull completo.
+    //
+    // No se toca `pendingOps` (a diferencia de la v10 y la v11): una op de
+    // `entry` encolada lleva las líneas de pago SIN `paymentMethodType`, y el
+    // backend la acepta igual — el campo es opcional a propósito y el servidor
+    // resuelve el tipo por `paymentMethodId`. O sea: la cola del corte se
+    // pushea bien y no hay que tirar el trabajo del operador.
+    this.version(13)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' &&
+              (s.key.startsWith('paymentMethods:') ||
+                s.key.startsWith('paymentTransactions:')),
+          )
+          .delete();
       });
   }
 }

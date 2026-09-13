@@ -56,7 +56,10 @@ export function computeSessionSummary(
         pmName: tx.paymentMethodName,
         total: tx.amount,
         count: 1,
-        isCash: isCashMethod(tx.paymentMethodName),
+        // Por el TIPO snapshoteado al cobrar, no por el nombre: el dueño puede
+        // haber renombrado el método a "Caja" después, y esa plata entró al
+        // cajón igual.
+        isCash: isCashMethod(tx.paymentMethodType, tx.paymentMethodName),
       });
     }
     grandTotal += tx.amount;

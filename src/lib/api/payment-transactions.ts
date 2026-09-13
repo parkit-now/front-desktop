@@ -1,18 +1,14 @@
+import type { components } from '../../generated/api-types';
 import { apiRequest } from './client';
 
-export interface PaymentTransactionDto {
-  id: string;
-  tenantId: string;
-  entryId: string;
-  cashSessionId?: string | null;
-  paymentMethodId?: string | null;
-  paymentMethodName: string;
-  amount: number;
-  version: number;
-  syncSeq: number;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/**
+ * Alias del contrato generado, NO una copia a mano. Mismo motivo que en
+ * `payment-methods.ts`: la copia local no traía `paymentMethodType` y el
+ * arqueo se quedaba sin el único dato que necesita para saber qué plata entró
+ * al cajón.
+ */
+export type PaymentTransactionDto =
+  components['schemas']['PaymentTransactionDto'];
 
 interface PaymentTransactionChangesResponse {
   items: PaymentTransactionDto[];
