@@ -63,6 +63,33 @@ if (isOnline) {
 `retryCount`. Sin `userId` no se puede saber de qué turno salió una operación, y
 en una playa con cambio de operador y arqueo de caja eso importa.
 
+### Excepción deliberada: cerrar caja exige conexión
+
+Todo el panel opera sin red MENOS el cierre de turno, y es a propósito, no un
+pendiente.
+
+Al cerrar, el servidor hace tres cosas en una transacción: cierra el turno, abre
+el siguiente y **renumera los tickets** de los autos que siguen adentro.
+Replicar esa renumeración offline crea dos fuentes de verdad para un número que
+el conductor tiene impreso en la mano, y que el operador tipea en la barrera
+para cobrar (`ExitControls`). Si al sincronizar el servidor recalcula distinto,
+el auto queda con un ticket que no coincide con su papel.
+
+Se evaluó mandarle al servidor los tickets ya asignados por el cliente para que
+los respete. Funciona, pero arrastra casos borde caros — entries que el cliente
+no vio porque estaban offline, colisiones entre el número del cliente y el
+fallback del servidor — que no se justifican para el MVP.
+
+Por eso el botón **queda habilitado y avisa por toast al tocarlo**
+(`CashSessionPanel.tsx`). No se deshabilita a propósito: un botón gris no
+explica nada, y encima no es focusable ni lo anuncian los lectores de pantalla.
+Lo que importa es cortar en el click y no en el submit — antes el diálogo abría
+igual, el operador hacía todo el arqueo, escribía las notas y recién al final
+se comía un error.
+
+Si esto se retoma, lo que hay que resolver primero es de quién es la autoridad
+sobre el `ticketNumber`.
+
 ### Infraestructura de sync
 
 | Archivo                               | Rol                                                                               |
