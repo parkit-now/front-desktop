@@ -7,6 +7,16 @@ export type CloseEntryDto = components['schemas']['CloseEntryDto'];
 export type EntryChangesResponseDto =
   components['schemas']['EntryChangesResponseDto'];
 
+/**
+ * Aliases del contrato generado, NO copias a mano. Eran dos `type` escritos
+ * acá y les faltaba `paymentMethodType`: una corrección BORRA y RECREA las
+ * transacciones, así que sin ese campo corregir un cobro en efectivo lo
+ * degradaba a "otros medios" y descuadraba el arqueo.
+ */
+export type CorrectEntryPaymentLineDto =
+  components['schemas']['PaymentLineDto'];
+export type CorrectEntryDto = components['schemas']['CorrectEntryDto'];
+
 type EntryChangesQuery = {
   afterSeq?: number;
   limit?: number;
@@ -63,6 +73,23 @@ export function closeEntry(input: {
   body: CloseEntryDto;
 }): Promise<EntryDto> {
   const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}`;
+  const path = withQuery(basePath, { expectedVersion: input.expectedVersion });
+  return apiRequest<EntryDto>({
+    method: 'PATCH',
+    path,
+    body: input.body,
+    bearer: input.bearer,
+  });
+}
+
+export function correctEntry(input: {
+  tenantId: string;
+  entryId: string;
+  expectedVersion: number;
+  bearer: string;
+  body: CorrectEntryDto;
+}): Promise<EntryDto> {
+  const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/correction`;
   const path = withQuery(basePath, { expectedVersion: input.expectedVersion });
   return apiRequest<EntryDto>({
     method: 'PATCH',

@@ -20,7 +20,11 @@ export class ApiError extends Error {
   }
 }
 
-function readBaseUrl(): string {
+/**
+ * Base URL de la API. Exportada para que el health-check de `NetworkContext`
+ * apunte al mismo backend que las requests, sin duplicar el fallback de dev.
+ */
+export function readBaseUrl(): string {
   const raw: unknown = import.meta.env.VITE_API_URL;
   if (typeof raw !== 'string' || raw.trim().length === 0) {
     // Dev fallback: keeps desktop usable when .env.local is missing VITE_API_URL.

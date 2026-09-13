@@ -13,6 +13,7 @@ import {
 } from '../../lib/api/rates';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalRate } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import {
   formatArgentinaDateTime,
   formatArs,
@@ -390,15 +391,13 @@ export function RatesPanel({
             localDb.pendingOps,
             async () => {
               await localDb.rates.put(localRate);
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'rate',
                 operation: 'create',
                 tenantId,
                 entityId: id,
                 payload: body,
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -464,15 +463,13 @@ export function RatesPanel({
                 shortcutNumber: body.shortcutNumber,
                 updatedAt: new Date().toISOString(),
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'rate',
                 operation: 'update',
                 tenantId,
                 entityId: editingRate.id,
                 payload: { expectedVersion: editingRate.version, body },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -520,7 +517,7 @@ export function RatesPanel({
                 isActive: false,
                 updatedAt: new Date().toISOString(),
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'rate',
                 operation: 'update',
                 tenantId,
@@ -530,8 +527,6 @@ export function RatesPanel({
                   body: { isActive: false },
                 },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -560,7 +555,7 @@ export function RatesPanel({
                 isActive: true,
                 updatedAt: new Date().toISOString(),
               });
-              await localDb.pendingOps.add({
+              await enqueuePendingOp({
                 entityType: 'rate',
                 operation: 'update',
                 tenantId,
@@ -570,8 +565,6 @@ export function RatesPanel({
                   body: { isActive: true },
                 },
                 status: 'pending',
-                createdAt: Date.now(),
-                retryCount: 0,
               });
             },
           );
@@ -589,15 +582,13 @@ export function RatesPanel({
             bearer: accessToken,
           });
         } else {
-          await localDb.pendingOps.add({
+          await enqueuePendingOp({
             entityType: 'rate',
             operation: 'delete',
             tenantId,
             entityId: confirmAction.rate.id,
             payload: { expectedVersion: confirmAction.rate.version },
             status: 'pending',
-            createdAt: Date.now(),
-            retryCount: 0,
           });
         }
         await localDb.rates.delete(confirmAction.rate.id);

@@ -54,25 +54,115 @@ if (isOnline) {
   // 1. Escribir en localDb inmediatamente (el usuario ve el cambio al instante)
   await localDb.table.put(localRecord);
   // 2. Encolar la operación para sincronizar al reconectar
-  await localDb.pendingOps.add({ entityType, operation, tenantId, entityId, payload, ... });
+  await enqueuePendingOp({ entityType, operation, tenantId, entityId, payload, status: 'pending' });
 }
 ```
 
+**Encolar SIEMPRE con `enqueuePendingOp`** (`src/lib/sync/enqueue.ts`), nunca con
+`localDb.pendingOps.add` directo: el helper completa `userId`, `createdAt` y
+`retryCount`. Sin `userId` no se puede saber de qué turno salió una operación, y
+en una playa con cambio de operador y arqueo de caja eso importa.
+
+### Excepción deliberada: cerrar caja exige conexión
+
+Todo el panel opera sin red MENOS el cierre de turno, y es a propósito, no un
+pendiente.
+
+Al cerrar, el servidor hace tres cosas en una transacción: cierra el turno, abre
+el siguiente y **renumera los tickets** de los autos que siguen adentro.
+Replicar esa renumeración offline crea dos fuentes de verdad para un número que
+el conductor tiene impreso en la mano, y que el operador tipea en la barrera
+para cobrar (`ExitControls`). Si al sincronizar el servidor recalcula distinto,
+el auto queda con un ticket que no coincide con su papel.
+
+Se evaluó mandarle al servidor los tickets ya asignados por el cliente para que
+los respete. Funciona, pero arrastra casos borde caros — entries que el cliente
+no vio porque estaban offline, colisiones entre el número del cliente y el
+fallback del servidor — que no se justifican para el MVP.
+
+Por eso el botón **queda habilitado y avisa por toast al tocarlo**
+(`CashSessionPanel.tsx`). No se deshabilita a propósito: un botón gris no
+explica nada, y encima no es focusable ni lo anuncian los lectores de pantalla.
+Lo que importa es cortar en el click y no en el submit — antes el diálogo abría
+igual, el operador hacía todo el arqueo, escribía las notas y recién al final
+se comía un error.
+
+Si esto se retoma, lo que hay que resolver primero es de quién es la autoridad
+sobre el `ticketNumber`.
+
 ### Infraestructura de sync
 
-| Archivo                               | Rol                                                                          |
-| ------------------------------------- | ---------------------------------------------------------------------------- |
-| `src/lib/db/localDb.ts`               | Definición Dexie — tablas, índices, tipos locales                            |
-| `src/lib/network/NetworkContext.tsx`  | `useNetwork()` — detecta online/offline vía eventos del browser              |
-| `src/lib/sync/SyncService.ts`         | Singleton — `pullRates()`, `pullEntries()`, `pushPendingOps()`, `fullSync()` |
-| `src/lib/sync/SyncContext.tsx`        | `useSync()` — expone `pendingCount`, `isSyncing`, `triggerSync` al UI        |
-| `src/features/sync/SyncButton.tsx`    | Botón en sidebar con badge de ops pendientes                                 |
-| `src/features/sync/OfflineBanner.tsx` | Banner amarillo cuando `isOnline === false`                                  |
+| Archivo                               | Rol                                                                               |
+| ------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/lib/db/localDb.ts`               | Definición Dexie — tablas, índices, tipos locales                                 |
+| `src/lib/network/NetworkContext.tsx`  | `useNetwork()` — `navigator.onLine` **+ health-check contra `GET /health`**       |
+| `src/lib/sync/enqueue.ts`             | `enqueuePendingOp()` — única puerta de entrada a la cola                          |
+| `src/lib/sync/retryPolicy.ts`         | `classifyPushFailure()` — qué hacer con una op cuyo push falló                    |
+| `src/lib/sync/SyncService.ts`         | Singleton — `pullRates()`, `pullEntries()`, `pushPendingOps()`, `fullSync()`      |
+| `src/lib/sync/SyncContext.tsx`        | `useSync()` — `pendingCount`, `blockedCount`, `otherOperatorCount`, `triggerSync` |
+| `src/features/sync/SyncButton.tsx`    | Botón en sidebar con badge de ops sin sincronizar                                 |
+| `src/features/sync/OfflineBanner.tsx` | Banner amarillo cuando `isOnline === false`                                       |
+
+### Detección de conectividad
+
+`navigator.onLine` sola NO alcanza: en Chromium dice si hay una interfaz de red
+levantada, no si el backend contesta. Con el router prendido y sin internet —
+el escenario típico de un estacionamiento con Wi-Fi flojo — devuelve `true`,
+las escrituras toman la rama online, fallan, y **no se encolan**.
+
+`NetworkContext` compone el estado real: `isOnline = networkUp && backendReachable`,
+con un probe a `GET /health` (timeout 5 s; cada 30 s si contesta, cada 10 s si
+no). Expone `networkUp` y `backendReachable` por separado para poder decirle al
+operador si el problema es su Wi-Fi o el servidor.
+
+### Estados de `pendingOps`
+
+| Estado       | Significado                                                                |
+| ------------ | -------------------------------------------------------------------------- |
+| `unreviewed` | Detección LPR que el operador no resolvió todavía. Se pushea igual         |
+| `pending`    | Esperando push. Con `nextAttemptAt` si viene de un fallo reintentable      |
+| `in-flight`  | Push en curso. Si queda así, `recoverStalledOps()` la devuelve a `pending` |
+| `conflict`   | 409: el servidor tiene algo más nuevo. Necesita a una persona              |
+| `failed`     | Payload inválido o presupuesto de reintentos agotado. Terminal             |
+
+**`failed` era el destino de CUALQUIER error** y `pushPendingOps` nunca lo volvía
+a mirar. Al reconectar, el sync salía con el access token vencido y toda la cola
+del corte se enterraba de una. Si tocás el manejo de errores del push, la regla
+es: solo va a `failed` lo que reintentar no puede arreglar.
 
 ### Protección de sesión offline
 
-`App.tsx` intercepta el `onSessionChange` para NO cerrar sesión si `!navigator.onLine`.
-Así el token puede expirar sin que el usuario pierda acceso mientras está offline.
+**El primer login SIEMPRE requiere conexión — no hay login offline.** Pero una
+vez que el operador se autenticó en este equipo, un access token vencido es un
+problema de transporte, no de autenticación: no puede frenarlo de cobrarle a un
+auto que está físicamente en la barrera. El token es una credencial de red; la
+sesión es un hecho del negocio.
+
+Dos mecanismos, uno por camino:
+
+1. **App ya abierta** — `App.tsx` intercepta `onSessionChange` y no cierra sesión
+   si `!navigator.onLine`.
+2. **Arranque en frío** — `restoreSession()` (`src/lib/supabase/session.ts`), NO
+   `getSession()`. `supabase.auth.getSession()` devuelve `null` cuando el refresh
+   falla, **incluso si falla solo por falta de red**, aunque los tokens sigan
+   intactos en storage (supabase-js solo los borra ante errores no reintentables).
+   Confiar en ese `null` deja al operador en una pantalla de login que sin
+   conexión no puede usar: la app queda inservible una hora después del corte,
+   con solo reiniciarla.
+
+La recuperación al volver la red no necesita nada extra: el ticker de
+auto-refresh de supabase-js relee la sesión del storage cada 30 s y emite
+`TOKEN_REFRESHED`.
+
+**Ventana de gracia:** 7 días desde el último login o refresh exitoso, sellados en
+`parkit.desktop.lastOnlineAuthAt`. La política vive en `judgeCachedSession()`,
+pura y testeada. Vencida, se limpian las credenciales y se pide login real: el
+tope acota el riesgo de un equipo robado o un operador desvinculado.
+
+**`AUTH_STORAGE_KEY`** (`src/lib/supabase/client.ts`) se fija explícitamente para
+poder leer la sesión del storage sin depender de la clave que supabase-js deriva
+del hostname (distinta en dev y en prod). Hay una migración one-shot desde la
+clave derivada: si se saca, los equipos ya instalados se deslogean al actualizar.
 
 ### Tablas locales (Dexie)
 
@@ -81,7 +171,7 @@ Así el token puede expirar sin que el usuario pierda acceso mientras está offl
 - **`vehicles`**: `id, brand, model, type?`
 - **`paymentMethods`**: `id, tenantId, type, name, enabled, isDefault`
 - **`syncState`**: `key` = `"rates:{tenantId}"` / `"entries:{tenantId}"`, `lastSeq`, `lastSyncAt`
-- **`pendingOps`**: operaciones encoladas mientras offline — `localId (++autoincrement), entityType, operation, tenantId, entityId, payload, status, createdAt, retryCount, error?`
+- **`pendingOps`**: operaciones encoladas mientras offline — `localId (++autoincrement), entityType, operation, tenantId, entityId, payload, status, createdAt, retryCount, error?, userId?, nextAttemptAt?`
 
 ## Seguridad Electron (mandatorio)
 
@@ -166,6 +256,9 @@ bun run build
 - **No leer datos operativos directamente de la API en un `useEffect`** — usar `useLiveQuery` sobre Dexie.
 - **No mutar datos sin actualizar localDb** — la UI es reactiva a Dexie, no al estado de React.
 - **No encolar un `pendingOp` sin también aplicar el cambio a localDb inmediatamente** — el usuario debe ver el cambio al instante.
+- **No usar `localDb.pendingOps.add` directo** — usar `enqueuePendingOp()`, o la op queda sin autor.
+- **No mandar todo a `failed` en el catch de un push** — es terminal; ver la tabla de estados.
+- **No usar `getSession()` para decidir si hay sesión al arrancar** — usar `restoreSession()`.
 
 ## Manejo de errores y traducción
 

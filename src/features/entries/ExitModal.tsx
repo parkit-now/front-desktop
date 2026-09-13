@@ -7,7 +7,9 @@ import {
   localDb,
   type LocalEntry,
   type LocalPaymentTransaction,
+  type PaymentMethodKind,
 } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
@@ -102,7 +104,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   // Cash collection shows received + change only for the cash method on a
   // single-method payment; split or non-cash methods are charged exactly.
   const isCash =
-    !splitEnabled && !!effectivePm && isCashMethod(effectivePm.name);
+    !splitEnabled &&
+    !!effectivePm &&
+    isCashMethod(effectivePm.type, effectivePm.name);
   const change = computeChange(amountToCharge, receivedAmount);
   const shortfall = Math.max(0, amountToCharge - receivedAmount);
   const receivedEntered = received.trim() !== '';
@@ -142,11 +146,17 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
     const cashSessionId = entry.cashSessionId ?? activeSession?.id;
 
     let amountPaid: number | undefined;
+    // El SNAPSHOT del medio de pago: id, nombre Y tipo. Los tres se copian
+    // acá, al cobrar, y no se vuelven a tocar: el método puede renombrarse o
+    // borrarse después, y ni el comprobante ni el arqueo pueden cambiar por
+    // eso. El `type` es el que el cierre de caja usa para saber qué plata
+    // quedó en el cajón.
     let payments:
       | Array<{
           id: string;
           paymentMethodId?: string;
           paymentMethodName: string;
+          paymentMethodType?: PaymentMethodKind;
           amount: number;
         }>
       | undefined;
@@ -162,6 +172,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           id: generateUuidV7(),
           paymentMethodId: pm.id,
           paymentMethodName: pm.name,
+          paymentMethodType: pm.type,
           amount: v,
         }));
 
@@ -178,6 +189,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             id: generateUuidV7(),
             paymentMethodId: effectivePm.id,
             paymentMethodName: effectivePm.name,
+            paymentMethodType: effectivePm.type,
             amount: amountPaid,
           },
         ];
@@ -200,6 +212,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           cashSessionId,
           paymentMethodId: p.paymentMethodId,
           paymentMethodName: p.paymentMethodName,
+          paymentMethodType: p.paymentMethodType,
           amount: p.amount,
           version: 1,
           syncSeq: 0,
@@ -233,6 +246,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           cashSessionId,
           paymentMethodId: p.paymentMethodId,
           paymentMethodName: p.paymentMethodName,
+          paymentMethodType: p.paymentMethodType,
           amount: p.amount,
           version: 1,
           syncSeq: 0,
@@ -255,7 +269,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             if (txs.length > 0) {
               await localDb.paymentTransactions.bulkPut(txs);
             }
-            await localDb.pendingOps.add({
+            await enqueuePendingOp({
               entityType: 'entry',
               operation: 'update',
               tenantId,
@@ -265,8 +279,6 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 body: { leftAt, amountPaid, cashSessionId, payments },
               },
               status: 'pending',
-              createdAt: Date.now(),
-              retryCount: 0,
             });
           },
         );

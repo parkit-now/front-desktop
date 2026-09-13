@@ -12,6 +12,7 @@ import {
 import { createEntry } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { COLORS } from '../../lib/data/colors';
@@ -985,15 +986,13 @@ export function EntryFormCore({
               syncSeq: 0,
               updatedAt: now,
             });
-            await localDb.pendingOps.add({
+            await enqueuePendingOp({
               entityType: 'entry',
               operation: 'create',
               tenantId,
               entityId: entryId,
               payload: body,
               status: 'pending',
-              createdAt: Date.now(),
-              retryCount: 0,
             });
           },
         );

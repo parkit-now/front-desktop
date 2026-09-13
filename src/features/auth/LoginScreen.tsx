@@ -25,9 +25,15 @@ const OAUTH_OPTIONS: OAuthOption[] = [
 type Props = {
   onSwitchToRegister: () => void;
   onForgotPassword: () => void;
+  /** Why the user is back here, when they did not sign out themselves. */
+  notice?: string | null;
 };
 
-export function LoginScreen({ onSwitchToRegister, onForgotPassword }: Props) {
+export function LoginScreen({
+  onSwitchToRegister,
+  onForgotPassword,
+  notice = null,
+}: Props) {
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,6 +88,12 @@ export function LoginScreen({ onSwitchToRegister, onForgotPassword }: Props) {
   return (
     <>
       <h2>Iniciar sesión</h2>
+
+      {notice ? (
+        <p className="auth-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
 
       <form
         className="auth-form"

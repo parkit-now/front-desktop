@@ -14,10 +14,13 @@ import {
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
 import { cashSessionLabel } from '../../lib/format/cashSession';
 import { DataTable, type DataTableFilterOption } from '../data-table';
+import { EntryEditDialog } from './EntryEditDialog';
 
 interface Props {
   tenantId: string;
   userId: string;
+  accessToken: string;
+  actorRole: 'admin' | 'owner' | 'operator' | null;
   initialCashSessionId?: string;
   initialOnlyCurrentSession?: boolean;
   onBackToCaja?: () => void;
@@ -217,6 +220,8 @@ const SEARCHABLE_KEYS = ['plate', 'notes'];
 export function EntryHistoryPanel({
   tenantId,
   userId,
+  accessToken,
+  actorRole,
   initialCashSessionId,
   initialOnlyCurrentSession = false,
   onBackToCaja,
@@ -225,6 +230,9 @@ export function EntryHistoryPanel({
     initialOnlyCurrentSession,
   );
   const [includeInLot, setIncludeInLot] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
+    null,
+  );
 
   const allSessions = useLiveQuery(
     () =>
@@ -293,14 +301,16 @@ export function EntryHistoryPanel({
     if (!allEntries || !allPaymentTransactions) return undefined;
 
     const paymentsByEntryId = new Map<string, LocalPaymentTransaction[]>();
-    allPaymentTransactions.forEach((tx) => {
-      const lines = paymentsByEntryId.get(tx.entryId);
-      if (lines) {
-        lines.push(tx);
-      } else {
-        paymentsByEntryId.set(tx.entryId, [tx]);
-      }
-    });
+    allPaymentTransactions
+      .filter((tx) => !tx.deletedAt)
+      .forEach((tx) => {
+        const lines = paymentsByEntryId.get(tx.entryId);
+        if (lines) {
+          lines.push(tx);
+        } else {
+          paymentsByEntryId.set(tx.entryId, [tx]);
+        }
+      });
 
     let filtered = includeInLot
       ? allEntries
@@ -334,66 +344,85 @@ export function EntryHistoryPanel({
     if (!allPaymentTransactions) return [];
 
     const byValue = new Map<string, string>();
-    allPaymentTransactions.forEach((tx) => {
-      byValue.set(paymentMethodFilterValue(tx), tx.paymentMethodName);
-    });
+    allPaymentTransactions
+      .filter((tx) => !tx.deletedAt)
+      .forEach((tx) => {
+        byValue.set(paymentMethodFilterValue(tx), tx.paymentMethodName);
+      });
 
     return Array.from(byValue.entries())
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => left.label.localeCompare(right.label, 'es'));
   }, [allPaymentTransactions]);
 
+  const editingCashSession = editingEntry?.cashSessionId
+    ? allSessions?.find((session) => session.id === editingEntry.cashSessionId)
+    : undefined;
+
   return (
-    <DataTable
-      data={entries ?? []}
-      columns={columns}
-      isLoading={entries === undefined}
-      emptyMessage="No hay movimientos registrados todavía."
-      searchPlaceholder="Buscar por patente o notas…"
-      searchableKeys={SEARCHABLE_KEYS}
-      filterableColumns={FILTERABLE_COLUMNS}
-      filterOptionsByColumn={{
-        amountPaid: paymentMethodFilterOptions,
-        cashSessionId: cashSessionFilterOptions,
-      }}
-      initialColumnFilters={initialColumnFilters}
-      initialPageSize={20}
-      pageSizeOptions={[10, 20, 50, 100]}
-      getRowId={(row) => row.id}
-      templateScope={{ userId, tenantId, tableKey: 'entry-history' }}
-      filterSwitches={[
-        {
-          id: 'onlyCurrentSession',
-          label: 'Solo caja actual',
-          checked: onlyCurrentSession,
-          onChange: setOnlyCurrentSession,
-        },
-        {
-          id: 'includeInLot',
-          label: 'Incluir autos en base',
-          checked: includeInLot,
-          onChange: setIncludeInLot,
-        },
-      ]}
-      subtitle={
-        initialCashSessionId
-          ? 'Mostrando los movimientos de la caja seleccionada.'
-          : initialOnlyCurrentSession
-            ? 'Mostrando los movimientos de la caja activa.'
-            : undefined
-      }
-      headerAction={
-        onBackToCaja ? (
-          <button
-            type="button"
-            className="dt-secondary-action"
-            onClick={onBackToCaja}
-          >
-            <ArrowLeft size={15} />
-            Volver a Caja
-          </button>
-        ) : undefined
-      }
-    />
+    <>
+      <DataTable
+        data={entries ?? []}
+        columns={columns}
+        isLoading={entries === undefined}
+        emptyMessage="No hay movimientos registrados todavía."
+        searchPlaceholder="Buscar por patente o notas…"
+        searchableKeys={SEARCHABLE_KEYS}
+        filterableColumns={FILTERABLE_COLUMNS}
+        filterOptionsByColumn={{
+          amountPaid: paymentMethodFilterOptions,
+          cashSessionId: cashSessionFilterOptions,
+        }}
+        initialColumnFilters={initialColumnFilters}
+        initialPageSize={20}
+        pageSizeOptions={[10, 20, 50, 100]}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => setEditingEntry(row)}
+        templateScope={{ userId, tenantId, tableKey: 'entry-history' }}
+        filterSwitches={[
+          {
+            id: 'onlyCurrentSession',
+            label: 'Solo caja actual',
+            checked: onlyCurrentSession,
+            onChange: setOnlyCurrentSession,
+          },
+          {
+            id: 'includeInLot',
+            label: 'Incluir autos en base',
+            checked: includeInLot,
+            onChange: setIncludeInLot,
+          },
+        ]}
+        subtitle={
+          initialCashSessionId
+            ? 'Mostrando los movimientos de la caja seleccionada.'
+            : initialOnlyCurrentSession
+              ? 'Mostrando los movimientos de la caja activa.'
+              : undefined
+        }
+        headerAction={
+          onBackToCaja ? (
+            <button
+              type="button"
+              className="dt-secondary-action"
+              onClick={onBackToCaja}
+            >
+              <ArrowLeft size={15} />
+              Volver a Caja
+            </button>
+          ) : undefined
+        }
+      />
+      {editingEntry ? (
+        <EntryEditDialog
+          entry={editingEntry}
+          tenantId={tenantId}
+          accessToken={accessToken}
+          actorRole={actorRole}
+          cashSession={editingCashSession}
+          onClose={() => setEditingEntry(null)}
+        />
+      ) : null}
+    </>
   );
 }

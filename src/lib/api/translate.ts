@@ -65,6 +65,14 @@ const CODE_MESSAGES: Record<string, string> = {
   ENTITY_INSUFFICIENT_ROLE:
     'Tu rol en este establecimiento no permite esta acción.',
   ENTITY_NO_ACCESS: 'No tenés acceso a este establecimiento.',
+  ENTRY_CLOSED_SESSION_LOCKED:
+    'La caja está cerrada. Este movimiento no se puede editar.',
+  ENTRY_ACTIVE_PAYMENT_LOCKED:
+    'Los ingresos activos no pueden corregirse con egreso ni pagos.',
+  ENTRY_CORRECTION_REASON_REQUIRED:
+    'Ingresá el motivo del cambio para modificar horarios o importes.',
+  ENTRY_EXIT_NOT_AFTER_ENTRY:
+    'La fecha y hora de egreso debe ser mayor a la de ingreso.',
 
   // Validacion (envoltorio — el detalle por campo se traduce con
   // translateValidationCode).

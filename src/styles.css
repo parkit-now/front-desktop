@@ -224,6 +224,19 @@ h2 {
   color: var(--color-danger-text);
 }
 
+/* Explains why the user is back at the login screen without having signed out
+   (e.g. the offline session grace window ran out). Informative, not an error. */
+.auth-notice {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: 8px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .toast {
   position: fixed;
   top: 16px;
@@ -1103,14 +1116,15 @@ h2 {
 .dt-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 12px 18px 14px;
   border-bottom: 1px solid #e5ecf6;
 }
 
 .dt-search-cluster {
-  flex: 1 1 420px;
-  min-width: 260px;
+  flex: 999 1 280px;
+  min-width: 220px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1204,7 +1218,34 @@ h2 {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  margin-left: auto;
   min-width: 0;
+}
+
+.dt-toolbar-switches {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 300px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.dt-toolbar-switches .ui-switch {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 38px;
+  border-radius: 999px;
+  background: #f8fbff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dt-toolbar-switches .ui-switch:hover {
+  border-color: #aac1de;
+  background: #fff;
 }
 
 /* Reusable toggle switch (filters, settings) */
@@ -1273,6 +1314,9 @@ h2 {
 }
 
 .ui-switch-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1497,30 +1541,6 @@ h2 {
   color: #1d2939;
   font-weight: 700;
   font-size: 13px;
-}
-
-.dt-filter-switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 42px;
-  padding: 0 11px;
-  border-radius: 12px;
-  background: #f7f8fa;
-}
-
-.dt-filter-switch-label {
-  color: #1d2939;
-  font-weight: 700;
-  font-size: 13px;
-}
-
-.dt-filter-switch-row .ui-switch {
-  min-height: auto;
-  padding: 0;
-  border: none;
-  background: transparent;
 }
 
 .dt-filter-section-header {
@@ -1831,6 +1851,157 @@ h2 {
   color: #1d2939;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.entry-edit-dialog {
+  width: min(820px, 100%);
+  max-height: min(90vh, 920px);
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-edit-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.entry-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.entry-edit-dialog input,
+.entry-edit-dialog select,
+.entry-edit-dialog textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-card);
+  color: var(--color-text);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.entry-edit-dialog textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.entry-edit-dialog input:disabled,
+.entry-edit-dialog select:disabled,
+.entry-edit-dialog textarea:disabled {
+  background: #f2f5f9;
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+.entry-edit-payments {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.entry-edit-payments-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.entry-edit-payments-head p {
+  margin: 4px 0 0;
+}
+
+.entry-edit-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.entry-edit-impact strong {
+  color: var(--color-text);
+}
+
+.entry-edit-impact.positive strong {
+  color: #b45309;
+}
+
+.entry-edit-impact.negative strong {
+  color: #047857;
+}
+
+.entry-edit-impact span {
+  color: var(--color-muted);
+}
+
+.entry-edit-payment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(110px, 0.6fr) 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+.entry-edit-actions {
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+
+.entry-edit-save-hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.entry-edit-save-button {
+  min-width: 178px;
+  min-height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(
+    135deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
+  color: #fff;
+  box-shadow: 0 16px 30px rgba(14, 95, 216, 0.24);
+}
+
+.entry-edit-save-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.entry-edit-save-button:disabled {
+  box-shadow: none;
+}
+
+@media (max-width: 680px) {
+  .entry-edit-grid,
+  .entry-edit-payment-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .entry-edit-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .entry-edit-save-button {
+    width: 100%;
+  }
 }
 
 .dt-sort-button {
@@ -2426,6 +2597,11 @@ h2 {
   }
 
   .dt-toolbar-actions {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .dt-toolbar-switches {
     justify-content: flex-start;
   }
 
@@ -2475,6 +2651,16 @@ h2 {
     display: flex;
     align-items: stretch;
     width: 100%;
+  }
+
+  .dt-toolbar-switches {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .dt-toolbar-switches .ui-switch {
+    flex: 1 1 0;
+    justify-content: space-between;
   }
 
   .dt-search-cluster {
