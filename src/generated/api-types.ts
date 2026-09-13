@@ -540,6 +540,8 @@ export interface paths {
          * @description Transitions the application from `draft` or `rejected` to `pending_review` and stamps `submittedAt`, handing it over to PARKIT Ops for review.
          *
          *     Resubmitting a previously rejected application clears its `rejectionReason`.
+         *
+         *     The declared entity must carry a complete address to be submitted: either normalized by Georef (`location.geocodingSource = "georef"` plus `location.formatted`) or manually filled with `streetName`, `streetNumber`, `cityName` and `stateName`. A draft may stay incomplete — the requirement applies to this transition only, so applications already in `pending_review` are unaffected.
          */
         post: operations["onboardingSubmit"];
         delete?: never;
@@ -593,7 +595,7 @@ export interface paths {
         head?: never;
         /**
          * Update the entity profile
-         * @description Edits the editable fields of the entity profile (`name`, `legalName`, `cuit`, `email`, `phone`, `address`, `status`) and its per-vehicle-type spot `capacity`.
+         * @description Edits the editable fields of the entity profile (`name`, `legalName`, `cuit`, `email`, `phone`, `address`, `status`), its per-vehicle-type spot `capacity` and its `lprImageRetentionDays` (LPR image retention window, one of 30/60/90 days).
          *
          *     Use `status: maintenance` to take the lot offline. `capacity` is merged: only the supplied vehicle types change. Every change is written to the audit trail. Requires the caller to be an `owner` of the entity (platform admins bypass the role check).
          */
@@ -1383,7 +1385,7 @@ export interface components {
         };
         ApplicationDetailDto: {
             /**
-             * @description Declared postal address. `null` when not provided.
+             * @description Dirección declarada en una línea. Sale de `location.formatted`. `null` si no se declaró.
              * @example Av. Corrientes 1234, CABA
              */
             address: string | null;
@@ -1430,6 +1432,8 @@ export interface components {
              * @example Estacionamientos del Centro S.A.
              */
             legalName: string;
+            /** @description Dirección estructurada declarada, tal como se va a materializar en `tenants` al aprobar. Los borradores anteriores al wizard nuevo sólo traen `formatted`; el resto de los campos viene en `null`. */
+            location: components["schemas"]["EntityAddressDto"];
             /**
              * @description Declared display name of the parking lot.
              * @example Estacionamiento del Centro
@@ -1670,10 +1674,10 @@ export interface components {
         };
         CreateApplicationDto: {
             /**
-             * @description Address of the parking lot.
+             * @description Dirección en una línea (campo de display, legacy). Pasó a ser OPCIONAL: el wizard nuevo manda `location` con los campos separados y su `formatted`. Si se mandan los dos, gana `location.formatted`.
              * @example Av. Corrientes 1234, CABA
              */
-            address: string;
+            address?: string;
             /**
              * @description CUIT, 11 digits
              * @example 30123456789
@@ -1690,6 +1694,8 @@ export interface components {
              * @example Estacionamientos del Centro S.A.
              */
             legalName: string;
+            /** @description Dirección estructurada declarada, normalizada en el front contra la API Georef. Opcional: hay borradores en vuelo que sólo traen `address`. Se materializa en columnas de `tenants` al aprobar la solicitud. */
+            location?: components["schemas"]["UpdateEntityAddressDto"];
             /**
              * @description Display name of the parking lot.
              * @example Estacionamiento del Centro
@@ -1778,7 +1784,7 @@ export interface components {
             role: "owner" | "operator";
         };
         CreateParkingDto: {
-            /** @description Street address. */
+            /** @description Dirección en una línea (campo de display, legacy). Si también se manda `location.formatted`, gana ese. */
             address?: string;
             /** @description Tax id (CUIT). */
             cuit?: string;
@@ -1786,6 +1792,8 @@ export interface components {
             email?: string;
             /** @description Registered legal/company name. */
             legalName?: string;
+            /** @description Dirección estructurada. Es el MISMO tenant que edita el dueño desde el portal (misma tabla `tenants`), así que el alta por panel tiene que poder cargarla: si no, un estacionamiento dado de alta acá nace sin los datos que Mercado Pago necesita. */
+            location?: components["schemas"]["UpdateEntityAddressDto"];
             /** @description Display name of the parking lot. */
             name: string;
             /** @description Contact phone. */
@@ -1897,6 +1905,65 @@ export interface components {
              */
             url: string;
         };
+        EntityAddressDto: {
+            /**
+             * @description Localidad.
+             * @example Balvanera
+             */
+            cityName: string | null;
+            /**
+             * @description Piso y/o departamento. Sólo para contacto/facturación; Mercado Pago no lo usa en la ubicación del Store.
+             * @example PB
+             */
+            floor: string | null;
+            /**
+             * @description Dirección completa en una línea, para mostrar. Es el espejo de la columna `address` (la `nomenclatura` que devuelve Georef). `null` si no se cargó.
+             * @example Av. Corrientes 1234, Balvanera, CABA
+             */
+            formatted: string | null;
+            /**
+             * Format: date-time
+             * @description Cuándo se normalizó/cargó la dirección estructurada (ISO-8601 UTC). `null` si nunca se cargó.
+             * @example 2026-09-13T16:46:17.000Z
+             */
+            geocodedAt: string | null;
+            /**
+             * @description Origen de la dirección estructurada: `georef` (normalizada por la API Georef del Estado) o `manual` (cargada a mano). `null` si nunca se cargó.
+             * @example georef
+             * @enum {string|null}
+             */
+            geocodingSource: "georef" | "manual" | null;
+            /**
+             * @description Latitud en grados decimales (hasta 6 decimales). Siempre viene junto con `longitude` o las dos en `null`: media coordenada está prohibida por el CHECK `tenants_coordinates_paired`.
+             * @example -34.603722
+             */
+            latitude: number | null;
+            /**
+             * @description Longitud en grados decimales (hasta 6 decimales). Ver `latitude`.
+             * @example -58.381592
+             */
+            longitude: number | null;
+            /**
+             * @description Código postal.
+             * @example C1043
+             */
+            postalCode: string | null;
+            /**
+             * @description Provincia (o Ciudad Autónoma de Buenos Aires).
+             * @example Ciudad Autónoma de Buenos Aires
+             */
+            stateName: string | null;
+            /**
+             * @description Nombre de la calle, sin altura.
+             * @example Avenida Corrientes
+             */
+            streetName: string | null;
+            /**
+             * @description Altura de la calle. Es texto y NO un número a propósito: la numeración real incluye `S/N`, `1234 bis` y `Km 5`.
+             * @example 1234
+             */
+            streetNumber: string | null;
+        };
         EntityCapacityDto: {
             /**
              * @description Plazas totales del estacionamiento.
@@ -1906,7 +1973,7 @@ export interface components {
         };
         EntityProfileDto: {
             /**
-             * @description Address, or `null` if not provided.
+             * @description Dirección en una línea, para mostrar. Se conserva por retrocompatibilidad y es el mismo valor que `location.formatted`. Los campos separados que necesita Mercado Pago están en `location`.
              * @example Av. Corrientes 1234, CABA
              */
             address: string | null;
@@ -1939,6 +2006,14 @@ export interface components {
              * @example Estacionamientos del Centro S.A.
              */
             legalName: string | null;
+            /** @description Dirección estructurada (calle, altura, localidad, provincia, coordenadas). Campos separados porque Mercado Pago los necesita así para dar de alta el `Store` del cobro con QR. Todos pueden venir en `null`: las filas anteriores a la migración 20260913164617 no tienen los campos cargados y no se hizo backfill. */
+            location: components["schemas"]["EntityAddressDto"];
+            /**
+             * @description Days a `registered` LPR detection image is kept after the stay exit before the retention job purges it. Owner-configurable, one of 30/60/90; defaults to 30. Readable by any member, editable only by an owner.
+             * @example 30
+             * @enum {integer}
+             */
+            lprImageRetentionDays: 30 | 60 | 90;
             /**
              * @description Display name of the entity (parking lot).
              * @example Estacionamiento del Centro
@@ -2323,7 +2398,7 @@ export interface components {
             total: number;
         };
         ParkingDto: {
-            /** @description Street address, if any. */
+            /** @description Dirección en una línea, para mostrar. Mismo valor que `location.formatted`; se conserva por retrocompatibilidad. */
             address: string | null;
             /**
              * Format: date-time
@@ -2341,6 +2416,8 @@ export interface components {
             id: string;
             /** @description Registered legal/company name, if any. */
             legalName: string | null;
+            /** @description Dirección estructurada (calle, altura, localidad, provincia, coordenadas). Campos en `null` cuando el estacionamiento es anterior a la migración 20260913164617: no hubo backfill. */
+            location: components["schemas"]["EntityAddressDto"];
             /** @description Display name of the parking lot. */
             name: string;
             /** @description Contact phone, if any. */
@@ -2365,6 +2442,11 @@ export interface components {
             paymentMethodId?: string;
             /** @example Efectivo */
             paymentMethodName: string;
+            /**
+             * @description Payment method type at the time of the charge (snapshot). Resolved server-side from paymentMethodId when omitted, for older clients.
+             * @example cash
+             */
+            paymentMethodType?: components["schemas"]["PaymentMethodType"];
         };
         PaymentMethodChangesResponseDto: {
             items: components["schemas"]["PaymentMethodSummaryDto"][];
@@ -2406,6 +2488,11 @@ export interface components {
             /** @description Monotonically-increasing sync sequence number. */
             syncSeq: number;
             /**
+             * @description What the method IS, as opposed to `name` (what the owner calls it). The desktop snapshots this on every charge so the cash count never has to guess from the name.
+             * @example cash
+             */
+            type: components["schemas"]["PaymentMethodType"];
+            /**
              * Format: date-time
              * @description Last modification timestamp.
              */
@@ -2413,6 +2500,11 @@ export interface components {
             /** @description Optimistic-lock version. */
             version: number;
         };
+        /**
+         * @description Payment method type at the time of the charge (snapshot). Resolved server-side from paymentMethodId when omitted, for older clients.
+         * @enum {string}
+         */
+        PaymentMethodType: "transfer" | "cash" | "other";
         PaymentTransactionChangesResponseDto: {
             items: components["schemas"]["PaymentTransactionDto"][];
             /** @description Highest sync sequence included in this page. */
@@ -2432,6 +2524,11 @@ export interface components {
             paymentMethodId?: string;
             /** @example Efectivo */
             paymentMethodName: string;
+            /**
+             * @description Payment method type at the time of the charge (snapshot). The desktop cash count keys off this, never off the name.
+             * @example cash
+             */
+            paymentMethodType: components["schemas"]["PaymentMethodType"];
             syncSeq: number;
             /** Format: uuid */
             tenantId: string;
@@ -2631,7 +2728,7 @@ export interface components {
         };
         UpdateApplicationDto: {
             /**
-             * @description Address of the parking lot.
+             * @description Dirección en una línea (campo de display, legacy). Pasó a ser OPCIONAL: el wizard nuevo manda `location` con los campos separados y su `formatted`. Si se mandan los dos, gana `location.formatted`.
              * @example Av. Corrientes 1234, CABA
              */
             address?: string;
@@ -2651,6 +2748,8 @@ export interface components {
              * @example Estacionamientos del Centro S.A.
              */
             legalName?: string;
+            /** @description Dirección estructurada declarada, normalizada en el front contra la API Georef. Opcional: hay borradores en vuelo que sólo traen `address`. Se materializa en columnas de `tenants` al aprobar la solicitud. */
+            location?: components["schemas"]["UpdateEntityAddressDto"];
             /**
              * @description Display name of the parking lot.
              * @example Estacionamiento del Centro
@@ -2671,6 +2770,65 @@ export interface components {
             /** @description Shift notes. Send an empty string to clear them. Omitting the field leaves them untouched. */
             notes?: string;
         };
+        UpdateEntityAddressDto: {
+            /**
+             * @description Localidad.
+             * @example Balvanera
+             */
+            cityName?: string | null;
+            /**
+             * @description Piso y/o departamento.
+             * @example PB
+             */
+            floor?: string | null;
+            /**
+             * @description Dirección completa en una línea (la `nomenclatura` de Georef). Se guarda en la columna `address`. Si se manda junto con el `address` plano del perfil, GANA este valor.
+             * @example Av. Corrientes 1234, Balvanera, CABA
+             */
+            formatted?: string | null;
+            /**
+             * Format: date-time
+             * @description Cuándo se normalizó/cargó la dirección (ISO-8601). Lo manda el cliente que normalizó.
+             * @example 2026-09-13T16:46:17.000Z
+             */
+            geocodedAt?: string | null;
+            /**
+             * @description Origen del dato: `georef` si lo normalizó la API Georef, `manual` si lo escribió una persona.
+             * @example georef
+             * @enum {string|null}
+             */
+            geocodingSource?: "georef" | "manual" | null;
+            /**
+             * @description Latitud en grados decimales, hasta 6 decimales (la columna es `numeric(9,6)`). Se manda junto con `longitude` o ninguna de las dos: media coordenada es un 400.
+             * @example -34.603722
+             */
+            latitude?: number | null;
+            /**
+             * @description Longitud en grados decimales, hasta 6 decimales. Ver `latitude`.
+             * @example -58.381592
+             */
+            longitude?: number | null;
+            /**
+             * @description Código postal.
+             * @example C1043
+             */
+            postalCode?: string | null;
+            /**
+             * @description Provincia (o Ciudad Autónoma de Buenos Aires).
+             * @example Ciudad Autónoma de Buenos Aires
+             */
+            stateName?: string | null;
+            /**
+             * @description Nombre de la calle, sin altura.
+             * @example Avenida Corrientes
+             */
+            streetName?: string | null;
+            /**
+             * @description Altura de la calle. Texto, no número: `S/N`, `1234 bis` y `Km 5` son alturas válidas.
+             * @example 1234
+             */
+            streetNumber?: string | null;
+        };
         UpdateEntityCapacityDto: {
             /**
              * @description Plazas totales del estacionamiento.
@@ -2680,7 +2838,7 @@ export interface components {
         };
         UpdateEntityProfileDto: {
             /**
-             * @description New address of the entity.
+             * @description Nueva dirección en una línea (campo de display, legacy). Si también se manda `location.formatted`, gana ese.
              * @example Av. Corrientes 1000, Buenos Aires
              */
             address?: string;
@@ -2702,6 +2860,14 @@ export interface components {
              * @example Estacionamientos del Centro S.A.
              */
             legalName?: string;
+            /** @description Dirección estructurada. Sólo se actualizan los campos presentes; mandar `null` explícito borra ese campo. Las coordenadas van completas (lat + lng) o ninguna: la base rechaza media coordenada. */
+            location?: components["schemas"]["UpdateEntityAddressDto"];
+            /**
+             * @description How long (in days) a `registered` LPR detection image is kept after the stay exit before the retention job purges it. One of 30/60/90. Owner-only.
+             * @example 30
+             * @enum {integer}
+             */
+            lprImageRetentionDays?: 30 | 60 | 90;
             /**
              * @description New display name of the entity.
              * @example Estacionamiento del Centro
@@ -2744,7 +2910,7 @@ export interface components {
             role: "owner" | "operator";
         };
         UpdateParkingDto: {
-            /** @description Street address. */
+            /** @description Dirección en una línea (campo de display, legacy). Si también se manda `location.formatted`, gana ese. */
             address?: string;
             /** @description Tax id (CUIT). */
             cuit?: string;
@@ -2752,6 +2918,8 @@ export interface components {
             email?: string;
             /** @description Registered legal/company name. */
             legalName?: string;
+            /** @description Dirección estructurada. Es el MISMO tenant que edita el dueño desde el portal (misma tabla `tenants`), así que el alta por panel tiene que poder cargarla: si no, un estacionamiento dado de alta acá nace sin los datos que Mercado Pago necesita. */
+            location?: components["schemas"]["UpdateEntityAddressDto"];
             /** @description Display name of the parking lot. */
             name?: string;
             /** @description Contact phone. */
@@ -4499,6 +4667,15 @@ export interface operations {
             };
             /** @description The application is not in a submittable state (`ONBOARDING_INVALID_STATE`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The declared entity has no usable address (`ONBOARDING_NOT_SUBMITTABLE`). `validationsErrors` lists the missing `declaredEntity.location.*` fields. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
