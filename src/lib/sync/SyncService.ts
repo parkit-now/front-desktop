@@ -460,6 +460,36 @@ class SyncService {
     }
   }
 
+  /**
+   * Ids de una entidad que tienen cambios locales todavía sin pushear.
+   *
+   * El pull hace `bulkPut` de lo que manda el servidor, que para estas filas
+   * es una foto VIEJA: el cambio local aún no llegó. Pisarlas revierte en
+   * pantalla algo que el operador ya hizo.
+   *
+   * Con las cajas es concreto: abrir caja y editar las notas del turno se
+   * encolan cuando no hay red, y hasta que el push salga el servidor sigue
+   * mandando la versión previa (o ni siquiera conoce la fila).
+   */
+  private async locallyDirtyIds(
+    entityType: PendingOp['entityType'],
+  ): Promise<Set<string>> {
+    const ops = await localDb.pendingOps
+      .where('[tenantId+status]')
+      .anyOf([
+        [this.tenantId, 'pending'],
+        [this.tenantId, 'unreviewed'],
+        [this.tenantId, 'in-flight'],
+        [this.tenantId, 'conflict'],
+        [this.tenantId, 'failed'],
+      ])
+      .toArray();
+
+    return new Set(
+      ops.filter((op) => op.entityType === entityType).map((op) => op.entityId),
+    );
+  }
+
   async pullCashSessions(): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
 
@@ -474,14 +504,20 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      const dirty = await this.locallyDirtyIds('cashSession');
+      const incoming = response.items
+        .map(cashSessionToLocal)
+        .filter((session) => !dirty.has(session.id));
+
       await localDb.transaction(
         'rw',
         localDb.cashSessions,
         localDb.syncState,
         async () => {
-          await localDb.cashSessions.bulkPut(
-            response.items.map(cashSessionToLocal),
-          );
+          // El cursor avanza igual: lo que salteamos tiene un cambio local
+          // pendiente, y cuando ese push salga el servidor devuelve la fila
+          // buena y la escribimos ahí mismo.
+          await localDb.cashSessions.bulkPut(incoming);
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,
