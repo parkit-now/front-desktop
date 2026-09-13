@@ -265,13 +265,28 @@ class SyncService {
       // pullVehicles — without it a deleted rate would linger locally
       // forever, still showing up and still chargeable.
       const { active, deleted } = splitTombstones(response.items);
+      // Mismo filtro que `pullEntries` (ver `dropLocallyDirty`, que documenta
+      // también la contracara del cursor): una tarifa con una op encolada tiene
+      // un precio que el servidor todavía no vio. Pisarla revierte el ajuste y
+      // el operador sigue cobrando la tarifa vieja sin enterarse.
+      //
+      // El tombstone NO se filtra, y va para los tres catálogos: una baja es
+      // una afirmación del servidor, no una foto vieja, y dejar viva una fila
+      // que allá no existe es peor — una tarifa borrada se sigue pudiendo
+      // cobrar. La op local que quede colgando muere en 404/409, que es
+      // justamente lo que tiene que ver una persona.
+      const incoming = await this.dropLocallyDirty(
+        'rate',
+        active.map(rateToLocal),
+      );
+
       await localDb.transaction(
         'rw',
         localDb.rates,
         localDb.syncState,
         async () => {
-          if (active.length > 0) {
-            await localDb.rates.bulkPut(active.map(rateToLocal));
+          if (incoming.length > 0) {
+            await localDb.rates.bulkPut(incoming);
           }
           if (deleted.length > 0) {
             await localDb.rates.bulkDelete(deleted.map((r) => r.id));
@@ -306,12 +321,24 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      // Mismo resguardo que `pullCashSessions`, y acá es todavía más caro: una
+      // entry con una op encolada tiene cambios que el servidor NO vio, así que
+      // lo que llega en el feed es una foto vieja. Pisarla le borra al operador
+      // el cierre de estadía que ya cobró, y el auto vuelve a figurar adentro.
+      const incoming = await this.dropLocallyDirty(
+        'entry',
+        response.items.map(entryToLocal),
+      );
+
       await localDb.transaction(
         'rw',
         localDb.entries,
         localDb.syncState,
         async () => {
-          await localDb.entries.bulkPut(response.items.map(entryToLocal));
+          // El cursor avanza igual: lo que salteamos tiene un cambio local
+          // pendiente, y cuando ese push salga `drainPendingOps` escribe la
+          // fila que devuelve el servidor.
+          await localDb.entries.bulkPut(incoming);
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,
@@ -348,13 +375,21 @@ class SyncService {
 
     if (response.items.length > 0) {
       const { active, deleted } = splitTombstones(response.items);
+      // Ver `pullRates`: mismo filtro por op encolada, mismo trato para los
+      // tombstones. Acá el trabajo que se perdía era el alta o el renombre de
+      // un tipo hecho sin red.
+      const incoming = await this.dropLocallyDirty(
+        'vehicleType',
+        active.map(vehicleTypeToLocal),
+      );
+
       await localDb.transaction(
         'rw',
         localDb.vehicleTypes,
         localDb.syncState,
         async () => {
-          if (active.length > 0) {
-            await localDb.vehicleTypes.bulkPut(active.map(vehicleTypeToLocal));
+          if (incoming.length > 0) {
+            await localDb.vehicleTypes.bulkPut(incoming);
           }
           if (deleted.length > 0) {
             await localDb.vehicleTypes.bulkDelete(deleted.map((t) => t.id));
@@ -391,13 +426,21 @@ class SyncService {
 
     if (response.items.length > 0) {
       const { active, deleted } = splitTombstones(response.items);
+      // Ver `pullRates`: mismo filtro por op encolada, mismo trato para los
+      // tombstones. Un vehículo que el operador acaba de dar de alta o corregir
+      // offline vuelve a su versión previa si lo pisamos.
+      const incoming = await this.dropLocallyDirty(
+        'vehicle',
+        active.map(vehicleToLocal),
+      );
+
       await localDb.transaction(
         'rw',
         localDb.vehicles,
         localDb.syncState,
         async () => {
-          if (active.length > 0) {
-            await localDb.vehicles.bulkPut(active.map(vehicleToLocal));
+          if (incoming.length > 0) {
+            await localDb.vehicles.bulkPut(incoming);
           }
           if (deleted.length > 0) {
             await localDb.vehicles.bulkDelete(deleted.map((v) => v.id));
@@ -433,17 +476,22 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      // Ver `dropLocallyDirty`. Este feed no trae tombstones, así que alcanza
+      // con el filtro: prender/apagar un medio de pago o marcarlo como default
+      // se encola, y hasta que el push salga el servidor manda el estado
+      // anterior. Pisarlo vuelve a habilitar en pantalla algo que el operador
+      // acaba de sacar del cobro.
+      const incoming = await this.dropLocallyDirty(
+        'paymentMethod',
+        response.items.map((pm) => ({ ...paymentMethodToLocal(pm), tenantId })),
+      );
+
       await localDb.transaction(
         'rw',
         localDb.paymentMethods,
         localDb.syncState,
         async () => {
-          await localDb.paymentMethods.bulkPut(
-            response.items.map((pm) => ({
-              ...paymentMethodToLocal(pm),
-              tenantId,
-            })),
-          );
+          await localDb.paymentMethods.bulkPut(incoming);
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,
@@ -461,7 +509,8 @@ class SyncService {
   }
 
   /**
-   * Ids de una entidad que tienen cambios locales todavía sin pushear.
+   * Saca de una página del feed las filas que tienen cambios locales todavía
+   * sin pushear.
    *
    * El pull hace `bulkPut` de lo que manda el servidor, que para estas filas
    * es una foto VIEJA: el cambio local aún no llegó. Pisarlas revierte en
@@ -470,10 +519,35 @@ class SyncService {
    * Con las cajas es concreto: abrir caja y editar las notas del turno se
    * encolan cuando no hay red, y hasta que el push salga el servidor sigue
    * mandando la versión previa (o ni siquiera conoce la fila).
+   *
+   * Con los ingresos es peor: el cierre de estadía (`ExitModal`) escribe
+   * `leftAt` y `amountPaid` en local y encola la op. Un pull en el medio
+   * revertía el cobro y el auto volvía a figurar adentro.
+   *
+   * OJO con el cursor: el pull saltea estas filas pero igual avanza
+   * `lastSeq`, apostando a que el push va a traer la versión buena. Esa
+   * apuesta NO cubre una op que termine en 'conflict' o 'failed' — son
+   * terminales, `drainPendingOps` no las vuelve a mirar y hoy no hay pantalla
+   * que las resuelva, así que esa fila queda salteada para siempre con el
+   * cursor ya pasado. Vale para todos los `pullX` que usan este filtro.
+   *
+   * Lo usan los siete pulls de entidades encolables. El único que queda afuera
+   * es `pullPaymentTransactions`, y no por olvido: no hay `entityType`
+   * 'paymentTransaction' en `PendingOpEntity` porque las transacciones viajan
+   * dentro del payload de la op de `entry`. No existe fila local sucia que
+   * pisar; si algún día se encolan solas, este filtro va también ahí.
+   *
+   * Los tombstones NO pasan por acá a propósito: el rationale está en
+   * `pullRates`, que es el primero de los tres catálogos que los procesan.
+   *
+   * Devuelve las filas que sobreviven EN EL MISMO ORDEN en que llegaron.
+   * `pullLprDetectionEvents` depende de eso: aparea por posición contra un
+   * `bulkGet` hecho sobre esta lista ya filtrada.
    */
-  private async locallyDirtyIds(
+  private async dropLocallyDirty<T extends { id: string }>(
     entityType: PendingOp['entityType'],
-  ): Promise<Set<string>> {
+    rows: T[],
+  ): Promise<T[]> {
     const ops = await localDb.pendingOps
       .where('[tenantId+status]')
       .anyOf([
@@ -485,9 +559,11 @@ class SyncService {
       ])
       .toArray();
 
-    return new Set(
+    const dirty = new Set(
       ops.filter((op) => op.entityType === entityType).map((op) => op.entityId),
     );
+
+    return rows.filter((row) => !dirty.has(row.id));
   }
 
   async pullCashSessions(): Promise<void> {
@@ -504,10 +580,10 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
-      const dirty = await this.locallyDirtyIds('cashSession');
-      const incoming = response.items
-        .map(cashSessionToLocal)
-        .filter((session) => !dirty.has(session.id));
+      const incoming = await this.dropLocallyDirty(
+        'cashSession',
+        response.items.map(cashSessionToLocal),
+      );
 
       await localDb.transaction(
         'rw',
@@ -594,16 +670,43 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
+      // Acá el filtro NO reemplaza a la preservación de campos del `bulkGet`:
+      // cubren filas distintas y protegen cosas distintas.
+      //
+      // - El filtro (ver `dropLocallyDirty`) salva lo que decidió el OPERADOR
+      //   —`status`, `entryId`, `reviewedAt`— mientras la op sigue encolada.
+      //   Es justo lo que el `bulkGet` no cubría: registrar o descartar una
+      //   detección sin red y comerse un pull en el medio devolvía el evento a
+      //   'pending' y la patente reaparecía en la cola de revisión.
+      // - El `bulkGet` salva lo que calculó el OCR en ESTA máquina —`rawText`,
+      //   `normalizedText`, `displayPlate`, `bestCaptureId`, `candidates`— en
+      //   filas que ya no están sucias. Sigue siendo necesario: apenas el push
+      //   drena, la op se borra y la fila queda expuesta a los pulls
+      //   siguientes, que traen esos campos vacíos (`bestCaptureId` apunta a
+      //   una captura en disco local, el backend ni la conoce).
+      //
+      // Lo que a propósito NO se hace es preservar `status`/`entryId`/
+      // `reviewedAt` como los otros: una vez pusheada la decisión el servidor
+      // es la autoridad, y congelarlos en local taparía la revisión que hizo
+      // otro operador desde otra máquina.
+      const incoming = await this.dropLocallyDirty(
+        'lprDetectionEvent',
+        response.items,
+      );
+
       await localDb.transaction(
         'rw',
         localDb.lprDetectionEvents,
         localDb.syncState,
         async () => {
+          // `bulkGet` va sobre la lista YA filtrada: `existingRows` se indexa
+          // por posición, así que filtrar después de este punto aparearía cada
+          // evento con la fila local de otro.
           const existingRows = await localDb.lprDetectionEvents.bulkGet(
-            response.items.map((item) => item.id),
+            incoming.map((item) => item.id),
           );
           await localDb.lprDetectionEvents.bulkPut(
-            response.items.map((item, index) =>
+            incoming.map((item, index) =>
               lprDetectionEventToLocal(item, existingRows[index]),
             ),
           );
