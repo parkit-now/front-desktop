@@ -144,6 +144,12 @@ function paymentTransactionToLocal(
     cashSessionId: t.cashSessionId ?? undefined,
     paymentMethodId: t.paymentMethodId ?? undefined,
     paymentMethodName: t.paymentMethodName,
+    // El campo del que depende el arqueo. El servidor lo manda siempre (la
+    // columna es NOT NULL), pero se deja pasar el `undefined` en vez de
+    // inventar un default: una fila sin tipo cae en el fallback por nombre de
+    // `isCashMethod`, que es conservador. Poner 'other' acá haría desaparecer
+    // plata en silencio.
+    paymentMethodType: t.paymentMethodType,
     amount: t.amount,
     version: t.version,
     syncSeq: t.syncSeq,
@@ -185,6 +191,9 @@ function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
   return {
     id: pm.id,
     tenantId: '', // filled in by pullPaymentMethods via the context
+    // Lo que el cobro snapshotea en cada transacción para que el arqueo no
+    // tenga que deducir el efectivo del nombre.
+    type: pm.type,
     name: pm.name,
     enabled: pm.enabled,
     isDefault: pm.isDefault,

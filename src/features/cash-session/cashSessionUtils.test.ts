@@ -20,6 +20,7 @@ function tx(
     entryId: 'entry-1',
     cashSessionId: 'session-1',
     paymentMethodName: 'Efectivo',
+    paymentMethodType: 'cash',
     amount: 1000,
     version: 1,
     syncSeq: 1,
@@ -119,18 +120,21 @@ describe('computeSessionSummary', () => {
           id: 'a',
           paymentMethodId: 'pm-1',
           paymentMethodName: 'Efectivo',
+          paymentMethodType: 'cash',
           amount: 1000,
         }),
         tx({
           id: 'b',
           paymentMethodId: 'pm-2',
           paymentMethodName: 'Efectivo USD',
+          paymentMethodType: 'cash',
           amount: 400,
         }),
         tx({
           id: 'c',
           paymentMethodId: 'pm-3',
           paymentMethodName: 'Tarjeta',
+          paymentMethodType: 'other',
           amount: 700,
         }),
       ],
@@ -138,6 +142,75 @@ describe('computeSessionSummary', () => {
     );
     expect(summary.cashCollected).toBe(1400);
     expect(summary.cashTotal).toBe(1500);
+  });
+
+  /**
+   * EL ARQUEO — lo que separa este fix del anterior.
+   *
+   * `computeSessionSummary` es lo que le dice al operador cuánta plata tiene
+   * que haber en el cajón. Antes lo decidía por el NOMBRE del medio, y estos
+   * dos casos le hacían cerrar el turno con un número equivocado.
+   */
+  describe('decide el efectivo por el tipo, no por el nombre', () => {
+    it('un efectivo renombrado a "Caja" sigue sumando al esperado en caja', () => {
+      // Con la regla vieja, estos $5.000 desaparecían del arqueo y le
+      // aparecían al operador como faltante.
+      const summary = computeSessionSummary(
+        [
+          tx({
+            id: 'a',
+            paymentMethodId: 'pm-1',
+            paymentMethodName: 'Caja',
+            paymentMethodType: 'cash',
+            amount: 5000,
+          }),
+        ],
+        1000,
+      );
+      expect(summary.cashCollected).toBe(5000);
+      expect(summary.cashTotal).toBe(6000);
+      expect(summary.byPm[0].isCash).toBe(true);
+    });
+
+    it('un "Efectivo Mercado Pago" type=other NO suma al esperado en caja', () => {
+      // Esa plata está en MP. Con la regla vieja el arqueo se la reclamaba al
+      // operador como si la tuviera en la mano.
+      const summary = computeSessionSummary(
+        [
+          tx({
+            id: 'a',
+            paymentMethodId: 'pm-1',
+            paymentMethodName: 'Efectivo Mercado Pago',
+            paymentMethodType: 'other',
+            amount: 5000,
+          }),
+        ],
+        1000,
+      );
+      expect(summary.cashCollected).toBe(0);
+      expect(summary.cashTotal).toBe(1000);
+      expect(summary.grandTotal).toBe(5000);
+      expect(summary.byPm[0].isCash).toBe(false);
+    });
+
+    it('una fila legacy sin tipo se sigue contando por el nombre', () => {
+      // Cobros anteriores a la v13 de Dexie que todavía no volvió a bajar el
+      // pull. Es plata real: perderla mientras dura esa ventana sería el
+      // mismo bug.
+      const summary = computeSessionSummary(
+        [
+          tx({
+            id: 'a',
+            paymentMethodId: 'pm-1',
+            paymentMethodName: 'Efectivo',
+            paymentMethodType: undefined,
+            amount: 3000,
+          }),
+        ],
+        0,
+      );
+      expect(summary.cashCollected).toBe(3000);
+    });
   });
 
   it('distingue medios con el mismo nombre y distinto id', () => {

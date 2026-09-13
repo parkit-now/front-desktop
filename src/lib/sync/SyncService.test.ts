@@ -561,6 +561,7 @@ function serverPaymentMethod(
 ): PaymentMethodDto {
   return {
     id,
+    type: 'cash',
     name: 'Efectivo',
     enabled: true,
     isDefault: false,
@@ -580,6 +581,7 @@ function localPaymentMethod(
   return {
     id,
     tenantId: TENANT,
+    type: 'cash',
     name: 'Efectivo',
     enabled: true,
     isDefault: false,
@@ -708,6 +710,34 @@ describe('pullPaymentMethods y los cambios locales sin sincronizar', () => {
       name: 'QR',
       tenantId: TENANT,
     });
+  });
+
+  it('baja el `type`, que es lo que el cobro snapshotea para el arqueo', async () => {
+    // Sin este campo en la copia local, `ExitModal` no tiene qué copiar a la
+    // transacción y el arqueo vuelve a tener que deducir el efectivo del
+    // nombre. Ojo a los nombres del fixture: uno es 'cash' y se llama "Caja",
+    // el otro es 'other' y se llama "Efectivo Mercado Pago". Si esto se
+    // mapeara por nombre, los dos saldrían al revés.
+    h.pullPaymentMethodChanges.mockResolvedValue({
+      items: [
+        serverPaymentMethod('pm-cash', {
+          type: 'cash',
+          name: 'Caja',
+          syncSeq: 3,
+        }),
+        serverPaymentMethod('pm-mp', {
+          type: 'other',
+          name: 'Efectivo Mercado Pago',
+          syncSeq: 4,
+        }),
+      ],
+      maxSeq: 4,
+    });
+
+    await syncService.pullPaymentMethods();
+
+    expect(h.paymentMethods.rows.get('pm-cash')?.type).toBe('cash');
+    expect(h.paymentMethods.rows.get('pm-mp')?.type).toBe('other');
   });
 });
 

@@ -14,6 +14,7 @@ import {
   type LocalPaymentMethod,
   type LocalPaymentTransaction,
   type LocalRate,
+  type PaymentMethodKind,
 } from '../../lib/db/localDb';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { formatArs } from '../../lib/format/argentina';
@@ -31,6 +32,14 @@ type PaymentFormLine = {
   id: string;
   paymentMethodId?: string;
   paymentMethodName: string;
+  /**
+   * El tipo viaja junto al nombre porque los dos son el mismo snapshot: es lo
+   * que el arqueo de caja usa para saber si esta línea entró al cajón. Una
+   * corrección BORRA y RECREA las transacciones, así que si el tipo no se
+   * arrastra acá, corregir un cobro en efectivo lo convierte en "otros
+   * medios" y descuadra la caja.
+   */
+  paymentMethodType?: PaymentMethodKind;
   amount: string;
 };
 
@@ -120,6 +129,7 @@ function toPaymentLines(
       id: line.id,
       paymentMethodId: line.paymentMethodId,
       paymentMethodName: line.paymentMethodName,
+      paymentMethodType: line.paymentMethodType,
       amount: moneyInput(line.amount),
     }));
   }
@@ -132,6 +142,7 @@ function toPaymentLines(
         id: generateUuidV7(),
         paymentMethodId: fallbackMethod?.id,
         paymentMethodName: fallbackMethod?.name ?? 'Sin medio',
+        paymentMethodType: fallbackMethod?.type,
         amount: moneyInput(entry.amountPaid),
       },
     ];
@@ -370,6 +381,9 @@ export function EntryEditDialog({
           ? { paymentMethodId: line.paymentMethodId }
           : {}),
         paymentMethodName: line.paymentMethodName,
+        ...(line.paymentMethodType
+          ? { paymentMethodType: line.paymentMethodType }
+          : {}),
         amount: Math.round(parseMoney(line.amount) * 100) / 100,
       }))
       .filter((line) => line.amount > 0);
@@ -424,6 +438,7 @@ export function EntryEditDialog({
         id: generateUuidV7(),
         paymentMethodId: pm?.id,
         paymentMethodName: pm?.name ?? 'Sin medio',
+        paymentMethodType: pm?.type,
         amount: '',
       },
     ]);
@@ -491,6 +506,7 @@ export function EntryEditDialog({
                   cashSessionId: entry.cashSessionId,
                   paymentMethodId: line.paymentMethodId,
                   paymentMethodName: line.paymentMethodName,
+                  paymentMethodType: line.paymentMethodType,
                   amount: line.amount,
                   version: 1,
                   syncSeq: 0,
@@ -525,6 +541,7 @@ export function EntryEditDialog({
                   cashSessionId: entry.cashSessionId,
                   paymentMethodId: line.paymentMethodId,
                   paymentMethodName: line.paymentMethodName,
+                  paymentMethodType: line.paymentMethodType,
                   amount: line.amount,
                   version: 1,
                   syncSeq: 0,
@@ -737,6 +754,7 @@ export function EntryEditDialog({
                       updatePaymentLine(line.id, {
                         paymentMethodId: pm?.id,
                         paymentMethodName: pm?.name ?? line.paymentMethodName,
+                        paymentMethodType: pm?.type ?? line.paymentMethodType,
                       });
                     }}
                   >

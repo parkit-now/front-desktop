@@ -7,30 +7,15 @@ export type CloseEntryDto = components['schemas']['CloseEntryDto'];
 export type EntryChangesResponseDto =
   components['schemas']['EntryChangesResponseDto'];
 
-export type CorrectEntryPaymentLineDto = {
-  id: string;
-  paymentMethodId?: string;
-  paymentMethodName: string;
-  amount: number;
-};
-
-export type CorrectEntryDto = {
-  plate?: string;
-  color?: string;
-  cochera?: string;
-  notes?: string;
-  enteredAt?: string;
-  leftAt?: string;
-  vehicleBrand?: string;
-  vehicleModel?: string;
-  rateId?: string;
-  rateSnapshotName?: string;
-  rateSnapshotHourPriceArs?: number;
-  rateSnapshotStayPriceArs?: number;
-  rateSnapshotFractionPriceArs?: number;
-  payments?: CorrectEntryPaymentLineDto[];
-  reason?: string;
-};
+/**
+ * Aliases del contrato generado, NO copias a mano. Eran dos `type` escritos
+ * acá y les faltaba `paymentMethodType`: una corrección BORRA y RECREA las
+ * transacciones, así que sin ese campo corregir un cobro en efectivo lo
+ * degradaba a "otros medios" y descuadraba el arqueo.
+ */
+export type CorrectEntryPaymentLineDto =
+  components['schemas']['PaymentLineDto'];
+export type CorrectEntryDto = components['schemas']['CorrectEntryDto'];
 
 type EntryChangesQuery = {
   afterSeq?: number;
