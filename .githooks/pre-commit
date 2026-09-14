@@ -8,17 +8,17 @@ export PATH="$PWD/node_modules/.bin:$HOME/.bun/bin:$PATH"
 # Antes corria `bun run format` (todo el repo): pisaba archivos generados como
 # CHANGELOG.md (lo escribe semantic-release) y dejaba modificados archivos
 # ajenos al commit.
-mapfile -d '' STAGED < <(git diff --cached --name-only --diff-filter=ACMR -z)
-
+# NUL-delimited while-read instead of `mapfile -d ''`: mapfile needs bash >=4,
+# and macOS ships bash 3.2 as /usr/bin/env bash unless a newer one is on PATH.
 FILES=()
-for file in "${STAGED[@]:-}"; do
+while IFS= read -r -d '' file; do
   [[ -n "$file" && -f "$file" ]] || continue
   case "$file" in
     *.ts | *.tsx | *.js | *.mjs | *.cjs | *.cts | *.json | *.md | *.css | *.html)
       FILES+=("$file")
       ;;
   esac
-done
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
 
 if [[ ${#FILES[@]} -gt 0 ]]; then
   echo "→ Prettier (${#FILES[@]} archivo/s staged)"
