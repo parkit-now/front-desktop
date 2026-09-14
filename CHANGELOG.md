@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/parkit-now/front-desktop/compare/v1.0.2...v1.0.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* **ci:** agrega .env.test con las variables de Supabase que el suite necesita ([611b458](https://github.com/parkit-now/front-desktop/commit/611b45841cc9690c7129fe141647d6315abf6f21))
+
 ## [1.0.2](https://github.com/parkit-now/front-desktop/compare/v1.0.1...v1.0.2) (2026-09-13)
 
 
