@@ -9,7 +9,7 @@ import {
   type MeResponseDto,
   type SessionDto,
 } from '../api/auth';
-import { AUTH_STORAGE_KEY, supabase } from './client';
+import { AUTH_STORAGE_KEY, getSupabaseClient } from './client';
 
 export type { AppRole, MeResponseDto } from '../api/auth';
 
@@ -126,7 +126,7 @@ function readStoredSession(): Session | null {
 async function clearStoredSession(): Promise<void> {
   try {
     // Local scope only: revoking server-side needs connectivity we may not have.
-    await supabase.auth.signOut({ scope: 'local' });
+    await getSupabaseClient().auth.signOut({ scope: 'local' });
   } catch {
     // Fall through to the manual cleanup below.
   }
@@ -204,7 +204,7 @@ export async function hydrateSessionFromUrl(
     return;
   }
 
-  const { error } = await supabase.auth.setSession({
+  const { error } = await getSupabaseClient().auth.setSession({
     access_token: accessToken,
     refresh_token: refreshToken,
   });
@@ -215,7 +215,7 @@ export async function hydrateSessionFromUrl(
 }
 
 async function applyBackendSession(tokens: SessionDto): Promise<Session> {
-  const { data, error } = await supabase.auth.setSession({
+  const { data, error } = await getSupabaseClient().auth.setSession({
     access_token: tokens.accessToken,
     refresh_token: tokens.refreshToken,
   });
@@ -236,7 +236,7 @@ async function applyBackendSession(tokens: SessionDto): Promise<Session> {
 export async function getSession(): Promise<Session | null> {
   const {
     data: { session },
-  } = await supabase.auth.getSession();
+  } = await getSupabaseClient().auth.getSession();
 
   return session;
 }
@@ -282,6 +282,13 @@ export type RestoreSessionResult =
  * once the network is back, which clears the degraded flag.
  */
 export async function restoreSession(): Promise<RestoreSessionResult> {
+  // El cliente se construye de forma diferida, y construirlo es lo que corre la
+  // migración one-shot desde la clave derivada (`migrateDerivedSession` en
+  // `./client.ts`). Hay que forzarlo ANTES de leer storage: `readStoredSession`
+  // va derecho a localStorage, así que sin esto un equipo ya instalado se
+  // deslogea al actualizar.
+  getSupabaseClient();
+
   const cached = readStoredSession();
   if (!cached) {
     return { kind: 'none' };
@@ -316,7 +323,7 @@ export function onSessionChange(
 ): () => void {
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((event, session) => {
+  } = getSupabaseClient().auth.onAuthStateChange((event, session) => {
     // Both events mean the server answered, so the session is validated online
     // and the offline grace window restarts. `INITIAL_SESSION` is excluded on
     // purpose: it can be replayed straight from storage without any round trip.
@@ -341,7 +348,7 @@ export async function signInWithProvider(provider: Provider): Promise<void> {
     );
   }
 
-  const { data, error } = await supabase.auth.signInWithOAuth({
+  const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: getOAuthRedirectUrl(),
@@ -429,7 +436,7 @@ export async function signOut(): Promise<void> {
     }
   }
 
-  const { error } = await supabase.auth.signOut();
+  const { error } = await getSupabaseClient().auth.signOut();
 
   try {
     localStorage.removeItem(LAST_ONLINE_AUTH_KEY);
