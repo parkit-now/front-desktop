@@ -1,3 +1,6 @@
 dist
 node_modules
 src/generated
+
+# Generado por semantic-release: prettier no tiene que opinar
+CHANGELOG.md
