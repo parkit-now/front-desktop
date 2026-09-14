@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/parkit-now/front-desktop/compare/v1.0.3...v1.0.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* **hooks:** acota prettier del pre-commit a los archivos staged ([69d9189](https://github.com/parkit-now/front-desktop/commit/69d918921de99f5480a366152b83b3ba84566a51))
+
 ## [1.0.3](https://github.com/parkit-now/front-desktop/compare/v1.0.2...v1.0.3) (2026-09-14)
 
 
