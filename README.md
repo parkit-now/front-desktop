@@ -175,6 +175,60 @@ Tampoco firma los binarios: son válidos para pruebas internas/piloto, no
 todavía para distribuir ampliamente (falta Authenticode en Windows y
 notarización de Apple en macOS; ver comentarios al final del workflow).
 
+### Windows bloquea `camera-service.exe`/`lpr-service.exe` al primer arranque
+
+Síntoma: la cámara/LPR nunca conecta en Windows (error de conexión en el
+panel) aunque el mismo build funciona en Mac/Linux — el sidecar ni siquiera
+llegó a levantar. Confirmado en la práctica: correr el `.exe` a mano una vez
+(doble clic + "Más información" → "Ejecutar de todas formas" en el diálogo de
+SmartScreen) lo destraba — y de ahí en adelante Electron lo puede lanzar en
+automático sin problema.
+
+Eso es la firma de **SmartScreen** (reputación de archivo), no de Defender
+antivirus en tiempo real:
+
+- SmartScreen bloquea el lanzamiento **silencioso** de un ejecutable sin firma
+  no reconocido — exactamente lo que hace Electron al spawnear el sidecar. Un
+  doble clic manual sí muestra el diálogo de aprobación; una vez aprobado ese
+  archivo puntual (por hash), Windows no lo vuelve a bloquear, ni siquiera
+  cuando lo lanza otro proceso.
+- Es un mecanismo distinto al de Defender (antivirus): si Defender lo hubiera
+  puesto en cuarentena, correrlo a mano fallaría igual.
+
+`services/*/build.spec` además compilaban con `upx=True`: un binario
+`--onefile` sin firmar y comprimido con UPX es el patrón que las heurísticas
+de Defender marcan con más frecuencia como falso positivo — un problema
+relacionado pero distinto del de SmartScreen. Ya desactivado (`upx=False` en
+ambos `build.spec`).
+
+**Workaround manual mientras no haya firma de código** (instalación nueva en
+Windows, antes de abrir Parkit por primera vez): en el explorador de archivos,
+andar hasta `resources/` dentro de la carpeta de instalación
+(`%LOCALAPPDATA%\Programs\Parkit\resources\`) y correr una vez, a mano,
+`camera-service.exe` y `lpr-service.exe` — aprobar el diálogo de SmartScreen
+en cada uno. Después de eso, abrir Parkit normalmente.
+
+Si el workaround no alcanza, para seguir diagnosticando:
+
+1. Correr el `.exe` instalado desde una terminal (no doble clic) —
+   `[camera-service] ...`/`[lpr-service] ...` en stdout muestran el error real
+   (`ServiceManager` en `electron/services.ts` solo hace `console.log`, no hay
+   archivo de log todavía).
+2. Revisar Windows Security → Historial de protección por una entrada en
+   cuarentena con "camera-service"/"lpr-service"/"Parkit" en el nombre — eso
+   sí sería Defender, no SmartScreen, y el workaround de arriba no lo arregla
+   (hace falta una exclusión de carpeta).
+3. Si en cambio el `.exe` arranca y se cae con un error de DLL, es el
+   Visual C++ Redistributable faltante (`opencv-python-headless`/`numpy`
+   traen extensiones compiladas en C) — instalar el oficial de Microsoft, o
+   embeberlo en el instalador NSIS (`build.win.nsis.include`, ver
+   [ejemplo](https://gist.github.com/mikelpr/88cc99e8c760965249922108493102c1)).
+   No implementado todavía: no vale la pena sin confirmar primero que hace
+   falta.
+4. El fix de fondo para todo esto (SmartScreen, Defender y el warning que ya
+   vimos al abrir la app empaquetada) es firmar los binarios (Authenticode) —
+   ver la nota de arriba.
+
 ## Releases
 
 Al mergear a `main`, `.github/workflows/release.yml` corre
@@ -196,14 +250,14 @@ que un `push: tags:` en un archivo distinto nunca se activaría acá.
 Si no hay commits liberables (p. ej. solo `chore`/`docs`/`wip`), el workflow
 no hace nada — no se crea versión ni Release.
 
-Para probar el cálculo de versión sin crear nada real: pestaña *Actions* →
-**Release** → *Run workflow* con `dry_run: true` (o local:
+Para probar el cálculo de versión sin crear nada real: pestaña _Actions_ →
+**Release** → _Run workflow_ con `dry_run: true` (o local:
 `bun run release:dry-run`).
 
 **Prerrequisitos** (ya resueltos en este repo, dejo la nota por si se mueve a
 otro): variables de repo `VITE_API_URL`, `VITE_SUPABASE_URL`,
-`VITE_SUPABASE_ANON_KEY` en *Settings → Secrets and variables → Actions →
-Variables* (mismos valores que `.env.production`) — sin esas variables, el
+`VITE_SUPABASE_ANON_KEY` en _Settings → Secrets and variables → Actions →
+Variables_ (mismos valores que `.env.production`) — sin esas variables, el
 instalador queda sin URL de backend configurada. La branch protection de
 `main` no aplica acá: el plan Free de GitHub no la soporta en repos privados.
 

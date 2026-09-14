@@ -72,7 +72,10 @@ exe = EXE(
     name="lpr-service",
     debug=False,
     strip=False,
-    upx=True,
+    # UPX-compressed + unsigned onefile binaries are exactly the pattern
+    # Windows Defender's heuristics flag most often as a false positive — see
+    # services/camera/build.spec for the full note.
+    upx=False,
     upx_exclude=[],
     # onefile — Electron just needs a single binary path in extraResources.
     runtime_tmpdir=None,

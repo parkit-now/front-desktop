@@ -64,7 +64,13 @@ exe = EXE(
     name="camera-service",
     debug=False,
     strip=False,
-    upx=True,
+    # UPX-compressed + unsigned onefile binaries are exactly the pattern
+    # Windows Defender's heuristics flag most often as a false positive — it
+    # quarantines/deletes the exe before Electron can spawn it, which surfaces
+    # as a connection-refused error in the renderer, not a visible AV alert.
+    # Disabling UPX trades a larger binary for far fewer false positives; the
+    # right long-term fix is code signing, tracked separately.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,

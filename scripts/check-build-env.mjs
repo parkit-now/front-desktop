@@ -150,14 +150,6 @@ else if (mk)
 else
   warn('no pude verificar make (raro si estás leyendo esto vía `make doctor`)');
 
-// ── upx (opcional) ───────────────────────────────────────────────────────────
-const upx = run('upx', ['--version']);
-if (upx) ok(`upx ${upx.split('\n')[0].replace(/^upx\s+/i, '')}`);
-else
-  warn(
-    'upx no encontrado — los build.spec tienen upx=True; PyInstaller lo saltea (binarios más pesados, no es fatal)',
-  );
-
 // ── git (opcional) ───────────────────────────────────────────────────────────
 const git = run('git', ['--version']);
 if (git) ok(git);
