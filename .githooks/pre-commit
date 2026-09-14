@@ -4,8 +4,29 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 export PATH="$PWD/node_modules/.bin:$HOME/.bun/bin:$PATH"
 
-echo "→ Prettier"
-bun run format >/dev/null
+# Prettier corre SOLO sobre los archivos staged.
+# Antes corria `bun run format` (todo el repo): pisaba archivos generados como
+# CHANGELOG.md (lo escribe semantic-release) y dejaba modificados archivos
+# ajenos al commit.
+mapfile -d '' STAGED < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+FILES=()
+for file in "${STAGED[@]:-}"; do
+  [[ -n "$file" && -f "$file" ]] || continue
+  case "$file" in
+    *.ts | *.tsx | *.js | *.mjs | *.cjs | *.cts | *.json | *.md | *.css | *.html)
+      FILES+=("$file")
+      ;;
+  esac
+done
+
+if [[ ${#FILES[@]} -gt 0 ]]; then
+  echo "→ Prettier (${#FILES[@]} archivo/s staged)"
+  prettier --write --ignore-unknown "${FILES[@]}"
+  git add -- "${FILES[@]}"
+else
+  echo "→ Prettier (sin archivos staged para formatear)"
+fi
 
 echo "→ ESLint"
 bun run lint

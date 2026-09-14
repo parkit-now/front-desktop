@@ -1,18 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrlRaw: unknown = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKeyRaw: unknown = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (
-  typeof supabaseUrlRaw !== 'string' ||
-  !supabaseUrlRaw ||
-  typeof supabaseAnonKeyRaw !== 'string' ||
-  !supabaseAnonKeyRaw
-) {
-  throw new Error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in environment',
-  );
-}
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Storage key for the persisted Supabase session.
@@ -66,8 +52,47 @@ function migrateDerivedSession(url: string): void {
   }
 }
 
-migrateDerivedSession(supabaseUrlRaw);
+let client: SupabaseClient | null = null;
 
-export const supabase = createClient(supabaseUrlRaw, supabaseAnonKeyRaw, {
-  auth: { storageKey: AUTH_STORAGE_KEY },
-});
+/**
+ * The Supabase client, built on first use and memoized from then on.
+ *
+ * Deliberately NOT a module-level `const`: creating the client (and validating
+ * the env vars) while the module is being imported hacía explotar suites de
+ * lógica pura que solo llegaban acá arrastradas por la cadena de imports
+ * (`session.test.ts`, `useCameraDetections.test.ts`). La validación sigue
+ * intacta — se dispara cuando alguien usa el cliente de verdad, no cuando
+ * alguien importa cualquier cosa del módulo.
+ *
+ * Mismo cliente, mismas opciones, mismas env vars que antes: lo único que
+ * cambió es *cuándo* se construye.
+ *
+ * @throws si faltan `VITE_SUPABASE_URL` o `VITE_SUPABASE_ANON_KEY`.
+ */
+export function getSupabaseClient(): SupabaseClient {
+  if (client) {
+    return client;
+  }
+
+  const supabaseUrlRaw: unknown = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKeyRaw: unknown = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  if (
+    typeof supabaseUrlRaw !== 'string' ||
+    !supabaseUrlRaw ||
+    typeof supabaseAnonKeyRaw !== 'string' ||
+    !supabaseAnonKeyRaw
+  ) {
+    throw new Error(
+      'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in environment',
+    );
+  }
+
+  migrateDerivedSession(supabaseUrlRaw);
+
+  client = createClient(supabaseUrlRaw, supabaseAnonKeyRaw, {
+    auth: { storageKey: AUTH_STORAGE_KEY },
+  });
+
+  return client;
+}

@@ -11,7 +11,7 @@ import { translateApiError } from '../api/translate';
 import { localDb } from '../db/localDb';
 import { useNetwork } from '../network/NetworkContext';
 import { useToast } from '../notifications/ToastProvider';
-import { supabase } from '../supabase/client';
+import { getSupabaseClient } from '../supabase/client';
 import { setEnqueueUserId } from './enqueue';
 import { syncService } from './SyncService';
 
@@ -136,7 +136,7 @@ export function SyncProvider({
         // refresca a los 30 s. El push salía con el token muerto, cosechaba 401
         // en cada op y las mandaba a `failed`. `getSession()` fuerza el refresh
         // acá mismo y el push arranca con un token válido.
-        const { data } = await supabase.auth.getSession();
+        const { data } = await getSupabaseClient().auth.getSession();
         const freshToken = data.session?.access_token;
 
         if (!freshToken) {
