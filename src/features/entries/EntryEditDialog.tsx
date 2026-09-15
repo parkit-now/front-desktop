@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, Save, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Printer, Save, Trash2, TriangleAlert, X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   correctEntry,
@@ -20,6 +20,10 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { formatArs } from '../../lib/format/argentina';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
+import {
+  describePrintFailure,
+  printEntryTicket,
+} from '../../lib/print/printTicket';
 import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
 
 type ActorRole = 'admin' | 'owner' | 'operator' | null;
@@ -49,6 +53,9 @@ interface Props {
   accessToken: string;
   actorRole: ActorRole;
   cashSession?: LocalCashSession;
+  /** Encabezado del ticket reimpreso. */
+  parkingName?: string | null;
+  parkingAddress?: string | null;
   onClose: () => void;
 }
 
@@ -193,6 +200,8 @@ export function EntryEditDialog({
   accessToken,
   actorRole,
   cashSession,
+  parkingName = null,
+  parkingAddress = null,
   onClose,
 }: Props) {
   const { isOnline } = useNetwork();
@@ -200,6 +209,8 @@ export function EntryEditDialog({
   const readOnly = Boolean(cashSession?.closedAt);
   const isActiveEntry = !entry.leftAt;
   const [saving, setSaving] = useState(false);
+  const [reprinting, setReprinting] = useState(false);
+  const reasonRef = useRef<HTMLLabelElement>(null);
   const [plate, setPlate] = useState(entry.plate);
   const [vehicleBrand, setVehicleBrand] = useState(entry.vehicleBrand ?? '');
   const [vehicleModel, setVehicleModel] = useState(entry.vehicleModel ?? '');
@@ -221,6 +232,18 @@ export function EntryEditDialog({
         .filter((rate) => !rate.deletedAt)
         .toArray(),
     [tenantId],
+  );
+
+  /**
+   * Tarifa GUARDADA del movimiento, sin filtrar por `deletedAt`: un ticket
+   * viejo tiene que poder reimprimirse con su número aunque después hayan
+   * borrado esa tarifa. Es a propósito distinta de `selectedRate`, que sigue
+   * al formulario y puede tener cambios sin guardar.
+   */
+  const persistedRate = useLiveQuery(
+    async () =>
+      entry.rateId ? await localDb.rates.get(entry.rateId) : undefined,
+    [entry.rateId],
   );
 
   const paymentMethods = useLiveQuery(
@@ -420,6 +443,8 @@ export function EntryEditDialog({
       : changed
         ? null
         : 'No hay cambios para guardar.';
+  // "No hay cambios" es el estado normal al abrir; los otros dos son bloqueos.
+  const saveBlockedIsProblem = missingReason || invalidExitTime;
 
   function updatePaymentLine(
     id: string,
@@ -442,6 +467,46 @@ export function EntryEditDialog({
         amount: '',
       },
     ]);
+  }
+
+  /**
+   * El campo de motivo se renderiza al final de un cuerpo scrolleable y recién
+   * aparece cuando el cambio lo exige, o sea que nace fuera de pantalla: el
+   * operador ve el guardado bloqueado sin ver qué se lo bloquea. No se le roba
+   * el foco a propósito — puede estar tipeando el importe cuando aparece.
+   */
+  useEffect(() => {
+    if (!reasonRequired) return;
+    reasonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [reasonRequired]);
+
+  /**
+   * Reimprime el ticket con lo que está GUARDADO, no con el formulario: un
+   * cambio sin guardar no puede terminar impreso en un papel que el cliente se
+   * lleva y que no coincide con la base.
+   */
+  async function handleReprint(): Promise<void> {
+    setReprinting(true);
+    try {
+      const outcome = await printEntryTicket({
+        parkingName,
+        parkingAddress,
+        vehicle:
+          [entry.vehicleBrand, entry.vehicleModel].filter(Boolean).join(' ') ||
+          null,
+        color: entry.color ?? null,
+        enteredAt: entry.enteredAt,
+        rateNumber: persistedRate?.shortcutNumber ?? null,
+        ticketNumber: entry.ticketNumber ?? null,
+      });
+      showToast(
+        outcome.ok
+          ? { message: 'Ticket reimpreso.', kind: 'success' }
+          : { message: describePrintFailure(outcome), kind: 'error' },
+      );
+    } finally {
+      setReprinting(false);
+    }
   }
 
   async function handleSave(): Promise<void> {
@@ -792,7 +857,10 @@ export function EntryEditDialog({
           ) : null}
 
           {reasonRequired ? (
-            <label className="form-label">
+            <label
+              ref={reasonRef}
+              className={`form-label${missingReason ? ' entry-edit-reason--required' : ''}`}
+            >
               Motivo del cambio
               <textarea
                 value={reason}
@@ -812,19 +880,40 @@ export function EntryEditDialog({
         </div>
 
         <div className="rate-dialog-actions entry-edit-actions">
-          {saveBlockedMessage ? (
-            <p className="entry-edit-save-hint">{saveBlockedMessage}</p>
-          ) : null}
-          <button
-            type="button"
-            className="btn primary entry-edit-save-button"
-            onClick={() => void handleSave()}
-            disabled={!valid || saving}
-            title={saveBlockedMessage ?? 'Guardar cambios'}
-          >
-            <Save size={16} />
-            {saving ? 'Guardando...' : 'Guardar cambios'}
-          </button>
+          <div className="entry-edit-actions-left">
+            <button
+              type="button"
+              className="ghost-button compact"
+              onClick={() => void handleReprint()}
+              disabled={reprinting}
+              title="Volver a imprimir el ticket de ingreso"
+            >
+              <Printer size={15} aria-hidden="true" />
+              {reprinting ? 'Imprimiendo...' : 'Reimprimir ticket'}
+            </button>
+          </div>
+          <div className="entry-edit-actions-right">
+            {saveBlockedMessage ? (
+              <p
+                className={`entry-edit-save-hint${saveBlockedIsProblem ? ' entry-edit-save-hint--blocking' : ''}`}
+              >
+                {saveBlockedIsProblem ? (
+                  <TriangleAlert size={15} aria-hidden="true" />
+                ) : null}
+                {saveBlockedMessage}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="btn primary entry-edit-save-button"
+              onClick={() => void handleSave()}
+              disabled={!valid || saving}
+              title={saveBlockedMessage ?? 'Guardar cambios'}
+            >
+              <Save size={16} />
+              {saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
         </div>
       </section>
     </div>

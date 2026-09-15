@@ -1950,7 +1950,10 @@ h2 {
   align-items: center;
 }
 
-.entry-edit-actions {
+/* Se califica con las dos clases a propósito: `.rate-dialog-actions` declara
+   `justify-content: flex-end` más abajo en este archivo, y con la misma
+   especificidad ganaba por orden, empujando el grupo izquierdo al centro. */
+.rate-dialog-actions.entry-edit-actions {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -1958,11 +1961,62 @@ h2 {
   padding-top: 14px;
 }
 
+.entry-edit-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* El aviso viaja pegado al botón de guardar: explica por qué ese botón está
+   bloqueado, así que tiene que leerse junto a él y no del otro lado de la fila. */
+.entry-edit-actions-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.entry-edit-actions-left .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  white-space: nowrap;
+}
+
 .entry-edit-save-hint {
   margin: 0;
   color: var(--color-muted);
   font-size: 13px;
   line-height: 1.35;
+}
+
+/* "No hay cambios" es informativo; que falte el motivo o que el egreso sea
+   anterior al ingreso son bloqueos que el operador tiene que poder ver sin
+   buscarlos. */
+.entry-edit-save-hint--blocking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-control);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-weight: 600;
+}
+
+.entry-edit-save-hint--blocking svg {
+  flex: none;
+}
+
+/* El campo nace fuera de la vista (al final de un cuerpo scrolleable), así que
+   además de traerlo a pantalla se lo destaca al aparecer. */
+.entry-edit-reason--required textarea {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
 }
 
 .entry-edit-save-button {
@@ -1984,8 +2038,14 @@ h2 {
   filter: brightness(1.04);
 }
 
+/* Sin esto el botón deshabilitado queda idéntico al habilitado (mismo
+   gradiente, mismo texto blanco) y el operador lo clickea sin entender por qué
+   no pasa nada. */
 .entry-edit-save-button:disabled {
   box-shadow: none;
+  background: #e4e9f2;
+  color: #8a94a6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 680px) {
