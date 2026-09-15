@@ -52,4 +52,15 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     ipcRenderer.on('oauth:callback', handler);
     return () => ipcRenderer.removeListener('oauth:callback', handler);
   },
+
+  listPrinters: (): Promise<
+    { name: string; displayName: string; isDefault: boolean }[]
+  > => ipcRenderer.invoke('printer:list'),
+
+  printTicket: (payload: {
+    html: string;
+    deviceName: string | null;
+    tailFeedMm: number;
+  }): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> =>
+    ipcRenderer.invoke('printer:printTicket', payload),
 });

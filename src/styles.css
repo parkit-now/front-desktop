@@ -2762,6 +2762,84 @@ h2 {
 
 .entry-form-actions .primary-button {
   flex: 1;
+  /* Deja que flex lo achique en vez de desbordar la columna, y que corte antes
+     de envolver a dos líneas (eso estiraría toda la fila de 48px). */
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* "Registrar sin imprimir": hermano cuadrado del submit. El alto sale del
+   align-items: stretch de la fila, así que queda a la par de los 48px del
+   primary-button. */
+.entry-action-square {
+  flex: 0 0 48px;
+  width: 48px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #cbd8ea;
+  border-radius: var(--radius-control);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(246, 250, 255, 0.92)
+    ),
+    #fff;
+  color: #24486d;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(19, 47, 93, 0.08);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.entry-action-square:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #9eb8db;
+  background: #eef6ff;
+  color: var(--color-brand-strong);
+}
+
+.entry-action-square:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Configuración de impresora */
+.printer-panel {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 560px;
+}
+
+.printer-panel-field {
+  display: grid;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+
+.printer-panel-hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+.printer-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.printer-panel-actions .ghost-button,
+.printer-panel-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
 }
 
 /* Egresos zone (ticket lookup + autos en base) — always at the column bottom. */
