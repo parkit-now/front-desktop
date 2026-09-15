@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/parkit-now/front-desktop/compare/v1.0.4...v1.1.0) (2026-09-15)
+
+
+### Features
+
+* **impresión:** reimpresión de tickets desde el historial ([d7b4d98](https://github.com/parkit-now/front-desktop/commit/d7b4d9802fb70e3be1bbca37534219a31e3a2425))
+
 ## [1.0.4](https://github.com/parkit-now/front-desktop/compare/v1.0.3...v1.0.4) (2026-09-14)
 
 
