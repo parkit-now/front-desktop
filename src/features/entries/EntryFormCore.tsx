@@ -16,7 +16,12 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { COLORS } from '../../lib/data/colors';
+import { PrinterX } from 'lucide-react';
 import { generateUuidV7 } from './entryUtils';
+import {
+  describePrintFailure,
+  printEntryTicket,
+} from '../../lib/print/printTicket';
 import { type LocalRate } from '../../lib/db/localDb';
 
 export type EntryFormVariant = 'manual' | 'auto';
@@ -37,6 +42,9 @@ interface Props {
   extraActions?: ReactNode;
   /** Called after a successful registration with the normalised plate. */
   onRegistered?: (result: { plate: string; entryId: string }) => void;
+  /** Header of the printed ticket. Only used by the manual variant. */
+  parkingName?: string | null;
+  parkingAddress?: string | null;
 }
 
 type VehicleSuggestion =
@@ -246,6 +254,8 @@ export function EntryFormCore({
   headerSlot,
   extraActions,
   onRegistered,
+  parkingName = null,
+  parkingAddress = null,
 }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
@@ -359,7 +369,8 @@ export function EntryFormCore({
         clearTimeout(confirmTimeoutRef.current);
         confirmTimeoutRef.current = null;
       }
-      void submitEntry();
+      // El doble Enter es el mismo camino que tocar "Registrar ingreso": imprime.
+      void submitEntry({ print: variant === 'manual' });
       return;
     }
     setAwaitingConfirm(true);
@@ -859,7 +870,7 @@ export function EntryFormCore({
     setVehicleSelected(false);
   }
 
-  async function submitEntry(): Promise<void> {
+  async function submitEntry({ print }: { print: boolean }): Promise<void> {
     const normalizedPlate = plate.trim().toUpperCase();
 
     const stillActive = await localDb.entries
@@ -1005,6 +1016,30 @@ export function EntryFormCore({
         kind: 'success',
       });
 
+      if (print) {
+        // Best-effort y a propósito fuera del try/catch de arriba: el ingreso ya
+        // está en Dexie (y en pendingOps si estamos offline), así que una falla
+        // de impresión NO puede reportarse como un ingreso fallido ni revertir
+        // nada. Tampoco se espera: el operador sigue tipeando la patente que
+        // viene mientras el trabajo se encola en el spooler.
+        void printEntryTicket({
+          parkingName,
+          parkingAddress,
+          vehicle: [finalBrand, finalModel].filter(Boolean).join(' ') || null,
+          color: color.trim() || null,
+          enteredAt: now,
+          rateNumber: selectedRate?.shortcutNumber ?? null,
+          ticketNumber: ticketNumber ?? null,
+        }).then((outcome) => {
+          if (!outcome.ok) {
+            showToast({
+              message: describePrintFailure(outcome),
+              kind: 'error',
+            });
+          }
+        });
+      }
+
       if (variant === 'auto') {
         onRegistered?.({ plate: normalizedPlate, entryId });
       } else {
@@ -1022,7 +1057,14 @@ export function EntryFormCore({
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!validateAll()) return;
-    await submitEntry();
+    await submitEntry({ print: variant === 'manual' });
+  }
+
+  // "Registrar sin imprimir": mismo registro, sin papel.
+  async function handleSubmitWithoutPrinting(): Promise<void> {
+    if (!validateAll()) return;
+    resetConfirm();
+    await submitEntry({ print: false });
   }
 
   return (
@@ -1184,6 +1226,20 @@ export function EntryFormCore({
 
         <div className="entry-form-actions">
           {extraActions}
+          {variant === 'manual' ? (
+            <button
+              // type="button" es obligatorio: sin eso sería el submit implícito
+              // del form y terminaría imprimiendo.
+              type="button"
+              className="entry-action-square"
+              onClick={() => void handleSubmitWithoutPrinting()}
+              disabled={saving || !canSubmit}
+              title="Registrar sin imprimir ticket"
+              aria-label="Registrar sin imprimir ticket"
+            >
+              <PrinterX size={20} aria-hidden="true" />
+            </button>
+          ) : null}
           <button
             type="submit"
             className={`primary-button${awaitingConfirm ? ' primary-button--confirm' : ''}`}

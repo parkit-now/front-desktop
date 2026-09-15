@@ -6,6 +6,7 @@ import {
   DollarSign,
   Home,
   Layers,
+  Printer,
   Truck,
   Archive,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import { LprStatusIndicator } from '../lpr/LprStatusIndicator';
 import { NoCashSessionScreen } from '../cash-session/NoCashSessionScreen';
 import { CashSessionPanel } from '../cash-session/CashSessionPanel';
 import { CashSessionHistoryPanel } from '../cash-session/CashSessionHistoryPanel';
+import { PrinterSettingsPanel } from '../printer/PrinterSettingsPanel';
 import { localDb } from '../../lib/db/localDb';
 import {
   fetchMe,
@@ -62,7 +64,8 @@ type WorkspaceSection =
   | 'payment-methods'
   | 'vehicles'
   | 'vehicle-types'
-  | 'caja';
+  | 'caja'
+  | 'impresora';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -161,6 +164,7 @@ function sameMemberships(a: MeMembershipDto[], b: MeMembershipDto[]): boolean {
     if (
       left.tenantId !== right.tenantId ||
       left.tenantName !== right.tenantName ||
+      left.tenantAddress !== right.tenantAddress ||
       left.role !== right.role
     ) {
       return false;
@@ -223,6 +227,9 @@ export function SessionView({ session, sessionStale = false }: Props) {
       null
     );
   }, [activeMembership, activeTenantId, adminParkings]);
+  // Sale del perfil cacheado, así el ticket también se imprime offline. Un
+  // admin sin membership no tiene dirección: el ticket omite la línea.
+  const activeTenantAddress = activeMembership?.tenantAddress ?? null;
   const activeRole = entityRoleForRates(profile, activeMembership);
   const ratesAllowed = canAccessRates(
     profile,
@@ -454,6 +461,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     vehicles: 'Catálogo de Vehículos',
     'vehicle-types': 'Tipos de Vehículo',
     caja: 'Caja',
+    impresora: 'Impresora',
   };
 
   const sectionIcon = (s: WorkspaceSection) => {
@@ -464,6 +472,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
+    if (s === 'impresora') return <Printer size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
 
@@ -580,6 +589,16 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 {!sidebarCollapsed ? <span>Tipos de vehículo</span> : null}
               </button>
             ) : null}
+
+            {/* Sin gating: es configuración de esta computadora, no del tenant. */}
+            <button
+              type="button"
+              className={`nav-item ${section === 'impresora' ? 'active' : ''}`}
+              onClick={() => setSection('impresora')}
+            >
+              <Printer size={18} aria-hidden="true" />
+              {!sidebarCollapsed ? <span>Impresora</span> : null}
+            </button>
           </nav>
 
           <div className="sidebar-foot">
@@ -633,6 +652,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
                       <EntryForm
                         tenantId={activeTenantId}
                         accessToken={session.access_token}
+                        parkingName={activeTenantName}
+                        parkingAddress={activeTenantAddress}
                       />
                       <ExitControls
                         tenantId={activeTenantId}
@@ -789,6 +810,11 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   </p>
                 </section>
               )
+            ) : section === 'impresora' ? (
+              <PrinterSettingsPanel
+                tenantName={activeTenantName}
+                tenantAddress={activeTenantAddress}
+              />
             ) : section === 'dashboard' ? (
               <section
                 className={`dashboard-card ${hasMemberships ? '' : 'warning'}`}

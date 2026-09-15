@@ -450,6 +450,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mercado-pago/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish the Mercado Pago linking flow
+         * @description Exchanges the `state` atomically (single use), verifies the caller still owns the entity that started the flow, swaps the `authorization_code` for OAuth tokens, provisions the Mercado Pago `Store` and `POS`, stores the encrypted tokens and creates the `mercadopago_qr` payment method.
+         *
+         *     The route deliberately carries no `:tenantId`: the entity comes from the stored `state`, because Mercado Pago requires a static `redirect_uri`.
+         *
+         *     Every `state` failure — unknown, already consumed, expired, or belonging to somebody else — answers the same generic `MP_OAUTH_STATE_INVALID`, so the endpoint cannot be used as an oracle to probe other people flows.
+         */
+        post: operations["mercadoPagoOauthCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/onboarding/applications": {
         parameters: {
             query?: never;
@@ -926,6 +950,80 @@ export interface paths {
         get: operations["LprEventsController_pullChanges"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/mercado-pago/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the Mercado Pago account linked to the entity
+         * @description Returns the link status of the entity plus the identifiers of its Mercado Pago `Store` and `POS` and the URLs of the QR code (image and printable PDF).
+         *
+         *     NEVER returns the OAuth tokens, not even encrypted or truncated.
+         */
+        get: operations["mercadoPagoGetAccount"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink the Mercado Pago account of the entity
+         * @description Marks the account as revoked and DISABLES the `mercadopago_qr` payment method — it is never deleted, because closed shifts and past transactions still reference it.
+         *
+         *     Linking again later re-enables the same payment method, keeping whatever name the owner gave it.
+         */
+        delete: operations["mercadoPagoUnlinkAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/mercado-pago/oauth/authorization-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start the Mercado Pago linking flow
+         * @description Creates a single-use `state` with its PKCE `code_verifier` (valid for 10 minutes) and returns the Mercado Pago authorization URL the owner must open.
+         *
+         *     The entity must already have a complete structured address (street, number, city, province): Mercado Pago requires it for the store location, and failing here saves the owner a pointless round trip to the consent screen.
+         *
+         *     An entity that already has an active link must be unlinked first. Re-running the flow on a `token_expired` or `revoked` account is the supported way back to `linked`.
+         */
+        post: operations["mercadoPagoCreateAuthorizationUrl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/mercado-pago/pos/resync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-read the POS from Mercado Pago and refresh the QR URLs
+         * @description Asks Mercado Pago for the current state of the entity POS and stores the fresh QR URLs. Mercado Pago owns those URLs and can regenerate them, so our copy is a cache, not the source of truth.
+         *
+         *     Requires an operational link: an expired or revoked account has to be authorized again first.
+         */
+        post: operations["mercadoPagoResyncPos"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1783,6 +1881,13 @@ export interface components {
              */
             role: "owner" | "operator";
         };
+        CreateMpAuthorizationUrlDto: {
+            /**
+             * @description Internal panel route to return to after the callback. Must be a relative path starting with a single `/`: absolute URLs, protocol-relative paths (`//host`) and schemes (`javascript:`) are rejected to keep the callback from becoming an open redirect.
+             * @example /configuracion/cobros
+             */
+            returnPath?: string;
+        };
         CreateParkingDto: {
             /** @description Dirección en una línea (campo de display, legacy). Si también se manda `location.formatted`, gana ese. */
             address?: string;
@@ -2272,6 +2377,8 @@ export interface components {
              * @enum {string}
              */
             role: "owner" | "operator";
+            /** @description Entity (tenant) street address as one display line, or `null` if the entity never declared one. The desktop prints it on the entry ticket. */
+            tenantAddress: string | null;
             /**
              * Format: uuid
              * @description Entity (tenant) id.
@@ -2292,6 +2399,136 @@ export interface components {
              * @enum {string}
              */
             role: "admin" | "user";
+        };
+        MpAccountDto: {
+            /**
+             * Format: date-time
+             * @description When the current access token expires. Renewed by the refresh job; exposed so the panel can warn before it lapses.
+             * @example 2026-09-14T01:00:00.000Z
+             */
+            accessTokenExpiresAt: string;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp.
+             * @example 2026-09-14T01:00:00.000Z
+             */
+            createdAt: string;
+            /**
+             * @description Our own POS identifier (`external_id` on the Mercado Pago side).
+             * @example parkit-11111111
+             */
+            externalPosId?: string | null;
+            /**
+             * Format: uuid
+             * @description Identifier of the linked Mercado Pago account row.
+             * @example 9f1c2b3a-4d5e-4f6a-8b9c-0d1e2f3a4b5c
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Last SUCCESSFUL token refresh. Null while the tokens are still the original ones.
+             * @example null
+             */
+            lastRefreshAt?: string | null;
+            /**
+             * Format: date-time
+             * @description When the link was completed. Separate from `createdAt` because re-linking rewrites the row.
+             * @example 2026-09-14T01:00:00.000Z
+             */
+            linkedAt: string;
+            /**
+             * @description Seller identifier in Mercado Pago. NOT unique across entities: one owner with several parking lots has a single Mercado Pago account and separates lots by store/POS.
+             * @example 446566691
+             */
+            mpUserId: string;
+            /**
+             * @description Mercado Pago `POS` identifier: the till the QR code is generated against.
+             * @example 2711382
+             */
+            posId?: string | null;
+            /**
+             * @description URL of the static QR image for this entity.
+             * @example https://www.mercadopago.com/instore/merchant/qr/2711382/abc123.png
+             */
+            qrImageUrl?: string | null;
+            /**
+             * @description URL of the printable PDF carrying the QR code — the sign the owner puts on the counter.
+             * @example https://www.mercadopago.com/instore/merchant/qr/2711382/template_abc123.pdf
+             */
+            qrTemplateDocumentUrl?: string | null;
+            /**
+             * @description Consecutive refresh failures. A counter, not a flag: a single Mercado Pago 500 must not knock an entity offline.
+             * @example 0
+             */
+            refreshFailureCount: number;
+            /**
+             * @description Lifecycle of the link. `linked` is operational; `token_expired` needs the owner to re-authorize; `revoked` means the link was undone.
+             * @example linked
+             */
+            status: components["schemas"]["MpAccountStatus"];
+            /**
+             * @description Mercado Pago `Store` identifier created for this entity.
+             * @example 1234567
+             */
+            storeId?: string | null;
+            /**
+             * Format: uuid
+             * @description Entity (parking lot / tenant) that owns this linked account.
+             * @example 11111111-1111-7111-8111-111111111111
+             */
+            tenantId: string;
+            /**
+             * Format: date-time
+             * @description Row last-update timestamp.
+             * @example 2026-09-14T01:00:00.000Z
+             */
+            updatedAt: string;
+        };
+        /**
+         * @description Lifecycle of the link. `linked` is operational; `token_expired` needs the owner to re-authorize; `revoked` means the link was undone.
+         * @enum {string}
+         */
+        MpAccountStatus: "linked" | "token_expired" | "revoked";
+        MpAuthorizationUrlDto: {
+            /**
+             * @description Mercado Pago authorization URL the owner must open to grant access. Carries the PKCE `code_challenge` and the single-use `state`.
+             * @example https://auth.mercadopago.com/authorization?client_id=123&response_type=code&platform_id=mp&state=6f9619ff-8b86-4d01-b42d-00cf4fc964ff&redirect_uri=https%3A%2F%2Fpanel.parkit.app%2Fmercado-pago%2Foauth%2Fcallback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256
+             */
+            authorizationUrl: string;
+            /**
+             * Format: date-time
+             * @description When the `state` expires (10 minutes), matching the lifetime of the Mercado Pago authorization code itself.
+             * @example 2026-09-14T01:10:00.000Z
+             */
+            expiresAt: string;
+            /**
+             * Format: uuid
+             * @description The single-use `state` tying the callback to this flow. Returned so the client can correlate, never to be reused.
+             * @example 6f9619ff-8b86-4d01-b42d-00cf4fc964ff
+             */
+            state: string;
+        };
+        MpOauthCallbackDto: {
+            /**
+             * @description The `authorization_code` Mercado Pago returned in the redirect. Single-use and valid for 10 minutes.
+             * @example TG-1a2b3c4d5e6f7a8b9c0d1e2f-241983636
+             */
+            code: string;
+            /**
+             * Format: uuid
+             * @description The `state` issued when the flow started. Single-use: it is consumed atomically, so a replayed callback is rejected.
+             * @example 6f9619ff-8b86-4d01-b42d-00cf4fc964ff
+             */
+            state: string;
+        };
+        MpOauthCallbackResultDto: {
+            /** @description The freshly linked Mercado Pago account. Never carries tokens. */
+            account: components["schemas"]["MpAccountDto"];
+            /**
+             * @description Internal panel route the flow started from, validated when it was stored. Null when the caller did not ask for one.
+             * @example /configuracion/cobros
+             */
+            returnPath?: string | null;
         };
         Object: Record<string, never>;
         OnboardingApplicationDto: {
@@ -2504,7 +2741,7 @@ export interface components {
          * @description Payment method type at the time of the charge (snapshot). Resolved server-side from paymentMethodId when omitted, for older clients.
          * @enum {string}
          */
-        PaymentMethodType: "transfer" | "cash" | "other";
+        PaymentMethodType: "transfer" | "cash" | "other" | "mercadopago_qr";
         PaymentTransactionChangesResponseDto: {
             items: components["schemas"]["PaymentTransactionDto"][];
             /** @description Highest sync sequence included in this page. */
@@ -4367,6 +4604,65 @@ export interface operations {
             };
         };
     };
+    mercadoPagoOauthCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MpOauthCallbackDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MpOauthCallbackResultDto"];
+                };
+            };
+            /** @description The `state` is unknown, expired, already used, or does not belong to the caller (MP_OAUTH_STATE_INVALID); or the payload is malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The entity address is incomplete (MP_ENTITY_ADDRESS_INCOMPLETE). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Mercado Pago rejected or could not serve the token exchange, the store or the POS creation (MP_OAUTH_CODE_EXCHANGE_FAILED, MP_STORE_CREATE_FAILED, MP_POS_CREATE_FAILED). Nothing is persisted in that case. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     onboardingListApplications: {
         parameters: {
             query?: never;
@@ -5411,6 +5707,240 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LprDetectionEventChangesResponseDto"];
+                };
+            };
+        };
+    };
+    mercadoPagoGetAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MpAccountDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity, or is not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The entity has no Mercado Pago account linked (MP_NOT_LINKED). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    mercadoPagoUnlinkAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity, or is not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The entity has no Mercado Pago account linked (MP_NOT_LINKED). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    mercadoPagoCreateAuthorizationUrl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMpAuthorizationUrlDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MpAuthorizationUrlDto"];
+                };
+            };
+            /** @description Invalid payload — typically a `returnPath` that is not an internal path. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity, or is not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The entity already has an active Mercado Pago account (MP_ALREADY_LINKED). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The entity address is incomplete (MP_ENTITY_ADDRESS_INCOMPLETE). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    mercadoPagoResyncPos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MpAccountDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The caller is authenticated but is not a member of the `:tenantId` entity, or is not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The entity has no Mercado Pago account linked (MP_NOT_LINKED). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The link is not operational (MP_ACCOUNT_TOKEN_EXPIRED, MP_ACCOUNT_REVOKED). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Mercado Pago is down or rate-limiting us (MP_UNAVAILABLE). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
                 };
             };
         };

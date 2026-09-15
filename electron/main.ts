@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ServiceManager, type ServiceConfig } from './services.js';
 import { resolveServiceRuntime, type ServiceName } from './serviceRuntime.js';
+import { destroyPrintWindows, listPrinters, printTicketHtml } from './print.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -182,6 +183,13 @@ if (!gotTheLock) {
       shell.openExternal(url),
     );
 
+    ipcMain.handle('printer:list', () => listPrinters(mainWindow));
+    ipcMain.handle(
+      'printer:printTicket',
+      (_event, payload: { html: string; deviceName: string | null }) =>
+        printTicketHtml(mainWindow, payload),
+    );
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         mainWindow = createWindow();
@@ -190,6 +198,7 @@ if (!gotTheLock) {
 
     app.on('before-quit', (event) => {
       if (shuttingDownServices) return;
+      destroyPrintWindows();
       event.preventDefault();
       shuttingDownServices = true;
       void services.stopAll().finally(() => app.quit());
