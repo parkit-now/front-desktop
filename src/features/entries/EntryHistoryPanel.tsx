@@ -23,6 +23,9 @@ interface Props {
   actorRole: 'admin' | 'owner' | 'operator' | null;
   initialCashSessionId?: string;
   initialOnlyCurrentSession?: boolean;
+  /** Encabezado del ticket al reimprimir desde el diálogo de edición. */
+  parkingName?: string | null;
+  parkingAddress?: string | null;
   onBackToCaja?: () => void;
 }
 
@@ -224,6 +227,8 @@ export function EntryHistoryPanel({
   actorRole,
   initialCashSessionId,
   initialOnlyCurrentSession = false,
+  parkingName = null,
+  parkingAddress = null,
   onBackToCaja,
 }: Props) {
   const [onlyCurrentSession, setOnlyCurrentSession] = useState(
@@ -420,6 +425,8 @@ export function EntryHistoryPanel({
           accessToken={accessToken}
           actorRole={actorRole}
           cashSession={editingCashSession}
+          parkingName={parkingName}
+          parkingAddress={parkingAddress}
           onClose={() => setEditingEntry(null)}
         />
       ) : null}

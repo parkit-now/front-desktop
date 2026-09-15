@@ -712,6 +712,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   initialOnlyCurrentSession={
                     historialFocus?.kind === 'activeCashSession'
                   }
+                  parkingName={activeTenantName}
+                  parkingAddress={activeTenantAddress}
                   onBackToCaja={
                     historialFocus
                       ? () => {
