@@ -120,8 +120,20 @@ describe('resolveServiceRuntime', () => {
     appMock.isPackaged = true;
 
     const rt = resolveServiceRuntime(['camera-service']);
-    expect(rt.launchers['camera-service']?.env).toEqual({
+    expect(rt.launchers['camera-service']?.env).toMatchObject({
       OPENCV_AVFOUNDATION_SKIP_AUTH: '1',
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
+    });
+  });
+
+  it('forces UTF-8 stdio for Python sidecars', () => {
+    appMock.isPackaged = true;
+
+    const rt = resolveServiceRuntime(['camera-service']);
+    expect(rt.launchers['camera-service']?.env).toMatchObject({
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
     });
   });
 

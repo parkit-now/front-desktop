@@ -119,6 +119,18 @@ describe('ServiceManager — spawn', () => {
 });
 
 describe('ServiceManager — startup wait', () => {
+  it('marks spawn errors as failed without waiting for the startup deadline', async () => {
+    stubFetch();
+    const proc = new FakeProcess();
+    mockSpawn.mockReturnValue(proc);
+
+    const manager = new ServiceManager([config()]);
+    await manager.spawnAll();
+    proc.emit('error', new Error('blocked by Windows'));
+
+    await expect(manager.waitAllHealthy()).resolves.toEqual(['lpr-service']);
+  });
+
   it('goes healthy once /health answers, without respawning a slow process', async () => {
     // Ping (pre-spawn) fails so it spawns; then /health answers ok.
     vi.stubGlobal(

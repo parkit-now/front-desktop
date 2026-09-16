@@ -72,12 +72,21 @@ function exeExt(): string {
  * by the caller.
  */
 function baseEnv(name: ServiceName): Record<string, string> | undefined {
+  const env: Record<string, string> = {
+    // Windows child processes launched with piped stdio can default to a legacy
+    // code page. The camera service prints a Unicode startup banner; forcing
+    // UTF-8 prevents a UnicodeEncodeError before /health ever becomes ready.
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8',
+  };
+
   if (name === 'camera-service' && process.platform === 'darwin') {
     // OpenCV's AVFoundation backend blocks on an auth dialog that can't be
     // shown from a background thread; this flag skips it. No-op elsewhere.
-    return { OPENCV_AVFOUNDATION_SKIP_AUTH: '1' };
+    env.OPENCV_AVFOUNDATION_SKIP_AUTH = '1';
   }
-  return undefined;
+
+  return env;
 }
 
 function fromEnvVar(name: ServiceName): ServiceLauncher | null {

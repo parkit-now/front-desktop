@@ -1,6 +1,8 @@
 import { BrowserWindow } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { ServiceLauncher } from './serviceRuntime.js';
 
 export interface ServiceConfig {
@@ -13,6 +15,8 @@ export interface ServiceConfig {
    * dirs that are only known after `app.whenReady`).
    */
   env?: Record<string, string>;
+  /** Optional persistent log file for packaged troubleshooting. */
+  logPath?: string;
 }
 
 // A PyInstaller onefile binary (numpy + opencv + onnxruntime, ~100 MB)
@@ -43,6 +47,7 @@ export class ServiceManager {
   private readonly processes = new Map<string, ChildProcess>();
   private readonly failed = new Set<string>();
   private readonly healthy = new Set<string>();
+  private readonly spawnErrors = new Set<string>();
   /** Services already listening when we started — not ours to spawn or stop. */
   private readonly adopted = new Set<string>();
   private readonly shutdownToken: string;
@@ -114,24 +119,36 @@ export class ServiceManager {
         ...(svc.env ?? {}),
         [SHUTDOWN_TOKEN_ENV]: this.shutdownToken,
       },
+      windowsHide: true,
     });
+    const logStream = this.openLogStream(svc);
 
-    proc.stdout?.on('data', (d: Buffer) =>
-      process.stdout.write(`[${svc.name}] ${d.toString()}`),
-    );
-    proc.stderr?.on('data', (d: Buffer) =>
-      process.stderr.write(`[${svc.name}] ${d.toString()}`),
-    );
+    proc.stdout?.on('data', (d: Buffer) => {
+      const output = `[${svc.name}] ${d.toString()}`;
+      process.stdout.write(output);
+      logStream?.write(output);
+    });
+    proc.stderr?.on('data', (d: Buffer) => {
+      const output = `[${svc.name}] ${d.toString()}`;
+      process.stderr.write(output);
+      logStream?.write(output);
+    });
 
     // Catch ENOENT (binary missing) and other OS-level spawn failures so they
     // don't surface as an unhandled 'error' event and crash the main process.
     proc.on('error', (err) => {
-      console.error(`[${svc.name}] spawn error: ${err.message}`);
+      const message = `[${svc.name}] spawn error: ${err.message}`;
+      this.spawnErrors.add(svc.name);
+      this.failed.add(svc.name);
+      console.error(message);
+      logStream?.write(`${message}\n`);
     });
 
     proc.on('exit', (code) => {
       if (code !== 0 && code !== null) {
-        console.error(`[${svc.name}] exited unexpectedly with code ${code}`);
+        const message = `[${svc.name}] exited unexpectedly with code ${code}`;
+        console.error(message);
+        logStream?.write(`${message}\n`);
         // Only notify the renderer for services that were previously healthy —
         // startup failures are already surfaced via waitAllHealthy / services:failed.
         if (this.healthy.has(svc.name)) {
@@ -140,8 +157,11 @@ export class ServiceManager {
           );
         }
       } else {
-        console.log(`[${svc.name}] exited with code ${code}`);
+        const message = `[${svc.name}] exited with code ${code}`;
+        console.log(message);
+        logStream?.write(`${message}\n`);
       }
+      logStream?.end();
     });
 
     this.processes.set(svc.name, proc);
@@ -149,6 +169,24 @@ export class ServiceManager {
       `[main] spawned ${svc.name} on port ${svc.port} (pid ${proc.pid}) ` +
         `via ${launcher.source}: ${launcher.cmd}`,
     );
+    logStream?.write(
+      `\n${new Date().toISOString()} spawned ${svc.name} on :${svc.port} ` +
+        `via ${launcher.source}: ${launcher.cmd} ${args.join(' ')}\n`,
+    );
+  }
+
+  private openLogStream(svc: ServiceConfig): fs.WriteStream | null {
+    if (!svc.logPath) return null;
+
+    try {
+      fs.mkdirSync(path.dirname(svc.logPath), { recursive: true });
+      return fs.createWriteStream(svc.logPath, { flags: 'a' });
+    } catch (error) {
+      console.warn(
+        `[${svc.name}] could not open service log: ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -170,6 +208,8 @@ export class ServiceManager {
     const deadline = Date.now() + STARTUP_GRACE_MS;
 
     while (Date.now() < deadline) {
+      if (this.spawnErrors.has(svc.name)) break;
+
       const proc = this.processes.get(svc.name);
 
       if (proc && proc.exitCode !== null) {

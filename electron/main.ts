@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ServiceManager, type ServiceConfig } from './services.js';
@@ -118,6 +119,8 @@ if (!gotTheLock) {
   void app.whenReady().then(async () => {
     // userData is only available after app is ready.
     const userData = app.getPath('userData');
+    const serviceLogDir = path.join(userData, 'logs', 'services');
+    fs.mkdirSync(serviceLogDir, { recursive: true });
 
     // Runtime-dependent env, layered on top of whatever the resolver decided.
     const runtimeEnv: Partial<Record<ServiceName, Record<string, string>>> = {
@@ -143,6 +146,7 @@ if (!gotTheLock) {
       port: ports[name],
       launcher,
       env: runtimeEnv[name],
+      logPath: path.join(serviceLogDir, `${name}.log`),
     }));
 
     if (runtime.manage) {
