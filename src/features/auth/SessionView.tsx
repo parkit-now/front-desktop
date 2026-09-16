@@ -521,7 +521,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
           <div className="sidebar-top">
             <div className="brand-lockup compact">
               <div className="brand-badge" aria-hidden="true">
-                P
+                <img src="/logo.jpeg" alt="" />
               </div>
               {!sidebarCollapsed ? <h2>Parkit</h2> : null}
             </div>
@@ -643,11 +643,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
               <div className="sidebar-user">
                 <p className="muted mini">
                   {session.user.email ?? session.user.id}
-                </p>
-                <p className="role-pill">
-                  {activeRole
-                    ? translateRole(activeRole)
-                    : 'Sin establecimiento'}
                 </p>
               </div>
             ) : null}

@@ -46,9 +46,13 @@ function deliverDeepLink(url: string): void {
 // ── Window ─────────────────────────────────────────────────────────────────
 
 function createWindow(): BrowserWindow {
+  const windowIcon = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.resolve(__dirname, '..', '..', 'build', 'icon.png');
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    icon: windowIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
