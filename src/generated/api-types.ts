@@ -450,6 +450,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * People working at the lots the caller owns
+         * @description One row per person, listing every role they hold across the caller’s lots — so someone working at two branches appears once with both roles rather than twice.
+         *
+         *     Scope is the caller’s own `owner` memberships; admins see every lot. A caller who owns no lots gets an empty page, not an error.
+         *
+         *     Supports search by name or email, filtering by role, narrowing to one lot, and pagination over people.
+         */
+        get: operations["staffList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mercado-pago/oauth/callback": {
         parameters: {
             query?: never;
@@ -635,9 +659,13 @@ export interface paths {
         };
         /**
          * Read the entity audit trail
-         * @description Returns the audit events recorded for the `:tenantId` entity (profile edits, payment-method changes, approval, etc.), most recent first.
+         * @description Returns a page of audit events recorded for the `:tenantId` entity, most recent first. Available to any member of the entity.
          *
-         *     Supports optional filtering by `severity` and capping the number of returned events with `limit` (defaults to 100). Available to any member of the entity.
+         *     Filters by `severity`, a single `action` from the catalog, and a `from`/`to` instant range (half-open, ISO-8601 with an explicit offset). They compose.
+         *
+         *     **What this covers:** configuration and lifecycle changes — profile edits, payment-method toggles, onboarding, LPR event review, admin actions.
+         *
+         *     **What it does not:** payments and vehicle entries/exits are not written to the audit trail, and there is no maximum-stay concept, so no overstay alerts. For operational figures use `/metrics/*`; for detections pending review use `/lpr-events?status=pending`.
          */
         get: operations["entitiesListAudit"];
         put?: never;
@@ -655,7 +683,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all cash sessions (most recent first) */
+        /**
+         * List cash sessions (most recent first)
+         * @description Optionally only the shifts overlapping `[from, to)`: a shift that opened before `from` but was still running at `from` is included.
+         *
+         *     **Capped at `limit` (default 100).** It used to return every shift the lot ever had — about a thousand rows a year to fill a picker. Offline clients should keep syncing through `/changes`, which pages by `syncSeq`.
+         */
         get: operations["CashSessionsController_findAll"];
         put?: never;
         /** Open a new cash session (client-provided UUIDv7) */
@@ -1024,6 +1057,112 @@ export interface paths {
          *     Requires an operational link: an expired or revoked account has to be authorized again first.
          */
         post: operations["mercadoPagoResyncPos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/metrics/occupancy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current occupancy of the lot
+         * @description Occupied spots over total capacity right now, plus a breakdown of open entries by vehicle type.
+         *
+         *     Capacity is the lot-wide total declared on the entity profile (`settings.capacity.total`). The breakdown is best effort — see `byVehicleType`.
+         */
+        get: operations["metricsGetOccupancy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/metrics/revenue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["metricsGetRevenue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/metrics/revenue/by-payment-method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Revenue split by payment method (pie chart)
+         * @description One slice per payment method over the window, largest first.
+         *
+         *     Also returns `unallocated`: revenue with no itemised transactions behind it, because the stay was closed through the offline `amountPaid` fallback. Slices plus `unallocated` add up to `total`, so the chart reconciles with the revenue KPI instead of quietly falling short of it.
+         *
+         *     With `cashSessionId`: what that shift collected, cash vs. transfer. Every stay of the shift has its payments itemised by construction, so `unallocated` is 0 and `total` matches the revenue series for the same shift.
+         */
+        get: operations["metricsGetPaymentMethodBreakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/metrics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Owner dashboard KPIs in a single call
+         * @description Returns live occupancy, today’s revenue and vehicle counts, the day-over-day and week-over-week comparison, and the pending-alert count.
+         *
+         *     Civil days are delimited in `tz` (defaults to Argentina). Both baselines are truncated to the same elapsed offset within the day as today has run so far, so the deltas stay meaningful at any hour.
+         */
+        get: operations["metricsGetSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/metrics/top-plates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Highest-value plates over a window
+         * @description Ranks plates by revenue, visit count or time parked — every metric comes back regardless, so switching the ranking is a re-sort rather than another request.
+         *
+         *     Counts only stays that ended inside the window: a vehicle still parked has no final amount or duration yet. With `cashSessionId`, only the stays that shift collected.
+         */
+        get: operations["metricsGetTopPlates"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1989,6 +2128,60 @@ export interface components {
             /** @example Utilitario */
             name: string;
         };
+        DayComparisonDto: {
+            /**
+             * @description Civil day these totals cover, `YYYY-MM-DD` in the requested timezone.
+             * @example 2026-08-27
+             */
+            day: string;
+            /**
+             * @description Sum of `amountPaid` over entries closed in the window, in ARS. Counts revenue at exit time, since payments carry no timestamp of their own.
+             * @example 184500
+             */
+            revenue: number;
+            /**
+             * @description Relative change of today vs this baseline (`(today - base) / base`). `null` when the baseline is 0, so the client renders "sin datos" instead of an infinite jump.
+             * @example 0.153
+             */
+            revenueDeltaPct: number | null;
+            /**
+             * @description Entries whose `enteredAt` falls in the window.
+             * @example 71
+             */
+            vehiclesIn: number;
+            /**
+             * @description Relative change of `vehiclesIn` vs this baseline. `null` when the baseline is 0.
+             * @example 0.092
+             */
+            vehiclesInDeltaPct: number | null;
+            /**
+             * @description Entries whose `leftAt` falls in the window (exits, i.e. charged stays).
+             * @example 63
+             */
+            vehiclesOut: number;
+        };
+        DayTotalsDto: {
+            /**
+             * @description Civil day these totals cover, `YYYY-MM-DD` in the requested timezone.
+             * @example 2026-08-27
+             */
+            day: string;
+            /**
+             * @description Sum of `amountPaid` over entries closed in the window, in ARS. Counts revenue at exit time, since payments carry no timestamp of their own.
+             * @example 184500
+             */
+            revenue: number;
+            /**
+             * @description Entries whose `enteredAt` falls in the window.
+             * @example 71
+             */
+            vehiclesIn: number;
+            /**
+             * @description Entries whose `leftAt` falls in the window (exits, i.e. charged stays).
+             * @example 63
+             */
+            vehiclesOut: number;
+        };
         DeleteVehicleTypeResultDto: {
             /**
              * Format: uuid
@@ -2400,6 +2593,29 @@ export interface components {
              */
             role: "admin" | "user";
         };
+        MetricsSummaryDto: {
+            alerts: components["schemas"]["SummaryAlertsDto"];
+            comparison: components["schemas"]["SummaryComparisonDto"];
+            /**
+             * @description Current civil day in `tz`, `YYYY-MM-DD`.
+             * @example 2026-08-27
+             */
+            day: string;
+            /**
+             * Format: date-time
+             * @description Instant the snapshot was taken. Also the upper bound of the "today" window and the offset the baselines are truncated to.
+             */
+            generatedAt: string;
+            /** @description Live occupancy at `generatedAt`. */
+            occupancy: components["schemas"]["OccupancyDto"];
+            /** @description Totals from the start of the current civil day up to `generatedAt`. */
+            today: components["schemas"]["DayTotalsDto"];
+            /**
+             * @description IANA timezone the civil days were computed in.
+             * @example America/Argentina/Buenos_Aires
+             */
+            tz: string;
+        };
         MpAccountDto: {
             /**
              * Format: date-time
@@ -2531,6 +2747,67 @@ export interface components {
             returnPath?: string | null;
         };
         Object: Record<string, never>;
+        OccupancyByVehicleTypeDto: {
+            /** @description Open entries of this type. */
+            occupied: number;
+            /**
+             * @description Vehicle type of the open entries — the name snapshotted from the tenant’s `vehicle-types` catalogue at ingress — or `unknown` when the entry never declared one.
+             * @example Auto
+             */
+            type: string;
+        };
+        OccupancyDto: {
+            /**
+             * @description Total spots, from `tenant.settings.capacity.total` (the entity profile). `0` when the lot has not declared its capacity yet.
+             * @example 100
+             */
+            capacity: number;
+            /**
+             * @description Free spots, or `null` when capacity is unknown. Floored at 0 — a lot can be overbooked past its configured capacity.
+             * @example 37
+             */
+            free: number | null;
+            /**
+             * @description Occupied over capacity, `0`–`1` (may exceed 1 if overbooked). `null` when capacity is unknown, so the client can show "sin configurar" instead of a fake 0%.
+             * @example 0.63
+             */
+            occupancyPct: number | null;
+            /**
+             * @description Vehicles currently inside (entries with no `leftAt`).
+             * @example 63
+             */
+            occupied: number;
+        };
+        OccupancyResponseDto: {
+            /**
+             * @description Open entries grouped by `vehicleType`, most occupied first. **Best effort, counts only.**
+             *
+             *     Two caveats the UI must respect: `vehicleType` is only populated on LPR ingress (`source = "auto"`), so lots working manually report almost everything under `unknown`; and capacity is a single lot-wide total, not a per-type quota, so these counts cannot be turned into percentages.
+             *
+             *     The names come from the entries themselves, not from the live catalogue: a type the owner has since renamed or deleted still shows up here under the name it had at ingress.
+             */
+            byVehicleType: components["schemas"]["OccupancyByVehicleTypeDto"][];
+            /**
+             * @description Total spots, from `tenant.settings.capacity.total` (the entity profile). `0` when the lot has not declared its capacity yet.
+             * @example 100
+             */
+            capacity: number;
+            /**
+             * @description Free spots, or `null` when capacity is unknown. Floored at 0 — a lot can be overbooked past its configured capacity.
+             * @example 37
+             */
+            free: number | null;
+            /**
+             * @description Occupied over capacity, `0`–`1` (may exceed 1 if overbooked). `null` when capacity is unknown, so the client can show "sin configurar" instead of a fake 0%.
+             * @example 0.63
+             */
+            occupancyPct: number | null;
+            /**
+             * @description Vehicles currently inside (entries with no `leftAt`).
+             * @example 63
+             */
+            occupied: number;
+        };
         OnboardingApplicationDto: {
             /**
              * @description ISO-8601 UTC timestamp of creation.
@@ -2580,6 +2857,25 @@ export interface components {
              */
             tenantId: string | null;
         };
+        PaginatedAuditDto: {
+            /** @description Events on this page, most recent first. */
+            items: components["schemas"]["AuditEventDto"][];
+            /**
+             * @description 1-based page number.
+             * @example 1
+             */
+            page: number;
+            /**
+             * @description Items per page.
+             * @example 20
+             */
+            pageSize: number;
+            /**
+             * @description Total events matching the filters, across every page.
+             * @example 137
+             */
+            total: number;
+        };
         PaginatedLprDetectionEventsDto: {
             items: components["schemas"]["LprDetectionEventDto"][];
             /**
@@ -2613,6 +2909,25 @@ export interface components {
             /**
              * @description Total number of parking lots matching the query.
              * @example 42
+             */
+            total: number;
+        };
+        PaginatedStaffDto: {
+            /** @description People on this page, ordered by name then email. */
+            items: components["schemas"]["StaffMemberDto"][];
+            /**
+             * @description 1-based page number.
+             * @example 1
+             */
+            page: number;
+            /**
+             * @description Items per page.
+             * @example 20
+             */
+            pageSize: number;
+            /**
+             * @description Total matching **people** (not memberships).
+             * @example 7
              */
             total: number;
         };
@@ -2685,10 +3000,64 @@ export interface components {
              */
             paymentMethodType?: components["schemas"]["PaymentMethodType"];
         };
+        PaymentMethodBreakdownDto: {
+            /**
+             * @description Portion of `total` that has itemised transactions behind it.
+             * @example 25000
+             */
+            allocated: number;
+            /**
+             * @description Currency of every monetary figure.
+             * @example ARS
+             */
+            currency: string;
+            /** Format: date-time */
+            from: string;
+            /** @description One slice per payment method, largest first. */
+            methods: components["schemas"]["PaymentMethodSliceDto"][];
+            /** Format: date-time */
+            to: string;
+            /**
+             * @description Authoritative revenue for the window, summed from `entries.amountPaid`. This is the figure the KPI shows.
+             * @example 29300
+             */
+            total: number;
+            /**
+             * @description Revenue with **no payment-method breakdown**: `total - allocated`.
+             *
+             *     Closing a stay accepts a bare `amountPaid` with no `payments[]` (the offline fallback the desktop uses), and that path records no transaction row. Without this field the slices would silently fail to add up to the KPI and the dashboard would look broken. Render it as its own "sin detalle" slice.
+             *
+             *     A negative value means transactions exceed the stays’ recorded totals — a data inconsistency worth surfacing, not a rendering bug.
+             * @example 4300
+             */
+            unallocated: number;
+        };
         PaymentMethodChangesResponseDto: {
             items: components["schemas"]["PaymentMethodSummaryDto"][];
             /** @description Highest syncSeq in the returned batch. Pass as afterSeq on the next poll. */
             maxSeq: number;
+        };
+        PaymentMethodSliceDto: {
+            /**
+             * @description Total collected, in ARS.
+             * @example 12300
+             */
+            amount: number;
+            /**
+             * @description Transactions recorded for this method.
+             * @example 21
+             */
+            count: number;
+            /**
+             * @description Payment method name, as snapshotted on the transaction. Snapshots are used rather than a join, so methods deleted since the payment still report correctly.
+             * @example Efectivo
+             */
+            name: string;
+            /**
+             * @description Share of `total`, `0`–`1`. Shares across every slice plus `unallocated` add up to 1, so the pie is complete. `null` when `total` is 0.
+             * @example 0.42
+             */
+            share: number;
         };
         PaymentMethodSummaryDto: {
             /**
@@ -2873,6 +3242,80 @@ export interface components {
              */
             token: string;
         };
+        RevenueBucketDto: {
+            /**
+             * Format: date-time
+             * @description Start of the bucket (inclusive). Clipped to the requested window, so the first bucket often starts mid-period.
+             */
+            from: string;
+            /**
+             * @description Bucket label in `tz`: `YYYY-MM-DDTHH` (hour), `YYYY-MM-DD` (day, and week labelled by its Monday) or `YYYY-MM` (month).
+             * @example 2026-08-07
+             */
+            key: string;
+            /**
+             * @description Revenue attributed to this bucket, in ARS. Anchored on `leftAt`.
+             * @example 12300
+             */
+            revenue: number;
+            /**
+             * Format: date-time
+             * @description End of the bucket (exclusive). Clipped to the requested window.
+             */
+            to: string;
+            /**
+             * @description Stays that **entered** during this bucket. Anchored on `enteredAt`.
+             * @example 21
+             */
+            vehiclesIn: number;
+            /**
+             * @description Stays that **left** during this bucket. Anchored on `leftAt`.
+             * @example 19
+             */
+            vehiclesOut: number;
+        };
+        RevenueResponseDto: {
+            /** @description Chronological buckets covering the window with no gaps or overlaps. First and last are clipped to the requested instants. */
+            buckets: components["schemas"]["RevenueBucketDto"][];
+            /**
+             * @description Currency of every monetary figure.
+             * @example ARS
+             */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description Resolved start of the window.
+             */
+            from: string;
+            /**
+             * @description Bucket width used.
+             * @example day
+             * @enum {string}
+             */
+            granularity: "hour" | "day" | "week" | "month";
+            /**
+             * @description Table the revenue was summed from. Switches to `paymentTransactions` when `paymentMethod` or `cashSessionId` is set.
+             * @example entries
+             * @enum {string}
+             */
+            revenueSource: "entries" | "paymentTransactions";
+            /**
+             * Format: date-time
+             * @description Resolved end of the window.
+             */
+            to: string;
+            /**
+             * @description Totals across the whole window. `key`, `from` and `to` mirror the request.
+             *
+             *     **The two series use different time anchors.** Revenue lands on the bucket a stay *left* (payments carry no timestamp of their own, so exit time is the only sound axis), while `vehiclesIn` lands on the bucket it *arrived*. A car entering Monday and leaving Wednesday adds its visit to Monday and its money to Wednesday — so the dashboard toggle between $ and cars is not just a rescale of the same bars.
+             */
+            totals: components["schemas"]["RevenueBucketDto"];
+            /**
+             * @description Timezone the buckets were aligned to.
+             * @example America/Argentina/Buenos_Aires
+             */
+            tz: string;
+        };
         ScheduleChangesResponseDto: {
             items: components["schemas"]["ScheduleDto"][];
             /** @description Highest sync sequence included in this page. */
@@ -2942,6 +3385,69 @@ export interface components {
              */
             tokenType: string;
         };
+        StaffMemberDto: {
+            /**
+             * Format: date-time
+             * @description Account creation date.
+             */
+            createdAt: string;
+            /**
+             * Format: email
+             * @example ana@example.com
+             */
+            email: string;
+            /**
+             * @description Platform-level role (`admin` | `user`). Not the role at a lot — that lives in `memberships`.
+             * @example user
+             * @enum {string}
+             */
+            globalRole: "admin" | "user";
+            /** Format: uuid */
+            id: string;
+            /** @description Roles held across the caller’s lots only, oldest link first. Lots the caller does not own are never revealed, even when the person works there. */
+            memberships: components["schemas"]["StaffMembershipDto"][];
+            /**
+             * @description Display name mirrored from Supabase Auth. `null` for accounts created by email/password without one.
+             * @example Ana Gómez
+             */
+            name: string | null;
+        };
+        StaffMembershipDto: {
+            /**
+             * Format: date-time
+             * @description When the person was linked to this lot.
+             */
+            createdAt: string;
+            /**
+             * @description Role held at this lot.
+             * @example operator
+             * @enum {string}
+             */
+            role: "owner" | "operator";
+            /**
+             * Format: uuid
+             * @description Lot (tenant) identifier.
+             */
+            tenantId: string;
+            /**
+             * @description Lot display name, so the table needs no second lookup.
+             * @example Estacionamiento Once
+             */
+            tenantName: string;
+        };
+        SummaryAlertsDto: {
+            /**
+             * @description Unreviewed, non-archived LPR detections (`status = pending`). Detail lives at `GET /tenants/:tenantId/lpr-events?status=pending`.
+             * @example 4
+             */
+            pendingLprEvents: number;
+        };
+        SummaryComparisonDto: {
+            /** @description Yesterday, truncated to the same elapsed offset as today. */
+            previousDay: components["schemas"]["DayComparisonDto"];
+            /** @description Same weekday one week back, truncated to the same elapsed offset. Weekday-aligned because parking demand swings hard between weekdays and weekends. */
+            previousWeek: components["schemas"]["DayComparisonDto"];
+        };
         TogglePaymentMethodDto: {
             /**
              * @description Whether the payment method should be enabled (true) or disabled (false).
@@ -2955,6 +3461,56 @@ export interface components {
             isDefault?: boolean;
             /** @example Naranja X */
             name?: string;
+        };
+        TopPlateDto: {
+            /**
+             * @description Mean stay length in minutes (`totalMinutes / visits`, rounded).
+             * @example 180
+             */
+            averageMinutes: number;
+            /**
+             * @description Vehicle plate, upper-cased.
+             * @example AB123CD
+             */
+            plate: string;
+            /**
+             * @description Total left behind across every stay in the window, in ARS.
+             * @example 18500
+             */
+            revenue: number;
+            /**
+             * @description Minutes parked, summed across those stays.
+             * @example 1260
+             */
+            totalMinutes: number;
+            /**
+             * @description Stays closed in the window.
+             * @example 7
+             */
+            visits: number;
+        };
+        TopPlatesResponseDto: {
+            /**
+             * @description Currency of every monetary figure.
+             * @example ARS
+             */
+            currency: string;
+            /** Format: date-time */
+            from: string;
+            /**
+             * @description Ranked plates, best first.
+             *
+             *     Built from stays that **ended** inside the window, since an open stay has neither a final amount nor a known duration. A vehicle still parked will not appear until it leaves.
+             */
+            items: components["schemas"]["TopPlateDto"][];
+            /**
+             * @description Criterion the list is sorted by, descending.
+             * @example revenue
+             * @enum {string}
+             */
+            orderBy: "revenue" | "visits" | "duration";
+            /** Format: date-time */
+            to: string;
         };
         UpdateAdminUserDto: {
             /**
@@ -4604,6 +5160,67 @@ export interface operations {
             };
         };
     };
+    staffList: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Number of items per page (capped at 100). */
+                pageSize?: number;
+                /**
+                 * @description Keep only people holding this role in at least one of the caller’s lots.
+                 *
+                 *     It selects **who** appears, not what is shown: a matching person still lists every membership they hold within the caller’s lots, so someone who is `operator` in one branch and `owner` in another appears under either filter with both roles visible.
+                 */
+                role?: "owner" | "operator";
+                /** @description Case-insensitive search matched against the person’s name and email. */
+                search?: string;
+                /** @description Narrow to a single lot. Must be one the caller owns, otherwise the request is rejected. */
+                tenantId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedStaffDto"];
+                };
+            };
+            /** @description Invalid query parameters (validation failed). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description `tenantId` names a lot the caller does not own (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     mercadoPagoOauthCallback: {
         parameters: {
             query?: never;
@@ -5135,10 +5752,18 @@ export interface operations {
     entitiesListAudit: {
         parameters: {
             query?: {
-                /** @description Maximum number of audit events to return. */
-                limit?: number;
+                /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed";
+                /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
+                from?: string;
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Number of items per page (capped at 100). */
+                pageSize?: number;
                 /** @description Filter events by severity. Returns all severities when omitted. */
                 severity?: "info" | "warn" | "crit";
+                /** @description Only events strictly before this instant, same format as `from`. */
+                to?: string;
             };
             header?: never;
             path: {
@@ -5154,10 +5779,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuditEventDto"][];
+                    "application/json": components["schemas"]["PaginatedAuditDto"];
                 };
             };
-            /** @description Invalid query parameters (validation failed). */
+            /** @description Invalid query parameters, an unknown `action`, a date-time without an explicit offset, or `from` not earlier than `to`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5188,7 +5813,14 @@ export interface operations {
     };
     CashSessionsController_findAll: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only shifts still running after this instant (they overlap the window). ISO-8601 with explicit offset. */
+                from?: string;
+                /** @description Max shifts to return, most recent first. The endpoint used to return every shift ever; it now caps at this many. */
+                limit?: components["schemas"]["Object"];
+                /** @description Only shifts opened before this instant (exclusive). ISO-8601 with explicit offset. */
+                to?: string;
+            };
             header?: never;
             path: {
                 /** @description Parking lot tenant ID */
@@ -5204,6 +5836,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CashSessionDto"][];
+                };
+            };
+            /** @description `from` is not before `to`, a date-time lacks an explicit offset, or `limit` is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
                 };
             };
         };
@@ -5936,6 +6577,333 @@ export interface operations {
             };
             /** @description Mercado Pago is down or rate-limiting us (MP_UNAVAILABLE). */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    metricsGetOccupancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OccupancyResponseDto"];
+                };
+            };
+            /** @description Caller is an `operator` (`ENTITY_INSUFFICIENT_ROLE`) or has no membership in this lot (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    metricsGetRevenue: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Restrict to what one cash session (shift) **collected** — the figures for a cash-up.
+                 *
+                 *     Matches `payment_transactions.cashSessionId`: the drawer that took the money when the stay was closed. **Not** `entries.cashSessionId`, which records the drawer a car *entered* under and is reassigned to the next shift for every car still inside when a shift closes.
+                 *
+                 *     With it, `from`/`to` become optional. A bound you send is used verbatim; a missing one is derived from the shift (`openedAt` → `closedAt`, or now if still open), **widened to cover every payment the shift collected**: the offline desktop can sync a close late with a `leftAt` outside its own shift, and clipping to the shift would drop it. The window actually used comes back in the response `from`/`to`.
+                 *
+                 *     Revenue then comes from the transactions, as with `paymentMethod` (reported in `revenueSource`), and the bucket limit applies to the derived window like to any other — prefer `granularity=hour` for a shift.
+                 *
+                 *     `404 CASH_SESSION_NOT_FOUND` when the session does not exist in this parking lot.
+                 */
+                cashSessionId?: string;
+                /**
+                 * @description Start of the window (inclusive), ISO-8601 **with an explicit offset**.
+                 *
+                 *     **Required unless `cashSessionId` is given**, in which case it defaults to the start of the shift — see `cashSessionId`.
+                 *
+                 *     The offset is mandatory: a naive `2026-08-07T13:00:00` would be resolved against the server clock, silently shifting the numbers by the Argentine offset. Send `-03:00` for Argentine wall-clock time.
+                 */
+                from?: string;
+                /** @description Bucket width. Buckets follow the civil calendar of `tz`, so a DST day stays one bucket. */
+                granularity?: "hour" | "day" | "week" | "month";
+                /**
+                 * @description Restrict to stays paid with this payment method (the snapshot name stored on the transaction, e.g. `Efectivo`).
+                 *
+                 *     Setting it switches `revenue` to sum `payment_transactions` instead of `entries.amountPaid` — the transactions table is the only place the per-method split exists. The response reports this in `revenueSource`.
+                 */
+                paymentMethod?: string;
+                /** @description End of the window (exclusive), ISO-8601 with explicit offset. **Required unless `cashSessionId` is given.** */
+                to?: string;
+                /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
+                tz?: string;
+                /**
+                 * @description Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`.
+                 *
+                 *     Free text rather than a closed enum: vehicle types are a per-tenant catalogue (`GET /tenants/:tenantId/vehicle-types`), which is where the client should populate this filter from. `entries.vehicleType` stores a *snapshot* of the type name taken at ingress, so renaming a type does not rewrite history — stays registered under the old name keep answering to the old name.
+                 *
+                 *     **Partial data:** `entries.vehicleType` is only populated on LPR ingress (`source = "auto"`); manually registered stays leave it null and are excluded by this filter.
+                 */
+                vehicleType?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevenueResponseDto"];
+                };
+            };
+            /** @description `from`/`to` missing without a `cashSessionId`, `from` not before `to`, a date-time without an explicit offset, or a malformed `cashSessionId`. Also when the range and granularity together exceed the bucket limit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Caller is an `operator` (`ENTITY_INSUFFICIENT_ROLE`) or has no membership in this lot (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description `cashSessionId` does not exist in this parking lot (`CASH_SESSION_NOT_FOUND`). A session of another lot gets the same answer. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    metricsGetPaymentMethodBreakdown: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Restrict to what one cash session (shift) **collected** — the figures for a cash-up.
+                 *
+                 *     Matches `payment_transactions.cashSessionId`: the drawer that took the money when the stay was closed. **Not** `entries.cashSessionId`, which records the drawer a car *entered* under and is reassigned to the next shift for every car still inside when a shift closes.
+                 *
+                 *     With it, `from`/`to` become optional. A bound you send is used verbatim; a missing one is derived from the shift (`openedAt` → `closedAt`, or now if still open), **widened to cover every payment the shift collected**: the offline desktop can sync a close late with a `leftAt` outside its own shift, and clipping to the shift would drop it. The window actually used comes back in the response `from`/`to`.
+                 *
+                 *     Revenue then comes from the transactions, as with `paymentMethod` (reported in `revenueSource`), and the bucket limit applies to the derived window like to any other — prefer `granularity=hour` for a shift.
+                 *
+                 *     `404 CASH_SESSION_NOT_FOUND` when the session does not exist in this parking lot.
+                 */
+                cashSessionId?: string;
+                /**
+                 * @description Start of the window (inclusive), ISO-8601 **with an explicit offset**.
+                 *
+                 *     **Required unless `cashSessionId` is given**, in which case it defaults to the start of the shift — see `cashSessionId`.
+                 *
+                 *     The offset is mandatory: a naive `2026-08-07T13:00:00` would be resolved against the server clock, silently shifting the numbers by the Argentine offset. Send `-03:00` for Argentine wall-clock time.
+                 */
+                from?: string;
+                /** @description End of the window (exclusive), ISO-8601 with explicit offset. **Required unless `cashSessionId` is given.** */
+                to?: string;
+                /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
+                tz?: string;
+                /**
+                 * @description Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`.
+                 *
+                 *     Free text rather than a closed enum: vehicle types are a per-tenant catalogue (`GET /tenants/:tenantId/vehicle-types`), which is where the client should populate this filter from. `entries.vehicleType` stores a *snapshot* of the type name taken at ingress, so renaming a type does not rewrite history — stays registered under the old name keep answering to the old name.
+                 *
+                 *     **Partial data:** `entries.vehicleType` is only populated on LPR ingress (`source = "auto"`); manually registered stays leave it null and are excluded by this filter.
+                 */
+                vehicleType?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentMethodBreakdownDto"];
+                };
+            };
+            /** @description `from`/`to` missing without a `cashSessionId`, `from` not before `to`, a date-time without an explicit offset, or a malformed `cashSessionId`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Caller is an `operator` (`ENTITY_INSUFFICIENT_ROLE`) or has no membership in this lot (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description `cashSessionId` does not exist in this parking lot (`CASH_SESSION_NOT_FOUND`). A session of another lot gets the same answer. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    metricsGetSummary: {
+        parameters: {
+            query?: {
+                /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
+                tz?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsSummaryDto"];
+                };
+            };
+            /** @description Caller is an `operator` (`ENTITY_INSUFFICIENT_ROLE`) or has no membership in this lot (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    metricsGetTopPlates: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Restrict to what one cash session (shift) **collected** — the figures for a cash-up.
+                 *
+                 *     Matches `payment_transactions.cashSessionId`: the drawer that took the money when the stay was closed. **Not** `entries.cashSessionId`, which records the drawer a car *entered* under and is reassigned to the next shift for every car still inside when a shift closes.
+                 *
+                 *     With it, `from`/`to` become optional. A bound you send is used verbatim; a missing one is derived from the shift (`openedAt` → `closedAt`, or now if still open), **widened to cover every payment the shift collected**: the offline desktop can sync a close late with a `leftAt` outside its own shift, and clipping to the shift would drop it. The window actually used comes back in the response `from`/`to`.
+                 *
+                 *     Revenue then comes from the transactions, as with `paymentMethod` (reported in `revenueSource`), and the bucket limit applies to the derived window like to any other — prefer `granularity=hour` for a shift.
+                 *
+                 *     `404 CASH_SESSION_NOT_FOUND` when the session does not exist in this parking lot.
+                 */
+                cashSessionId?: string;
+                /**
+                 * @description Start of the window (inclusive), ISO-8601 **with an explicit offset**.
+                 *
+                 *     **Required unless `cashSessionId` is given**, in which case it defaults to the start of the shift — see `cashSessionId`.
+                 *
+                 *     The offset is mandatory: a naive `2026-08-07T13:00:00` would be resolved against the server clock, silently shifting the numbers by the Argentine offset. Send `-03:00` for Argentine wall-clock time.
+                 */
+                from?: string;
+                /** @description How many plates to return. */
+                limit?: number;
+                /**
+                 * @description Ranking criterion: money left behind (`revenue`), number of stays (`visits`), or time parked (`duration`).
+                 *
+                 *     Every metric is returned regardless, so switching the ranking is a re-sort rather than a different dataset.
+                 */
+                orderBy?: "revenue" | "visits" | "duration";
+                /** @description End of the window (exclusive), ISO-8601 with explicit offset. **Required unless `cashSessionId` is given.** */
+                to?: string;
+                /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
+                tz?: string;
+                /**
+                 * @description Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`.
+                 *
+                 *     Free text rather than a closed enum: vehicle types are a per-tenant catalogue (`GET /tenants/:tenantId/vehicle-types`), which is where the client should populate this filter from. `entries.vehicleType` stores a *snapshot* of the type name taken at ingress, so renaming a type does not rewrite history — stays registered under the old name keep answering to the old name.
+                 *
+                 *     **Partial data:** `entries.vehicleType` is only populated on LPR ingress (`source = "auto"`); manually registered stays leave it null and are excluded by this filter.
+                 */
+                vehicleType?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopPlatesResponseDto"];
+                };
+            };
+            /** @description `from`/`to` missing without a `cashSessionId`, `from` not before `to`, a date-time without an explicit offset, or a malformed `cashSessionId`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Caller is an `operator` (`ENTITY_INSUFFICIENT_ROLE`) or has no membership in this lot (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description `cashSessionId` does not exist in this parking lot (`CASH_SESSION_NOT_FOUND`). A session of another lot gets the same answer. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

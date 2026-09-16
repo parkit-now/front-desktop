@@ -32,9 +32,16 @@ describe('printEntryTicket', () => {
       printEntryTicket(data, bridgeWith(printTicket)),
     ).resolves.toEqual({ ok: true });
 
-    const payload = printTicket.mock.calls[0][0] as { html: string };
+    const payload = printTicket.mock.calls[0][0] as {
+      html: string;
+      pageWidthMm: number | null;
+    };
     expect(payload.html).toContain('VW Suran');
     expect(payload.html).toContain('Estacionamiento Apex');
+    // Default = rollo de 80mm, que declara el ANCHO IMPRIMIBLE (72), no el del
+    // papel: declarar 80 dejaba el contenido en la franja no imprimible.
+    expect(payload.pageWidthMm).toBe(72);
+    expect(payload.html).toContain('width: 72mm');
   });
 
   it('no rechaza nunca: un puente que falla resuelve un outcome', async () => {

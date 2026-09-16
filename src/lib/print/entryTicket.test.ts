@@ -81,6 +81,26 @@ describe('buildEntryTicketHtml', () => {
     expect(html).toContain('width: 72mm');
   });
 
+  it('deja que el nombre envuelva por los espacios', () => {
+    // Partir "ESTACIONAMIENTO ONCE" en dos renglones a tamaño completo se lee
+    // mejor que forzar uno solo achicando. El achique queda para el caso de
+    // una palabra sola que no entra, y lo resuelve main midiendo.
+    expect(buildEntryTicketHtml(ticket())).not.toContain('white-space: nowrap');
+  });
+
+  it('respeta el ancho de cuerpo del rollo elegido', () => {
+    expect(buildEntryTicketHtml(ticket(), { bodyWidthMm: 48 })).toContain(
+      'width: 48mm',
+    );
+  });
+
+  it('se adapta al ancho del driver cuando no hay tamaño declarado', () => {
+    const html = buildEntryTicketHtml(ticket(), { bodyWidthMm: null });
+    expect(html).toContain('width: 100%');
+    expect(html).toContain('max-width: 80mm');
+    expect(html).not.toContain('width: 72mm');
+  });
+
   it('escapa texto cargado por el operador', () => {
     const html = buildEntryTicketHtml(
       ticket({ vehicle: '<img src=x onerror=alert(1)>' }),

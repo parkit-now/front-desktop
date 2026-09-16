@@ -62,7 +62,25 @@ function clean(value: string | null): string | null {
  * "Color —" on a paper stub is noise, and an unset parking address must never
  * print as "null".
  */
-export function buildEntryTicketHtml(data: EntryTicketData): string {
+export interface EntryTicketOptions {
+  bodyWidthMm?: number | null;
+}
+
+const DEFAULT_BODY_WIDTH_MM = 72;
+
+export function buildEntryTicketHtml(
+  data: EntryTicketData,
+  options: EntryTicketOptions = {},
+): string {
+  const bodyWidthMm =
+    options.bodyWidthMm === undefined
+      ? DEFAULT_BODY_WIDTH_MM
+      : options.bodyWidthMm;
+  const bodyWidthCss =
+    bodyWidthMm === null
+      ? 'width: 100%; max-width: 80mm;'
+      : `width: ${bodyWidthMm}mm;`;
+
   const name = clean(data.parkingName);
   const address = clean(data.parkingAddress);
   const vehicle = clean(data.vehicle);
@@ -110,7 +128,7 @@ export function buildEntryTicketHtml(data: EntryTicketData): string {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
   body {
-    width: 72mm;
+    ${bodyWidthCss}
     margin: 0 auto;
     padding: 2mm 0 5mm;
     color: #000;
@@ -121,8 +139,11 @@ export function buildEntryTicketHtml(data: EntryTicketData): string {
     print-color-adjust: exact;
   }
   .t-head { text-align: center; }
+  /* Envuelve por los espacios: "ESTACIONAMIENTO / ONCE" a tamaño completo se
+     lee mejor que forzar un renglón único achicando la tipografía. Solo si una
+     palabra sola no entra, main la achica al imprimir (ver electron/print.ts). */
   .t-name { font-size: 14pt; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
-  .t-addr { font-size: 9.5pt; margin-top: 1mm; }
+  .t-addr { font-size: 9.5pt; margin-top: 1mm; overflow-wrap: anywhere; }
   .t-rule { border: 0; border-top: 1px dashed #000; margin: 3mm 0; }
   .t-row { display: flex; justify-content: space-between; gap: 3mm; margin: 1.2mm 0; }
   .t-label { font-size: 9.5pt; text-transform: uppercase; letter-spacing: .4px; }
