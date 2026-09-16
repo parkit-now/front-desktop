@@ -23,22 +23,58 @@ export const TAIL_FEED_OPTIONS_MM = [0, 5, 10, 15] as const;
 export const DEFAULT_TAIL_FEED_MM = 10;
 const MAX_TAIL_FEED_MM = 30;
 
-const PrinterSettingsV1Schema = z.object({
-  version: z.literal(1),
-  deviceName: z.string().min(1).nullable(),
-});
+export type PaperSize = 'roll80' | 'roll58' | 'driver';
 
-export const PrinterSettingsSchema = z.object({
-  version: z.literal(2),
+export const DEFAULT_PAPER_SIZE: PaperSize = 'roll80';
+
+export const PAPER_SIZES: Record<
+  PaperSize,
+  { label: string; pageWidthMm: number | null; bodyWidthMm: number | null }
+> = {
+  roll80: {
+    label: '80 mm (rollo estándar)',
+    pageWidthMm: 72,
+    bodyWidthMm: 72,
+  },
+  roll58: {
+    label: '58 mm (rollo angosto)',
+    pageWidthMm: 48,
+    bodyWidthMm: 48,
+  },
+  driver: {
+    label: 'Usar el tamaño configurado en el driver',
+    pageWidthMm: null,
+    bodyWidthMm: null,
+  },
+};
+
+export interface PrinterSettings {
+  version: 3;
   /** `null` = use whatever the OS considers the default printer. */
-  deviceName: z.string().min(1).nullable(),
-  tailFeedMm: z.number().int().min(0).max(MAX_TAIL_FEED_MM),
-});
+  deviceName: string | null;
+  tailFeedMm: number;
+  paperSize: PaperSize;
+}
 
-export type PrinterSettings = z.infer<typeof PrinterSettingsSchema>;
+const StoredSchema = z.object({
+  deviceName: z.string().min(1).nullable().optional().catch(undefined),
+  tailFeedMm: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_TAIL_FEED_MM)
+    .optional()
+    .catch(undefined),
+  paperSize: z.enum(['roll80', 'roll58', 'driver']).optional().catch(undefined),
+});
 
 export function defaultPrinterSettings(): PrinterSettings {
-  return { version: 2, deviceName: null, tailFeedMm: DEFAULT_TAIL_FEED_MM };
+  return {
+    version: 3,
+    deviceName: null,
+    tailFeedMm: DEFAULT_TAIL_FEED_MM,
+    paperSize: DEFAULT_PAPER_SIZE,
+  };
 }
 
 function getBrowserStorage(): PrinterStorage | null {
@@ -46,37 +82,27 @@ function getBrowserStorage(): PrinterStorage | null {
   return window.localStorage;
 }
 
-/**
- * Never throws: corrupt storage falls back to defaults so printing still works.
- * A v1 blob is upgraded in place instead of discarded — perder la impresora ya
- * elegida por haber agregado un campo sería una regresión silenciosa.
- */
+/** Never throws: corrupt storage falls back to defaults so printing still works. */
 export function readPrinterSettings(
   storage: PrinterStorage | null = getBrowserStorage(),
 ): PrinterSettings {
-  if (!storage) return defaultPrinterSettings();
+  const defaults = defaultPrinterSettings();
+  if (!storage) return defaults;
 
   const raw = storage.getItem(STORAGE_KEY);
-  if (!raw) return defaultPrinterSettings();
+  if (!raw) return defaults;
 
   try {
-    const parsed: unknown = JSON.parse(raw);
-
-    const current = PrinterSettingsSchema.safeParse(parsed);
-    if (current.success) return current.data;
-
-    const legacy = PrinterSettingsV1Schema.safeParse(parsed);
-    if (legacy.success) {
-      return {
-        version: 2,
-        deviceName: legacy.data.deviceName,
-        tailFeedMm: DEFAULT_TAIL_FEED_MM,
-      };
-    }
-
-    return defaultPrinterSettings();
+    const parsed = StoredSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return defaults;
+    return {
+      version: 3,
+      deviceName: parsed.data.deviceName ?? defaults.deviceName,
+      tailFeedMm: parsed.data.tailFeedMm ?? defaults.tailFeedMm,
+      paperSize: parsed.data.paperSize ?? defaults.paperSize,
+    };
   } catch {
-    return defaultPrinterSettings();
+    return defaults;
   }
 }
 
@@ -94,7 +120,6 @@ export function setSelectedPrinter(
 ): PrinterSettings {
   const next: PrinterSettings = {
     ...readPrinterSettings(storage),
-    version: 2,
     deviceName: deviceName || null,
   };
   writePrinterSettings(next, storage);
@@ -111,8 +136,19 @@ export function setTailFeedMm(
   );
   const next: PrinterSettings = {
     ...readPrinterSettings(storage),
-    version: 2,
     tailFeedMm: clamped,
+  };
+  writePrinterSettings(next, storage);
+  return next;
+}
+
+export function setPaperSize(
+  paperSize: PaperSize,
+  storage: PrinterStorage | null = getBrowserStorage(),
+): PrinterSettings {
+  const next: PrinterSettings = {
+    ...readPrinterSettings(storage),
+    paperSize,
   };
   writePrinterSettings(next, storage);
   return next;

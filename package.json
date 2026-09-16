@@ -2,7 +2,7 @@
   "name": "@parkit-now/front-desktop",
   "version": "1.1.0",
   "private": true,
-  "description": "front-desktop frontend (desktop)",
+  "description": "Parkit desktop app",
   "type": "module",
   "main": "dist/main/main.js",
   "scripts": {
@@ -31,6 +31,8 @@
   "build": {
     "appId": "com.parkit.desktop",
     "productName": "Parkit",
+    "executableName": "Parkit",
+    "icon": "build/icon",
     "publish": null,
     "protocols": [
       {
@@ -62,6 +64,13 @@
         "filter": [
           "camera-service",
           "camera-service.exe"
+        ]
+      },
+      {
+        "from": "build",
+        "to": ".",
+        "filter": [
+          "icon.png"
         ]
       }
     ],

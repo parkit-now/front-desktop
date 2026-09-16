@@ -1,4 +1,5 @@
 import {
+  type ColumnDef,
   type ColumnFiltersState,
   flexRender,
   type FilterFn,
@@ -22,10 +23,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DateRange } from '../../lib/ui/DateRangeFilter';
 import {
   TemplateSelector,
+  type TableFilterValueNormalizers,
   type TableViewConfig,
   type TableTemplateScope,
+  readPersistedTableState,
   readTableTemplateCollection,
   sanitizeTableViewConfig,
+  writePersistedTableState,
 } from '../table-view-template';
 import { ColumnPicker } from './components/ColumnPicker';
 import { FilterPanel } from './components/FilterPanel';
@@ -56,6 +60,9 @@ const includesSomeFilter: FilterFn<unknown> = (row, columnId, value) => {
   if (!Array.isArray(value) || value.length === 0) return true;
   return value.map(String).includes(String(row.getValue(columnId) ?? ''));
 };
+
+const EMPTY_FILTERABLE_COLUMNS: string[] = [];
+const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 30, 50];
 
 function toDateKey(raw: unknown): string | null {
   if (raw instanceof Date) {
@@ -97,6 +104,112 @@ function scopeKey(scope?: TableTemplateScope): string {
   return `${scope.userId}:${scope.tenantId}:${scope.tableKey}`;
 }
 
+function columnIdsFromDefinitions<TData>(
+  definitions: ColumnDef<TData, unknown>[],
+): string[] {
+  return definitions.flatMap((column) => {
+    const nested = 'columns' in column ? column.columns : undefined;
+    if (Array.isArray(nested)) {
+      return columnIdsFromDefinitions(nested as ColumnDef<TData, unknown>[]);
+    }
+    if (typeof column.id === 'string' && column.id.length > 0) {
+      return [column.id];
+    }
+    const accessorKey = (column as { accessorKey?: unknown }).accessorKey;
+    return typeof accessorKey === 'string' && accessorKey.length > 0
+      ? [accessorKey]
+      : [];
+  });
+}
+
+function isDateRangeColumn<TData>(
+  definition: ColumnDef<TData, unknown>,
+): boolean {
+  return String(definition.filterFn ?? '') === 'dateRange';
+}
+
+function columnFilterNormalizersFromDefinitions<TData>(
+  definitions: ColumnDef<TData, unknown>[],
+  filterableColumns: readonly string[],
+): TableFilterValueNormalizers {
+  return definitions.reduce<TableFilterValueNormalizers>(
+    (normalizers, column) => {
+      const nested = 'columns' in column ? column.columns : undefined;
+      if (Array.isArray(nested)) {
+        return {
+          ...normalizers,
+          ...columnFilterNormalizersFromDefinitions(
+            nested as ColumnDef<TData, unknown>[],
+            filterableColumns,
+          ),
+        };
+      }
+
+      const id =
+        typeof column.id === 'string' && column.id.length > 0
+          ? column.id
+          : typeof (column as { accessorKey?: unknown }).accessorKey ===
+              'string'
+            ? String((column as { accessorKey: string }).accessorKey)
+            : null;
+      if (!id) return normalizers;
+
+      if (isDateRangeColumn(column)) {
+        normalizers[id] = normalizeDateRangeFilterValue;
+        return normalizers;
+      }
+
+      if (filterableColumns.includes(id)) {
+        normalizers[id] = normalizeOptionListFilterValue;
+      }
+
+      return normalizers;
+    },
+    {},
+  );
+}
+
+function toValidDate(raw: unknown): Date | undefined {
+  if (raw instanceof Date) {
+    return Number.isNaN(raw.getTime()) ? undefined : raw;
+  }
+  if (typeof raw !== 'string' && typeof raw !== 'number') return undefined;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function normalizeDateRangeFilterValue(value: unknown): DateRange | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const range = value as { from?: unknown; to?: unknown };
+  const from = toValidDate(range.from);
+  if (!from) return undefined;
+  const to = toValidDate(range.to);
+  return to ? { from, to } : { from };
+}
+
+function normalizeOptionListFilterValue(value: unknown): string[] | undefined {
+  const values = Array.isArray(value) ? value : [value];
+  const normalized = values
+    .map((item) => String(item ?? '').trim())
+    .filter((item) => item.length > 0);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function applyInitialColumnFiltersOverride(
+  config: TableViewConfig,
+  initialColumnFilters: ColumnFiltersState | undefined,
+  enabled: boolean,
+): TableViewConfig {
+  if (!enabled) return config;
+  return {
+    ...config,
+    filters: initialColumnFilters ?? [],
+    globalSearch: '',
+  };
+}
+
 export function DataTable<TData>({
   data,
   columns,
@@ -106,13 +219,16 @@ export function DataTable<TData>({
   emptyMessage = 'No hay resultados para mostrar.',
   searchPlaceholder = 'Buscar...',
   searchableKeys,
-  filterableColumns = [],
+  filterableColumns = EMPTY_FILTERABLE_COLUMNS,
   filterOptionsByColumn,
   filterSwitches,
+  persistState = false,
+  persistentSwitches,
+  initialColumnFiltersOverridePersistedState = false,
   initialPageSize = 10,
   initialColumnFilters,
   initialSorting,
-  pageSizeOptions = [5, 10, 20, 30, 50],
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   getRowId,
   onRowClick,
   templateScope,
@@ -122,19 +238,66 @@ export function DataTable<TData>({
   refreshDisabled,
   serverState,
 }: DataTableProps<TData>) {
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
-    initialColumnFilters ?? [],
+  const initialKnownColumnIds = useMemo(
+    () => columnIdsFromDefinitions(columns),
+    [columns],
   );
-  const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [columnOrder, setColumnOrder] = useState<string[]>([]);
+  const filterNormalizers = useMemo(
+    () => columnFilterNormalizersFromDefinitions(columns, filterableColumns),
+    [columns, filterableColumns],
+  );
+  const initialPersistedState = useMemo(() => {
+    if (!persistState || !templateScope) return null;
+    const persisted = readPersistedTableState(
+      templateScope,
+      initialKnownColumnIds,
+      filterNormalizers,
+    );
+    if (!persisted) return null;
+    return {
+      ...persisted,
+      config: applyInitialColumnFiltersOverride(
+        persisted.config,
+        initialColumnFilters,
+        initialColumnFiltersOverridePersistedState,
+      ),
+    };
+  }, [
+    filterNormalizers,
+    initialColumnFilters,
+    initialColumnFiltersOverridePersistedState,
+    initialKnownColumnIds,
+    persistState,
+    templateScope,
+  ]);
+  const initialPersistedStateRef = useRef(initialPersistedState);
+  const [globalFilter, setGlobalFilter] = useState(
+    () => initialPersistedStateRef.current?.config.globalSearch ?? '',
+  );
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+    () =>
+      initialPersistedStateRef.current?.config.filters ??
+      initialColumnFilters ??
+      [],
+  );
+  const [sorting, setSorting] = useState<SortingState>(
+    () =>
+      initialPersistedStateRef.current?.config.sorting ?? initialSorting ?? [],
+  );
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    () => initialPersistedStateRef.current?.config.columns.visibility ?? {},
+  );
+  const [columnOrder, setColumnOrder] = useState<string[]>(
+    () => initialPersistedStateRef.current?.config.columns.order ?? [],
+  );
   const [columnPinning, setColumnPinning] = useState<{ left?: string[] }>({
-    left: [],
+    left: initialPersistedStateRef.current?.config.columns.pinnedLeft ?? [],
   });
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
-    pageSize: initialPageSize,
+    pageSize:
+      initialPersistedStateRef.current?.config.pagination.pageSize ??
+      initialPageSize,
   });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
@@ -143,6 +306,7 @@ export function DataTable<TData>({
   const currentScopeKey = scopeKey(templateScope);
 
   useEffect(() => {
+    if (initialPersistedStateRef.current) return;
     setPagination((current) =>
       current.pageSize === initialPageSize
         ? current
@@ -238,7 +402,11 @@ export function DataTable<TData>({
 
   const applyConfig = useCallback(
     (config: TableViewConfig | null) => {
-      const sanitized = sanitizeTableViewConfig(config, knownColumnIds);
+      const sanitized = sanitizeTableViewConfig(
+        config,
+        knownColumnIds,
+        filterNormalizers,
+      );
 
       if (!sanitized) {
         setGlobalFilter('');
@@ -248,6 +416,24 @@ export function DataTable<TData>({
         setColumnOrder([]);
         setColumnPinning({ left: [] });
         setPagination({ pageIndex: 0, pageSize: initialPageSize });
+        if (persistState && templateScope) {
+          writePersistedTableState(templateScope, {
+            version: 1,
+            config: {
+              version: 1,
+              columns: {
+                visibility: {},
+                order: [],
+                pinnedLeft: [],
+              },
+              filters: [],
+              sorting: initialSorting ?? [],
+              globalSearch: '',
+              pagination: { pageSize: initialPageSize },
+            },
+            switches: persistentSwitches ?? {},
+          });
+        }
         return;
       }
 
@@ -258,8 +444,23 @@ export function DataTable<TData>({
       setColumnOrder(sanitized.columns.order);
       setColumnPinning({ left: sanitized.columns.pinnedLeft });
       setPagination({ pageIndex: 0, pageSize: sanitized.pagination.pageSize });
+      if (persistState && templateScope) {
+        writePersistedTableState(templateScope, {
+          version: 1,
+          config: sanitized,
+          switches: persistentSwitches ?? {},
+        });
+      }
     },
-    [initialPageSize, initialSorting, knownColumnIds],
+    [
+      initialPageSize,
+      initialSorting,
+      filterNormalizers,
+      knownColumnIds,
+      persistState,
+      persistentSwitches,
+      templateScope,
+    ],
   );
 
   useEffect(() => {
@@ -267,15 +468,54 @@ export function DataTable<TData>({
     if (autoAppliedScopeRef.current === currentScopeKey) return;
 
     autoAppliedScopeRef.current = currentScopeKey;
+    if (persistState) {
+      const persisted = readPersistedTableState(
+        templateScope,
+        knownColumnIds,
+        filterNormalizers,
+      );
+      if (persisted) {
+        setSelectedTemplateId(null);
+        applyConfig(
+          applyInitialColumnFiltersOverride(
+            persisted.config,
+            initialColumnFilters,
+            initialColumnFiltersOverridePersistedState,
+          ),
+        );
+        return;
+      }
+    }
+
     const collection = readTableTemplateCollection(templateScope);
     const template = collection.templates.find(
       (item) => item.id === collection.lastUsedTemplateId,
     );
-    if (!template) return;
+    if (!template) {
+      setSelectedTemplateId(null);
+      applyConfig(null);
+      return;
+    }
 
     setSelectedTemplateId(template.id);
-    applyConfig(template.config);
-  }, [applyConfig, currentScopeKey, knownColumnIds.length, templateScope]);
+    applyConfig(
+      applyInitialColumnFiltersOverride(
+        template.config,
+        initialColumnFilters,
+        initialColumnFiltersOverridePersistedState,
+      ),
+    );
+  }, [
+    applyConfig,
+    currentScopeKey,
+    filterNormalizers,
+    initialColumnFilters,
+    initialColumnFiltersOverridePersistedState,
+    knownColumnIds,
+    knownColumnIds.length,
+    persistState,
+    templateScope,
+  ]);
 
   const currentConfig = useCallback((): TableViewConfig => {
     return {
@@ -317,6 +557,26 @@ export function DataTable<TData>({
     globalFilter.trim().length > 0 ||
     Boolean(filterSwitches?.some((item) => item.checked));
   const showLoading = Boolean(isLoading || serverState?.isFetching);
+
+  useEffect(() => {
+    if (!persistState || !templateScope || knownColumnIds.length === 0) return;
+
+    const timeout = window.setTimeout(() => {
+      writePersistedTableState(templateScope, {
+        version: 1,
+        config: currentConfig(),
+        switches: persistentSwitches ?? {},
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    currentConfig,
+    knownColumnIds.length,
+    persistState,
+    persistentSwitches,
+    templateScope,
+  ]);
 
   useEffect(() => {
     if (safePageIndex !== pagination.pageIndex) {

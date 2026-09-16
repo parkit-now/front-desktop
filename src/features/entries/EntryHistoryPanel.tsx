@@ -13,6 +13,10 @@ import {
 } from '../../lib/db/localDb';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
 import { cashSessionLabel } from '../../lib/format/cashSession';
+import {
+  readPersistedTableSwitches,
+  type TableTemplateScope,
+} from '../table-view-template';
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import { EntryEditDialog } from './EntryEditDialog';
 
@@ -231,10 +235,25 @@ export function EntryHistoryPanel({
   parkingAddress = null,
   onBackToCaja,
 }: Props) {
-  const [onlyCurrentSession, setOnlyCurrentSession] = useState(
-    initialOnlyCurrentSession,
+  const tableScope = useMemo<TableTemplateScope>(
+    () => ({ userId, tenantId, tableKey: 'entry-history' }),
+    [tenantId, userId],
   );
-  const [includeInLot, setIncludeInLot] = useState(false);
+  const persistedSwitches = useMemo(
+    () => readPersistedTableSwitches(tableScope),
+    [tableScope],
+  );
+  const focusedFromCashSession = Boolean(
+    initialCashSessionId || initialOnlyCurrentSession,
+  );
+  const [onlyCurrentSession, setOnlyCurrentSession] = useState(() =>
+    focusedFromCashSession
+      ? initialOnlyCurrentSession
+      : (persistedSwitches.onlyCurrentSession ?? false),
+  );
+  const [includeInLot, setIncludeInLot] = useState(
+    () => persistedSwitches.includeInLot ?? false,
+  );
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
@@ -363,6 +382,10 @@ export function EntryHistoryPanel({
   const editingCashSession = editingEntry?.cashSessionId
     ? allSessions?.find((session) => session.id === editingEntry.cashSessionId)
     : undefined;
+  const tableSwitches = useMemo(
+    () => ({ onlyCurrentSession, includeInLot }),
+    [includeInLot, onlyCurrentSession],
+  );
 
   return (
     <>
@@ -379,11 +402,14 @@ export function EntryHistoryPanel({
           cashSessionId: cashSessionFilterOptions,
         }}
         initialColumnFilters={initialColumnFilters}
+        initialColumnFiltersOverridePersistedState={focusedFromCashSession}
         initialPageSize={20}
         pageSizeOptions={[10, 20, 50, 100]}
         getRowId={(row) => row.id}
         onRowClick={(row) => setEditingEntry(row)}
-        templateScope={{ userId, tenantId, tableKey: 'entry-history' }}
+        templateScope={tableScope}
+        persistState
+        persistentSwitches={tableSwitches}
         filterSwitches={[
           {
             id: 'onlyCurrentSession',

@@ -48,11 +48,18 @@ export const TableViewTemplateCollectionSchema = z.object({
   lastUsedTemplateId: z.string().nullable().default(null),
 });
 
+export const PersistedTableStateSchema = z.object({
+  version: z.literal(1).default(1),
+  config: TableViewConfigSchema,
+  switches: z.record(z.string(), z.boolean()).default({}),
+});
+
 export type TableViewConfig = z.infer<typeof TableViewConfigSchema>;
 export type TableViewTemplate = z.infer<typeof TableViewTemplateSchema>;
 export type TableViewTemplateCollection = z.infer<
   typeof TableViewTemplateCollectionSchema
 >;
+export type PersistedTableState = z.infer<typeof PersistedTableStateSchema>;
 
 export type TableTemplateScope = {
   userId: string;

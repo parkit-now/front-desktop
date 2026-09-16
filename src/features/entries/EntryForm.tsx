@@ -1,4 +1,4 @@
-import { EntryFormCore } from './EntryFormCore';
+import { EntryFormCore, type ManualEntryDraft } from './EntryFormCore';
 
 interface Props {
   tenantId: string;
@@ -6,6 +6,9 @@ interface Props {
   /** Header of the printed entry ticket. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  initialDraft?: ManualEntryDraft | null;
+  onDraftChange?: (draft: ManualEntryDraft) => void;
+  onDraftReset?: () => void;
 }
 
 // Manual entry form for the operativo panel. The full field/autocomplete/submit
@@ -15,6 +18,9 @@ export function EntryForm({
   accessToken,
   parkingName = null,
   parkingAddress = null,
+  initialDraft = null,
+  onDraftChange,
+  onDraftReset,
 }: Props) {
   return (
     <EntryFormCore
@@ -23,6 +29,9 @@ export function EntryForm({
       variant="manual"
       parkingName={parkingName}
       parkingAddress={parkingAddress}
+      initialDraft={initialDraft}
+      onDraftChange={onDraftChange}
+      onDraftReset={onDraftReset}
     />
   );
 }

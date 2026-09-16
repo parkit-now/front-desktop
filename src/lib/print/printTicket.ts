@@ -1,5 +1,5 @@
 import { buildEntryTicketHtml, type EntryTicketData } from './entryTicket';
-import { readPrinterSettings } from './printerSettings';
+import { PAPER_SIZES, readPrinterSettings } from './printerSettings';
 
 type PrintBridge = NonNullable<Window['parkitDesktop']>;
 
@@ -32,10 +32,12 @@ export async function printEntryTicket(
   }
   try {
     const settings = readPrinterSettings();
+    const { pageWidthMm, bodyWidthMm } = PAPER_SIZES[settings.paperSize];
     return await bridge.printTicket({
-      html: buildEntryTicketHtml(data),
+      html: buildEntryTicketHtml(data, { bodyWidthMm }),
       deviceName: settings.deviceName,
       tailFeedMm: settings.tailFeedMm,
+      pageWidthMm,
     });
   } catch (error) {
     return { ok: false, reason: 'print-failed', detail: String(error) };

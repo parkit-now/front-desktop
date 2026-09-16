@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     html: string;
     deviceName: string | null;
     tailFeedMm: number;
+    pageWidthMm: number | null;
   }): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> =>
     ipcRenderer.invoke('printer:printTicket', payload),
 });

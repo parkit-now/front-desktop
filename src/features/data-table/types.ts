@@ -36,6 +36,9 @@ export type DataTableProps<TData> = {
   filterableColumns?: string[];
   filterOptionsByColumn?: Record<string, DataTableFilterOption[]>;
   filterSwitches?: DataTableFilterSwitch[];
+  persistState?: boolean;
+  persistentSwitches?: Record<string, boolean>;
+  initialColumnFiltersOverridePersistedState?: boolean;
   initialPageSize?: number;
   initialColumnFilters?: ColumnFiltersState;
   initialSorting?: SortingState;

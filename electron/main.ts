@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ServiceManager, type ServiceConfig } from './services.js';
@@ -45,9 +46,13 @@ function deliverDeepLink(url: string): void {
 // ── Window ─────────────────────────────────────────────────────────────────
 
 function createWindow(): BrowserWindow {
+  const windowIcon = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.resolve(__dirname, '..', '..', 'build', 'icon.png');
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    icon: windowIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -118,6 +123,8 @@ if (!gotTheLock) {
   void app.whenReady().then(async () => {
     // userData is only available after app is ready.
     const userData = app.getPath('userData');
+    const serviceLogDir = path.join(userData, 'logs', 'services');
+    fs.mkdirSync(serviceLogDir, { recursive: true });
 
     // Runtime-dependent env, layered on top of whatever the resolver decided.
     const runtimeEnv: Partial<Record<ServiceName, Record<string, string>>> = {
@@ -143,6 +150,7 @@ if (!gotTheLock) {
       port: ports[name],
       launcher,
       env: runtimeEnv[name],
+      logPath: path.join(serviceLogDir, `${name}.log`),
     }));
 
     if (runtime.manage) {

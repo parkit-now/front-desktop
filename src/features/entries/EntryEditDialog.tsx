@@ -186,6 +186,11 @@ function entryToPatch(
       body.rateSnapshotFractionPriceArs,
     );
   }
+  if (body.rateSnapshotMediaEstadiaPriceArs !== undefined) {
+    patch.rateSnapshotMediaEstadiaPriceArs = String(
+      body.rateSnapshotMediaEstadiaPriceArs,
+    );
+  }
   if (body.payments !== undefined) {
     patch.amountPaid = String(
       body.payments.reduce((sum, line) => sum + line.amount, 0),
@@ -287,6 +292,9 @@ export function EntryEditDialog({
           rateSnapshotFractionPriceArs: parseMoney(
             selectedRate.fractionPriceArs,
           ),
+          rateSnapshotMediaEstadiaPriceArs: parseMoney(
+            selectedRate.mediaEstadiaPriceArs,
+          ),
         }
       : {
           rateId: entry.rateId,
@@ -300,6 +308,9 @@ export function EntryEditDialog({
           rateSnapshotFractionPriceArs: parseMoney(
             entry.rateSnapshotFractionPriceArs ?? '0',
           ),
+          rateSnapshotMediaEstadiaPriceArs: parseMoney(
+            entry.rateSnapshotMediaEstadiaPriceArs ?? '0',
+          ),
         };
 
   const nextEnteredAt = inputValueToIso(enteredAt);
@@ -310,23 +321,23 @@ export function EntryEditDialog({
   );
   const suggestedAmount =
     nextEnteredAt && nextLeftAt
-      ? calcSuggestedAmount(
-          nextEnteredAt,
-          nextLeftAt,
-          rateSnapshot.rateSnapshotHourPriceArs,
-          rateSnapshot.rateSnapshotStayPriceArs,
-          rateSnapshot.rateSnapshotFractionPriceArs,
-        )
+      ? calcSuggestedAmount(nextEnteredAt, nextLeftAt, {
+          hour: rateSnapshot.rateSnapshotHourPriceArs,
+          fraction: rateSnapshot.rateSnapshotFractionPriceArs,
+          mediaEstadia: rateSnapshot.rateSnapshotMediaEstadiaPriceArs,
+          stay: rateSnapshot.rateSnapshotStayPriceArs,
+        })
       : 0;
   const originalSuggestedAmount =
     entry.enteredAt && entry.leftAt
-      ? calcSuggestedAmount(
-          entry.enteredAt,
-          entry.leftAt,
-          parseMoney(entry.rateSnapshotHourPriceArs ?? '0'),
-          parseMoney(entry.rateSnapshotStayPriceArs ?? '0'),
-          parseMoney(entry.rateSnapshotFractionPriceArs ?? '0'),
-        )
+      ? calcSuggestedAmount(entry.enteredAt, entry.leftAt, {
+          hour: parseMoney(entry.rateSnapshotHourPriceArs ?? '0'),
+          fraction: parseMoney(entry.rateSnapshotFractionPriceArs ?? '0'),
+          mediaEstadia: parseMoney(
+            entry.rateSnapshotMediaEstadiaPriceArs ?? '0',
+          ),
+          stay: parseMoney(entry.rateSnapshotStayPriceArs ?? '0'),
+        })
       : 0;
   const originalPayments = useMemo(
     () => paymentIdentity(toPaymentLines(entry, pms)),
@@ -394,6 +405,9 @@ export function EntryEditDialog({
     body.rateSnapshotStayPriceArs = parseMoney(selectedRate.stayPriceArs);
     body.rateSnapshotFractionPriceArs = parseMoney(
       selectedRate.fractionPriceArs,
+    );
+    body.rateSnapshotMediaEstadiaPriceArs = parseMoney(
+      selectedRate.mediaEstadiaPriceArs,
     );
   }
   if (paymentsChanged) {
@@ -553,6 +567,10 @@ export function EntryEditDialog({
               rateSnapshotFractionPriceArs:
                 result.rateSnapshotFractionPriceArs !== null
                   ? String(result.rateSnapshotFractionPriceArs)
+                  : undefined,
+              rateSnapshotMediaEstadiaPriceArs:
+                result.rateSnapshotMediaEstadiaPriceArs != null
+                  ? String(result.rateSnapshotMediaEstadiaPriceArs)
                   : undefined,
               version: result.version,
               syncSeq: result.syncSeq,

@@ -39,6 +39,8 @@ type FormState = {
   hourPriceArs: string;
   stayPriceArs: string;
   fractionPriceArs: string;
+  mediaEstadiaPriceArs: string;
+  autoFractionPrice: boolean;
   shortcutNumber: string;
 };
 
@@ -47,8 +49,19 @@ type FormErrors = {
   hourPriceArs?: string;
   stayPriceArs?: string;
   fractionPriceArs?: string;
+  mediaEstadiaPriceArs?: string;
   shortcutNumber?: string;
 };
+
+const FRACTIONS_PER_HOUR = 12;
+
+function derivedFractionPrice(hourPriceRaw: string): string {
+  const hour = validateMoney(hourPriceRaw);
+  if (hour.error || hour.value === undefined) return '';
+  return toMoneyInputString(
+    Math.round((hour.value / FRACTIONS_PER_HOUR) * 100) / 100,
+  );
+}
 
 type RateConfirmAction = {
   kind: 'deactivate' | 'activate' | 'delete';
@@ -72,6 +85,8 @@ function localToDisplay(r: LocalRate): RateDto {
     hourPriceArs: parseFloat(r.hourPriceArs),
     stayPriceArs: parseFloat(r.stayPriceArs),
     fractionPriceArs: parseFloat(r.fractionPriceArs),
+    mediaEstadiaPriceArs: parseFloat(r.mediaEstadiaPriceArs),
+    autoFractionPrice: r.autoFractionPrice,
     isActive: r.isActive,
     shortcutNumber: r.shortcutNumber ?? null,
     version: r.version,
@@ -89,6 +104,8 @@ function apiToLocal(r: RateDto): LocalRate {
     hourPriceArs: String(r.hourPriceArs),
     stayPriceArs: String(r.stayPriceArs),
     fractionPriceArs: String(r.fractionPriceArs),
+    mediaEstadiaPriceArs: String(r.mediaEstadiaPriceArs),
+    autoFractionPrice: r.autoFractionPrice,
     isActive: r.isActive,
     shortcutNumber: r.shortcutNumber ?? undefined,
     version: r.version,
@@ -127,6 +144,8 @@ function emptyForm(): FormState {
     hourPriceArs: '',
     stayPriceArs: '',
     fractionPriceArs: '',
+    mediaEstadiaPriceArs: '',
+    autoFractionPrice: true,
     shortcutNumber: '',
   };
 }
@@ -137,6 +156,8 @@ function fromRate(rate: RateDto): FormState {
     hourPriceArs: toMoneyInputString(rate.hourPriceArs),
     stayPriceArs: toMoneyInputString(rate.stayPriceArs),
     fractionPriceArs: toMoneyInputString(rate.fractionPriceArs),
+    mediaEstadiaPriceArs: toMoneyInputString(rate.mediaEstadiaPriceArs),
+    autoFractionPrice: rate.autoFractionPrice,
     shortcutNumber:
       rate.shortcutNumber != null ? String(rate.shortcutNumber) : '',
   };
@@ -224,12 +245,14 @@ export function RatesPanel({
       !validateMoney(form.hourPriceArs).error &&
       !validateMoney(form.stayPriceArs).error &&
       !validateMoney(form.fractionPriceArs).error &&
+      !validateMoney(form.mediaEstadiaPriceArs).error &&
       Number.isInteger(n) &&
       n >= 1
     );
   }, [
     form.fractionPriceArs,
     form.hourPriceArs,
+    form.mediaEstadiaPriceArs,
     form.name,
     form.shortcutNumber,
     form.stayPriceArs,
@@ -279,6 +302,7 @@ export function RatesPanel({
       hourPriceArs: number;
       stayPriceArs: number;
       fractionPriceArs: number;
+      mediaEstadiaPriceArs: number;
       shortcutNumber: number;
     };
   } {
@@ -299,6 +323,22 @@ export function RatesPanel({
 
     const fraction = validateMoney(form.fractionPriceArs);
     if (fraction.error) nextErrors.fractionPriceArs = fraction.error;
+
+    const mediaEstadia = validateMoney(form.mediaEstadiaPriceArs);
+    if (mediaEstadia.error) {
+      nextErrors.mediaEstadiaPriceArs = mediaEstadia.error;
+    } else if (
+      !stay.error &&
+      mediaEstadia.value !== undefined &&
+      stay.value !== undefined &&
+      mediaEstadia.value > stay.value
+    ) {
+      // Un tope de 12h por encima del de 24h haría que el precio BAJE al cruzar
+      // las 12 horas. El motor lo acota igual (no puede confiar en snapshots
+      // viejos), pero no hay razón para dejar cargar una tarifa así.
+      nextErrors.mediaEstadiaPriceArs =
+        'No puede superar el precio de la estadía.';
+    }
 
     const shortcutRaw = form.shortcutNumber.trim();
     const shortcutN = parseInt(shortcutRaw, 10);
@@ -334,6 +374,7 @@ export function RatesPanel({
         hourPriceArs: hour.value ?? 0,
         stayPriceArs: stay.value ?? 0,
         fractionPriceArs: fraction.value ?? 0,
+        mediaEstadiaPriceArs: mediaEstadia.value ?? 0,
         shortcutNumber,
       },
     };
@@ -360,6 +401,8 @@ export function RatesPanel({
           hourPriceArs: payload.hourPriceArs,
           stayPriceArs: payload.stayPriceArs,
           fractionPriceArs: payload.fractionPriceArs,
+          mediaEstadiaPriceArs: payload.mediaEstadiaPriceArs,
+          autoFractionPrice: form.autoFractionPrice,
           shortcutNumber: payload.shortcutNumber,
         };
 
@@ -378,6 +421,8 @@ export function RatesPanel({
             hourPriceArs: String(payload.hourPriceArs),
             stayPriceArs: String(payload.stayPriceArs),
             fractionPriceArs: String(payload.fractionPriceArs),
+            mediaEstadiaPriceArs: String(payload.mediaEstadiaPriceArs),
+            autoFractionPrice: form.autoFractionPrice,
             isActive: true,
             shortcutNumber: payload.shortcutNumber,
             version: 1,
@@ -414,6 +459,9 @@ export function RatesPanel({
         const currentFractionPrice = toMoneyNumber(
           editingRate.fractionPriceArs,
         );
+        const currentMediaEstadiaPrice = toMoneyNumber(
+          editingRate.mediaEstadiaPriceArs,
+        );
 
         if (payload.name !== editingRate.name) body.name = payload.name;
         if (payload.hourPriceArs !== currentHourPrice)
@@ -422,6 +470,10 @@ export function RatesPanel({
           body.stayPriceArs = payload.stayPriceArs;
         if (payload.fractionPriceArs !== currentFractionPrice)
           body.fractionPriceArs = payload.fractionPriceArs;
+        if (payload.mediaEstadiaPriceArs !== currentMediaEstadiaPrice)
+          body.mediaEstadiaPriceArs = payload.mediaEstadiaPriceArs;
+        if (form.autoFractionPrice !== editingRate.autoFractionPrice)
+          body.autoFractionPrice = form.autoFractionPrice;
         if (payload.shortcutNumber !== editingRate.shortcutNumber)
           body.shortcutNumber = payload.shortcutNumber;
 
@@ -459,6 +511,10 @@ export function RatesPanel({
                 fractionPriceArs:
                   body.fractionPriceArs !== undefined
                     ? String(body.fractionPriceArs)
+                    : undefined,
+                mediaEstadiaPriceArs:
+                  body.mediaEstadiaPriceArs !== undefined
+                    ? String(body.mediaEstadiaPriceArs)
                     : undefined,
                 shortcutNumber: body.shortcutNumber,
                 updatedAt: new Date().toISOString(),
@@ -652,6 +708,14 @@ export function RatesPanel({
         size: 220,
         cell: ({ row }) => <strong>{row.original.name}</strong>,
       },
+      // Los precios van de menor a mayor tramo cubierto: 5 min, 1 h, 12 h, 24 h.
+      // Es el orden en el que muerden los topes al cobrar.
+      {
+        accessorKey: 'fractionPriceArs',
+        header: 'Fracción',
+        size: 140,
+        cell: ({ row }) => formatArs(row.original.fractionPriceArs),
+      },
       {
         accessorKey: 'hourPriceArs',
         header: 'Hora',
@@ -659,16 +723,16 @@ export function RatesPanel({
         cell: ({ row }) => formatArs(row.original.hourPriceArs),
       },
       {
+        accessorKey: 'mediaEstadiaPriceArs',
+        header: 'Media estadía',
+        size: 150,
+        cell: ({ row }) => formatArs(row.original.mediaEstadiaPriceArs),
+      },
+      {
         accessorKey: 'stayPriceArs',
         header: 'Estadía',
         size: 140,
         cell: ({ row }) => formatArs(row.original.stayPriceArs),
-      },
-      {
-        accessorKey: 'fractionPriceArs',
-        header: 'Fracción',
-        size: 140,
-        cell: ({ row }) => formatArs(row.original.fractionPriceArs),
       },
       {
         id: 'status',
@@ -845,10 +909,14 @@ export function RatesPanel({
             >
               <div className="rate-dialog-grid">
                 <div className="form-field">
+                  <label className="form-label" htmlFor="rate-shortcut">
+                    Nº atajo
+                  </label>
                   <input
+                    id="rate-shortcut"
                     type="text"
                     inputMode="numeric"
-                    placeholder="Nº atajo (ej. 1)"
+                    placeholder="ej. 1"
                     value={form.shortcutNumber}
                     onChange={(event) => {
                       setForm((prev) => ({
@@ -867,9 +935,13 @@ export function RatesPanel({
                 </div>
 
                 <div className="form-field" style={{ gridColumn: 'span 2' }}>
+                  <label className="form-label" htmlFor="rate-name">
+                    Nombre
+                  </label>
                   <input
+                    id="rate-name"
                     type="text"
-                    placeholder="Nombre (ej. DIA AUTO)"
+                    placeholder="ej. DIA AUTO"
                     value={form.name}
                     onChange={(event) => {
                       setForm((prev) => ({
@@ -885,17 +957,28 @@ export function RatesPanel({
                 </div>
               </div>
 
-              <div className="rate-dialog-grid">
+              <div className="rate-dialog-grid rate-dialog-grid--prices">
                 <div className="form-field">
+                  <label className="form-label" htmlFor="rate-hour-price">
+                    Precio hora
+                  </label>
                   <input
+                    id="rate-hour-price"
                     type="text"
                     inputMode="decimal"
-                    placeholder="Precio hora"
+                    placeholder="0,00"
                     value={form.hourPriceArs}
                     onChange={(event) => {
+                      const hourPriceArs = event.target.value;
                       setForm((prev) => ({
                         ...prev,
-                        hourPriceArs: event.target.value,
+                        hourPriceArs,
+                        // Con el autocálculo tildado la fracción sigue a la hora
+                        // en vivo: el operador ve el número cambiar mientras
+                        // tipea, en vez de enterarse recién al guardar.
+                        fractionPriceArs: prev.autoFractionPrice
+                          ? derivedFractionPrice(hourPriceArs)
+                          : prev.fractionPriceArs,
                       }));
                     }}
                     className={errors.hourPriceArs ? 'input-error' : undefined}
@@ -906,30 +989,16 @@ export function RatesPanel({
                 </div>
 
                 <div className="form-field">
+                  <label className="form-label" htmlFor="rate-fraction-price">
+                    Precio fracción (5 min)
+                  </label>
                   <input
+                    id="rate-fraction-price"
                     type="text"
                     inputMode="decimal"
-                    placeholder="Precio estadía"
-                    value={form.stayPriceArs}
-                    onChange={(event) => {
-                      setForm((prev) => ({
-                        ...prev,
-                        stayPriceArs: event.target.value,
-                      }));
-                    }}
-                    className={errors.stayPriceArs ? 'input-error' : undefined}
-                  />
-                  {errors.stayPriceArs ? (
-                    <p className="field-error">{errors.stayPriceArs}</p>
-                  ) : null}
-                </div>
-
-                <div className="form-field">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="Precio fracción"
+                    placeholder="0,00"
                     value={form.fractionPriceArs}
+                    disabled={form.autoFractionPrice}
                     onChange={(event) => {
                       setForm((prev) => ({
                         ...prev,
@@ -944,7 +1013,82 @@ export function RatesPanel({
                     <p className="field-error">{errors.fractionPriceArs}</p>
                   ) : null}
                 </div>
+
+                <div className="form-field">
+                  <label
+                    className="form-label"
+                    htmlFor="rate-media-estadia-price"
+                  >
+                    Precio media estadía (12 h)
+                  </label>
+                  <input
+                    id="rate-media-estadia-price"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={form.mediaEstadiaPriceArs}
+                    onChange={(event) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        mediaEstadiaPriceArs: event.target.value,
+                      }));
+                    }}
+                    className={
+                      errors.mediaEstadiaPriceArs ? 'input-error' : undefined
+                    }
+                  />
+                  {errors.mediaEstadiaPriceArs ? (
+                    <p className="field-error">{errors.mediaEstadiaPriceArs}</p>
+                  ) : null}
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label" htmlFor="rate-stay-price">
+                    Precio estadía (24 h)
+                  </label>
+                  <input
+                    id="rate-stay-price"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={form.stayPriceArs}
+                    onChange={(event) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        stayPriceArs: event.target.value,
+                      }));
+                    }}
+                    className={errors.stayPriceArs ? 'input-error' : undefined}
+                  />
+                  {errors.stayPriceArs ? (
+                    <p className="field-error">{errors.stayPriceArs}</p>
+                  ) : null}
+                </div>
               </div>
+
+              <label className="rate-dialog-checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.autoFractionPrice}
+                  onChange={(event) => {
+                    const autoFractionPrice = event.target.checked;
+                    setForm((prev) => ({
+                      ...prev,
+                      autoFractionPrice,
+                      fractionPriceArs: autoFractionPrice
+                        ? derivedFractionPrice(prev.hourPriceArs)
+                        : prev.fractionPriceArs,
+                    }));
+                  }}
+                />
+                <span>
+                  Autocalcular la fracción legal (hora ÷ 12)
+                  <span className="rate-dialog-checkbox-hint">
+                    La fracción de 5 minutos no puede costar más que un doceavo
+                    de la hora.
+                  </span>
+                </span>
+              </label>
 
               <p className="form-helper">
                 {editorMode === 'create'

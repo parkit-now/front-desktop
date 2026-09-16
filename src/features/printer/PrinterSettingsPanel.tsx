@@ -6,10 +6,13 @@ import {
   type PrintOutcome,
 } from '../../lib/print/printTicket';
 import {
+  PAPER_SIZES,
   readPrinterSettings,
+  setPaperSize,
   setSelectedPrinter,
   setTailFeedMm,
   TAIL_FEED_OPTIONS_MM,
+  type PaperSize,
 } from '../../lib/print/printerSettings';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { AppSelect } from '../../lib/ui/AppSelect';
@@ -30,6 +33,9 @@ export function PrinterSettingsPanel({ tenantName, tenantAddress }: Props) {
   );
   const [tailFeed, setTailFeed] = useState<number>(
     () => readPrinterSettings().tailFeedMm,
+  );
+  const [paperSize, setPaper] = useState<PaperSize>(
+    () => readPrinterSettings().paperSize,
   );
   const [testing, setTesting] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -72,17 +78,21 @@ export function PrinterSettingsPanel({ tenantName, tenantAddress }: Props) {
       // Uses the real builder and the real channel so one click validates the
       // paper width, the device name and silent mode end to end.
       const outcome: PrintOutcome = await bridge.printTicket({
-        html: buildEntryTicketHtml({
-          parkingName: tenantName,
-          parkingAddress: tenantAddress,
-          vehicle: 'VW Suran',
-          color: 'Negra',
-          enteredAt: new Date().toISOString(),
-          rateNumber: 2,
-          ticketNumber: 0,
-        }),
+        html: buildEntryTicketHtml(
+          {
+            parkingName: tenantName,
+            parkingAddress: tenantAddress,
+            vehicle: 'VW Suran',
+            color: 'Negra',
+            enteredAt: new Date().toISOString(),
+            rateNumber: 2,
+            ticketNumber: 0,
+          },
+          { bodyWidthMm: PAPER_SIZES[paperSize].bodyWidthMm },
+        ),
         deviceName: selected || null,
         tailFeedMm: tailFeed,
+        pageWidthMm: PAPER_SIZES[paperSize].pageWidthMm,
       });
       showToast(
         outcome.ok
@@ -166,6 +176,34 @@ export function PrinterSettingsPanel({ tenantName, tenantAddress }: Props) {
             o volvé a conectarla.
           </p>
         ) : null}
+
+        <div className="printer-panel-field">
+          <label className="form-label" htmlFor="printer-paper-size">
+            Tamaño de papel
+          </label>
+          <AppSelect
+            id="printer-paper-size"
+            value={paperSize}
+            onChange={(value) => {
+              const next = value as PaperSize;
+              setPaper(next);
+              setPaperSize(next);
+              showToast({
+                message: 'Tamaño de papel guardado.',
+                kind: 'success',
+              });
+            }}
+            options={(Object.keys(PAPER_SIZES) as PaperSize[]).map((key) => ({
+              value: key,
+              label: PAPER_SIZES[key].label,
+            }))}
+          />
+          <p className="muted printer-panel-hint">
+            Si la impresora avanza el papel y corta sin imprimir nada, probá con
+            la opción del driver: algunas térmicas rechazan los tamaños de
+            página personalizados.
+          </p>
+        </div>
 
         <div className="printer-panel-field">
           <label className="form-label" htmlFor="printer-tail-feed">

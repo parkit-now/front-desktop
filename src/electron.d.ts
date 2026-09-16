@@ -35,6 +35,7 @@ declare global {
         deviceName: string | null;
         /** Papel alimentado después de la última línea, para la guillotina. */
         tailFeedMm: number;
+        pageWidthMm: number | null;
       }) => Promise<DesktopPrintResult>;
     };
   }

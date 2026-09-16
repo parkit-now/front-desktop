@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { closeEntry } from '../../lib/api/entries';
@@ -21,7 +21,11 @@ import {
   formatDuration,
   generateUuidV7,
   isCashMethod,
+  type StayPrices,
 } from './entryUtils';
+
+/** Cada cuánto se recalcula el sugerido con el modal abierto. */
+const TICK_MS = 15_000;
 
 interface Props {
   entry: LocalEntry;
@@ -34,28 +38,48 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
 
-  const now = new Date().toISOString();
-  const hourPrice = entry.rateSnapshotHourPriceArs
-    ? parseFloat(entry.rateSnapshotHourPriceArs)
-    : 0;
-  const stayPrice = entry.rateSnapshotStayPriceArs
-    ? parseFloat(entry.rateSnapshotStayPriceArs)
-    : 0;
-  const fractionPrice = entry.rateSnapshotFractionPriceArs
-    ? parseFloat(entry.rateSnapshotFractionPriceArs)
-    : 0;
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const suggested = calcSuggestedAmount(
-    entry.enteredAt,
-    now,
-    hourPrice,
-    stayPrice,
-    fractionPrice,
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const prices: StayPrices = useMemo(
+    () => ({
+      hour: parseFloat(entry.rateSnapshotHourPriceArs ?? '') || 0,
+      fraction: parseFloat(entry.rateSnapshotFractionPriceArs ?? '') || 0,
+      mediaEstadia:
+        parseFloat(entry.rateSnapshotMediaEstadiaPriceArs ?? '') || 0,
+      stay: parseFloat(entry.rateSnapshotStayPriceArs ?? '') || 0,
+    }),
+    [
+      entry.rateSnapshotFractionPriceArs,
+      entry.rateSnapshotHourPriceArs,
+      entry.rateSnapshotMediaEstadiaPriceArs,
+      entry.rateSnapshotStayPriceArs,
+    ],
+  );
+
+  const suggested = useMemo(
+    () =>
+      calcSuggestedAmount(
+        entry.enteredAt,
+        new Date(nowMs).toISOString(),
+        prices,
+      ),
+    [entry.enteredAt, nowMs, prices],
   );
 
   const [amount, setAmount] = useState(
     suggested > 0 ? suggested.toFixed(2) : '',
   );
+  const [amountEdited, setAmountEdited] = useState(false);
+
+  useEffect(() => {
+    if (amountEdited) return;
+    setAmount(suggested > 0 ? suggested.toFixed(2) : '');
+  }, [amountEdited, suggested]);
   const [received, setReceived] = useState('');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [selectedPmId, setSelectedPmId] = useState('');
@@ -424,9 +448,14 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                   <div className="exit-info-row exit-rate-breakdown">
                     <span className="muted">Precios</span>
                     <span className="exit-rate-breakdown-value">
-                      Estadía {formatArs(stayPrice)} · Hora{' '}
-                      {formatArs(hourPrice)} · Fracción{' '}
-                      {formatArs(fractionPrice)}
+                      Hora {formatArs(prices.hour)} · Fracción{' '}
+                      {formatArs(prices.fraction)}
+                      {/* Una tarifa vieja no tiene escalón de 12h: mostrarlo en
+                          $0 haría pensar que la media estadía es gratis. */}
+                      {prices.mediaEstadia > 0
+                        ? ` · Media estadía ${formatArs(prices.mediaEstadia)}`
+                        : ''}{' '}
+                      · Estadía {formatArs(prices.stay)}
                     </span>
                   </div>
                 </>
@@ -448,7 +477,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                   placeholder="0,00"
                   className="exit-money-control"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(e) => {
+                    setAmountEdited(true);
+                    setAmount(e.target.value);
+                  }}
                   autoFocus
                 />
               </div>

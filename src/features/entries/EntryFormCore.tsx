@@ -26,6 +26,21 @@ import { type LocalRate } from '../../lib/db/localDb';
 
 export type EntryFormVariant = 'manual' | 'auto';
 
+export type ManualEntryDraft = {
+  plate: string;
+  brand: string;
+  model: string;
+  vehicleInput: string;
+  vehicleSelected: boolean;
+  color: string;
+  colorSelected: boolean;
+  rateId: string;
+  rateInput: string;
+  rateSelected: boolean;
+  cochera: string;
+  notes: string;
+};
+
 const ACTIVE_ENTRY_MESSAGE = 'El vehículo ya tiene un ingreso activo.';
 
 interface Props {
@@ -45,6 +60,12 @@ interface Props {
   /** Header of the printed ticket. Only used by the manual variant. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  /** Temporary in-memory draft for the manual operativo form. */
+  initialDraft?: ManualEntryDraft | null;
+  /** Called as the manual operativo draft changes. Should not update parent state per key stroke. */
+  onDraftChange?: (draft: ManualEntryDraft) => void;
+  /** Called when the manual operativo draft is intentionally cleared. */
+  onDraftReset?: () => void;
 }
 
 type VehicleSuggestion =
@@ -256,27 +277,41 @@ export function EntryFormCore({
   onRegistered,
   parkingName = null,
   parkingAddress = null,
+  initialDraft = null,
+  onDraftChange,
+  onDraftReset,
 }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
 
   // Field values
-  const [plate, setPlate] = useState((initialPlate ?? '').toUpperCase());
-  const [brand, setBrand] = useState('');
-  const [model, setModel] = useState('');
-  const [vehicleInput, setVehicleInput] = useState('');
+  const manualDraft = variant === 'manual' ? initialDraft : null;
+  const [plate, setPlate] = useState(
+    () => manualDraft?.plate ?? (initialPlate ?? '').toUpperCase(),
+  );
+  const [brand, setBrand] = useState(() => manualDraft?.brand ?? '');
+  const [model, setModel] = useState(() => manualDraft?.model ?? '');
+  const [vehicleInput, setVehicleInput] = useState(
+    () => manualDraft?.vehicleInput ?? '',
+  );
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [color, setColor] = useState('');
-  const [colorSelected, setColorSelected] = useState(false);
+  const [color, setColor] = useState(() => manualDraft?.color ?? '');
+  const [colorSelected, setColorSelected] = useState(
+    () => manualDraft?.colorSelected ?? false,
+  );
   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
   const [highlightedColorIdx, setHighlightedColorIdx] = useState(0);
-  const [rateId, setRateId] = useState('');
-  const [rateInput, setRateInput] = useState('');
-  const [rateSelected, setRateSelected] = useState(false);
+  const [rateId, setRateId] = useState(() => manualDraft?.rateId ?? '');
+  const [rateInput, setRateInput] = useState(
+    () => manualDraft?.rateInput ?? '',
+  );
+  const [rateSelected, setRateSelected] = useState(
+    () => manualDraft?.rateSelected ?? false,
+  );
   const [showRateSuggestions, setShowRateSuggestions] = useState(false);
   const [highlightedRateIdx, setHighlightedRateIdx] = useState(0);
-  const [cochera, setCochera] = useState('');
-  const [notes, setNotes] = useState('');
+  const [cochera, setCochera] = useState(() => manualDraft?.cochera ?? '');
+  const [notes, setNotes] = useState(() => manualDraft?.notes ?? '');
   const [saving, setSaving] = useState(false);
 
   // Field errors
@@ -292,6 +327,7 @@ export function EntryFormCore({
   // Double-Enter confirmation state
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNextDraftSyncRef = useRef(false);
 
   // Refs for Enter/Tab navigation
   const plateRef = useRef<HTMLInputElement>(null);
@@ -301,7 +337,9 @@ export function EntryFormCore({
 
   const plateResolved = useRef(false);
   // True when user explicitly selected a catalog suggestion (brand+model resolved).
-  const [vehicleSelected, setVehicleSelected] = useState(false);
+  const [vehicleSelected, setVehicleSelected] = useState(
+    () => manualDraft?.vehicleSelected ?? false,
+  );
 
   // Exclude soft-deleted rates: charging with a rate the owner took down is the
   // whole point of the tombstone sync. `pullRates` already removes them, this is
@@ -337,6 +375,43 @@ export function EntryFormCore({
   useEffect(() => {
     plateResolved.current = false;
   }, [plate]);
+
+  useEffect(() => {
+    if (variant !== 'manual' || !onDraftChange) return;
+    if (skipNextDraftSyncRef.current) {
+      skipNextDraftSyncRef.current = false;
+      return;
+    }
+    onDraftChange({
+      plate,
+      brand,
+      model,
+      vehicleInput,
+      vehicleSelected,
+      color,
+      colorSelected,
+      rateId,
+      rateInput,
+      rateSelected,
+      cochera,
+      notes,
+    });
+  }, [
+    brand,
+    cochera,
+    color,
+    colorSelected,
+    model,
+    notes,
+    onDraftChange,
+    plate,
+    rateId,
+    rateInput,
+    rateSelected,
+    vehicleInput,
+    vehicleSelected,
+    variant,
+  ]);
 
   useEffect(() => {
     setHighlightedSuggestionIdx(0);
@@ -926,6 +1001,9 @@ export function EntryFormCore({
       rateSnapshotFractionPriceArs: selectedRate
         ? parseFloat(selectedRate.fractionPriceArs)
         : undefined,
+      rateSnapshotMediaEstadiaPriceArs: selectedRate
+        ? parseFloat(selectedRate.mediaEstadiaPriceArs)
+        : undefined,
       cashSessionId: activeSession?.id,
       ticketNumber,
     };
@@ -963,6 +1041,10 @@ export function EntryFormCore({
             result.rateSnapshotFractionPriceArs !== null
               ? String(result.rateSnapshotFractionPriceArs)
               : undefined,
+          rateSnapshotMediaEstadiaPriceArs:
+            result.rateSnapshotMediaEstadiaPriceArs != null
+              ? String(result.rateSnapshotMediaEstadiaPriceArs)
+              : undefined,
           cashSessionId: result.cashSessionId ?? undefined,
           ticketNumber: result.ticketNumber ?? undefined,
           version: result.version,
@@ -991,6 +1073,8 @@ export function EntryFormCore({
               rateSnapshotHourPriceArs: selectedRate?.hourPriceArs,
               rateSnapshotStayPriceArs: selectedRate?.stayPriceArs,
               rateSnapshotFractionPriceArs: selectedRate?.fractionPriceArs,
+              rateSnapshotMediaEstadiaPriceArs:
+                selectedRate?.mediaEstadiaPriceArs,
               cashSessionId: activeSession?.id,
               ticketNumber,
               version: 1,
@@ -1043,7 +1127,9 @@ export function EntryFormCore({
       if (variant === 'auto') {
         onRegistered?.({ plate: normalizedPlate, entryId });
       } else {
+        skipNextDraftSyncRef.current = true;
         resetFields();
+        onDraftReset?.();
         setTimeout(() => plateRef.current?.focus(), 50);
       }
     } catch (error) {
