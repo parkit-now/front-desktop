@@ -926,6 +926,9 @@ export function EntryFormCore({
       rateSnapshotFractionPriceArs: selectedRate
         ? parseFloat(selectedRate.fractionPriceArs)
         : undefined,
+      rateSnapshotMediaEstadiaPriceArs: selectedRate
+        ? parseFloat(selectedRate.mediaEstadiaPriceArs)
+        : undefined,
       cashSessionId: activeSession?.id,
       ticketNumber,
     };
@@ -963,6 +966,10 @@ export function EntryFormCore({
             result.rateSnapshotFractionPriceArs !== null
               ? String(result.rateSnapshotFractionPriceArs)
               : undefined,
+          rateSnapshotMediaEstadiaPriceArs:
+            result.rateSnapshotMediaEstadiaPriceArs != null
+              ? String(result.rateSnapshotMediaEstadiaPriceArs)
+              : undefined,
           cashSessionId: result.cashSessionId ?? undefined,
           ticketNumber: result.ticketNumber ?? undefined,
           version: result.version,
@@ -991,6 +998,8 @@ export function EntryFormCore({
               rateSnapshotHourPriceArs: selectedRate?.hourPriceArs,
               rateSnapshotStayPriceArs: selectedRate?.stayPriceArs,
               rateSnapshotFractionPriceArs: selectedRate?.fractionPriceArs,
+              rateSnapshotMediaEstadiaPriceArs:
+                selectedRate?.mediaEstadiaPriceArs,
               cashSessionId: activeSession?.id,
               ticketNumber,
               version: 1,

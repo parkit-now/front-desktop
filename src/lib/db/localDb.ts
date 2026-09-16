@@ -19,6 +19,8 @@ export interface LocalRate {
   hourPriceArs: string;
   stayPriceArs: string;
   fractionPriceArs: string;
+  mediaEstadiaPriceArs: string;
+  autoFractionPrice: boolean;
   isActive: boolean;
   shortcutNumber?: number;
   version: number;
@@ -50,6 +52,7 @@ export interface LocalEntry {
   rateSnapshotHourPriceArs?: string;
   rateSnapshotStayPriceArs?: string;
   rateSnapshotFractionPriceArs?: string;
+  rateSnapshotMediaEstadiaPriceArs?: string;
   cashSessionId?: string;
   ticketNumber?: number;
   version: number;
@@ -511,6 +514,20 @@ class ParkitLocalDb extends Dexie {
               typeof s.key === 'string' &&
               (s.key.startsWith('paymentMethods:') ||
                 s.key.startsWith('paymentTransactions:')),
+          )
+          .delete();
+      });
+
+    this.version(14)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' &&
+              (s.key.startsWith('rates:') || s.key.startsWith('entries:')),
           )
           .delete();
       });

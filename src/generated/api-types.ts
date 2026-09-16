@@ -1899,6 +1899,7 @@ export interface components {
             rateId?: string;
             rateSnapshotFractionPriceArs?: number;
             rateSnapshotHourPriceArs?: number;
+            rateSnapshotMediaEstadiaPriceArs?: number;
             /** @example Tarifa Pick Up */
             rateSnapshotName?: string;
             rateSnapshotStayPriceArs?: number;
@@ -1998,6 +1999,7 @@ export interface components {
             rateId?: string;
             rateSnapshotFractionPriceArs?: number;
             rateSnapshotHourPriceArs?: number;
+            rateSnapshotMediaEstadiaPriceArs?: number;
             /** @example Tarifa Día Auto */
             rateSnapshotName?: string;
             rateSnapshotStayPriceArs?: number;
@@ -2055,6 +2057,11 @@ export interface components {
         };
         CreateRateDto: {
             /**
+             * @description Si la fracción se deriva de hora / 12 en el formulario. Preferencia de UI: el valor derivado se guarda igual en fractionPriceArs.
+             * @example false
+             */
+            autoFractionPrice?: boolean;
+            /**
              * @description Precio de la fraccion en ARS.
              * @example 300
              */
@@ -2070,6 +2077,11 @@ export interface components {
              * @example 018f44f7-9a96-7f75-9e9c-44ed9432fc12
              */
             id: string;
+            /**
+             * @description Tope de las primeras 12 horas en ARS. 0 = la tarifa no tiene este escalón.
+             * @example 12000
+             */
+            mediaEstadiaPriceArs: number;
             /** @example DIA AUTO */
             name: string;
             /**
@@ -2384,6 +2396,7 @@ export interface components {
             rateId?: string;
             rateSnapshotFractionPriceArs?: number;
             rateSnapshotHourPriceArs?: number;
+            rateSnapshotMediaEstadiaPriceArs?: number;
             rateSnapshotName?: string;
             rateSnapshotStayPriceArs?: number;
             /**
@@ -3175,6 +3188,7 @@ export interface components {
             maxSeq: number;
         };
         RateDto: {
+            autoFractionPrice: boolean;
             /** Format: date-time */
             createdAt: string;
             /**
@@ -3187,6 +3201,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             isActive: boolean;
+            mediaEstadiaPriceArs: number;
             name: string;
             shortcutNumber: number | null;
             stayPriceArs: number;
@@ -3726,6 +3741,11 @@ export interface components {
         };
         UpdateRateDto: {
             /**
+             * @description Si la fracción se deriva de hora / 12 en el formulario. Preferencia de UI: el valor derivado se guarda igual en fractionPriceArs.
+             * @example false
+             */
+            autoFractionPrice?: boolean;
+            /**
              * @description Precio de la fraccion en ARS.
              * @example 325
              */
@@ -3740,6 +3760,11 @@ export interface components {
              * @example true
              */
             isActive?: boolean;
+            /**
+             * @description Tope de las primeras 12 horas en ARS. 0 = la tarifa no tiene este escalón.
+             * @example 12000
+             */
+            mediaEstadiaPriceArs?: number;
             /** @example NOCHE AUTO */
             name?: string;
             /**

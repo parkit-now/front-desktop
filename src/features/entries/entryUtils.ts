@@ -1,4 +1,7 @@
 import type { PaymentMethodKind } from '../../lib/db/localDb';
+import { calcStayPrice, type StayPrices } from './pricing';
+
+export type { StayPrices };
 
 export function generateUuidV7(): string {
   const bytes = new Uint8Array(16);
@@ -98,22 +101,8 @@ export function computeChange(amountDue: number, received: number): number {
 export function calcSuggestedAmount(
   enteredAt: string,
   leftAt: string,
-  hourPrice: number,
-  stayPrice: number,
-  fractionPrice: number,
+  prices: StayPrices,
 ): number {
   const ms = new Date(leftAt).getTime() - new Date(enteredAt).getTime();
-  const totalMinutes = ms / 60000;
-
-  if (totalMinutes <= 0) return 0;
-
-  const hours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
-
-  const fullHoursAmount = hours * hourPrice;
-  const fractionAmount = remainingMinutes > 0 ? fractionPrice : 0;
-  const total = fullHoursAmount + fractionAmount;
-
-  // Cap at stay price if exceeded
-  return Math.min(total, stayPrice);
+  return calcStayPrice(ms / 60000, prices);
 }

@@ -74,6 +74,8 @@ function rateToLocal(r: RateDto): LocalRate {
     hourPriceArs: String(r.hourPriceArs),
     stayPriceArs: String(r.stayPriceArs),
     fractionPriceArs: String(r.fractionPriceArs),
+    mediaEstadiaPriceArs: String(r.mediaEstadiaPriceArs ?? 0),
+    autoFractionPrice: r.autoFractionPrice ?? false,
     isActive: r.isActive,
     shortcutNumber: r.shortcutNumber ?? undefined,
     version: r.version,
@@ -110,6 +112,10 @@ function entryToLocal(e: EntryDto): LocalEntry {
     rateSnapshotFractionPriceArs:
       e.rateSnapshotFractionPriceArs !== null
         ? String(e.rateSnapshotFractionPriceArs)
+        : undefined,
+    rateSnapshotMediaEstadiaPriceArs:
+      e.rateSnapshotMediaEstadiaPriceArs != null
+        ? String(e.rateSnapshotMediaEstadiaPriceArs)
         : undefined,
     cashSessionId: e.cashSessionId ?? undefined,
     ticketNumber: e.ticketNumber ?? undefined,
