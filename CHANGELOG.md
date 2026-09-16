@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/parkit-now/front-desktop/compare/v1.1.0...v1.1.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **release:** trigger desktop release build ([ee50ee1](https://github.com/parkit-now/front-desktop/commit/ee50ee1390918b7cd854a52727b29917406fefbe))
+
 # [1.1.0](https://github.com/parkit-now/front-desktop/compare/v1.0.4...v1.1.0) (2026-09-15)
 
 
