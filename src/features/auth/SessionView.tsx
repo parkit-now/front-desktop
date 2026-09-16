@@ -10,11 +10,12 @@ import {
   Truck,
   Archive,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CameraPanel } from '../camera/CameraPanel';
 import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { EntryForm } from '../entries/EntryForm';
+import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
@@ -81,6 +82,10 @@ function tenantStorageKey(userId: string): string {
 
 function profileStorageKey(userId: string): string {
   return `parkit.desktop.profile:${userId}`;
+}
+
+function manualEntryDraftKey(userId: string, tenantId: string): string {
+  return `${userId}:${tenantId}`;
 }
 
 function readStoredValue(key: string): string | null {
@@ -188,6 +193,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const [activeTenantId, setActiveTenantId] = useState<string | null>(() => {
     return readStoredValue(tenantStorageKey(session.user.id));
   });
+  const manualEntryDraftsRef = useRef<Record<string, ManualEntryDraft>>({});
+  const activeDraftKeyRef = useRef<string | null>(null);
   // Platform admins have no memberships; they pick a lot from the full list.
   const [adminParkings, setAdminParkings] = useState<ParkingDto[] | null>(null);
 
@@ -195,6 +202,32 @@ export function SessionView({ session, sessionStale = false }: Props) {
     () => tenantStorageKey(session.user.id),
     [session.user.id],
   );
+  const activeManualEntryDraftKey = activeTenantId
+    ? manualEntryDraftKey(session.user.id, activeTenantId)
+    : null;
+
+  useEffect(() => {
+    if (
+      activeDraftKeyRef.current &&
+      activeDraftKeyRef.current !== activeManualEntryDraftKey
+    ) {
+      delete manualEntryDraftsRef.current[activeDraftKeyRef.current];
+    }
+    activeDraftKeyRef.current = activeManualEntryDraftKey;
+  }, [activeManualEntryDraftKey]);
+
+  const handleManualEntryDraftChange = useCallback(
+    (draft: ManualEntryDraft) => {
+      if (!activeManualEntryDraftKey) return;
+      manualEntryDraftsRef.current[activeManualEntryDraftKey] = draft;
+    },
+    [activeManualEntryDraftKey],
+  );
+
+  const resetManualEntryDraft = useCallback(() => {
+    if (!activeManualEntryDraftKey) return;
+    delete manualEntryDraftsRef.current[activeManualEntryDraftKey];
+  }, [activeManualEntryDraftKey]);
 
   const activeCashSession = useLiveQuery(
     () =>
@@ -348,6 +381,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
 
   async function handleSignOut() {
     setPendingSignOut(true);
+    manualEntryDraftsRef.current = {};
     try {
       await signOut();
     } catch (error) {
@@ -654,6 +688,15 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         accessToken={session.access_token}
                         parkingName={activeTenantName}
                         parkingAddress={activeTenantAddress}
+                        initialDraft={
+                          activeManualEntryDraftKey
+                            ? (manualEntryDraftsRef.current[
+                                activeManualEntryDraftKey
+                              ] ?? null)
+                            : null
+                        }
+                        onDraftChange={handleManualEntryDraftChange}
+                        onDraftReset={resetManualEntryDraft}
                       />
                       <ExitControls
                         tenantId={activeTenantId}
