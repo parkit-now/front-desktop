@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Valida el mensaje de commit contra Conventional Commits.
+#
+# Es lo que decide la versión: un mensaje que no matchea el patrón del preset
+# angular no es "un commit sin tipo", es un commit que semantic-release IGNORA.
+# Ver scripts/check-commit-msg.sh para el detalle y para el caso real que nos
+# hizo publicar una release de features como PATCH.
+#
+# Para saltearlo en una emergencia: git commit --no-verify
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+exec ./scripts/check-commit-msg.sh "$1"

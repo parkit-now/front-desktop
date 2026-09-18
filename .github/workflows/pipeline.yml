@@ -10,6 +10,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Los mensajes de commit deciden la versión: semantic-release IGNORA los que
+  # no matchean el patrón de Conventional Commits, sin avisar. Así la v1.1.1
+  # salió como PATCH trayendo tres features. El hook local puede saltearse con
+  # --no-verify; esto no.
+  commits:
+    name: Commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validar los commits del PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          # Solo los commits que agrega ESTE PR: la historia vieja tiene
+          # mensajes que ya no se pueden reescribir.
+          while read -r sha; do
+            [ -n "$sha" ] || continue
+            msg=$(git log -1 --format=%s "$sha")
+            if ! ./scripts/check-commit-msg.sh --text "$msg"; then
+              echo "   en el commit $sha"
+              status=1
+            fi
+          done < <(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")
+          exit $status
+
   lint:
     runs-on: ubuntu-latest
     steps:
