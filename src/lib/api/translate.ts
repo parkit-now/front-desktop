@@ -74,6 +74,37 @@ const CODE_MESSAGES: Record<string, string> = {
   ENTRY_EXIT_NOT_AFTER_ENTRY:
     'La fecha y hora de egreso debe ser mayor a la de ingreso.',
 
+  // Medios de pago.
+  // Llega por el PATCH (renombrar, prender/apagar, marcar predeterminado)
+  // cuando el medio se borró entremedio. En el DELETE no se ve: ahí el panel
+  // se come el 404 a propósito y limpia local, porque el medio ya no está,
+  // que es justo lo que el operario quería.
+  PAYMENT_METHOD_NOT_FOUND:
+    'Este medio de pago ya no existe: lo eliminaron desde otro equipo o desde el panel web. Actualizá la lista y probá de nuevo.',
+  PAYMENT_METHOD_SYSTEM_LOCKED:
+    'Este medio lo trae el sistema: podés desactivarlo, pero no eliminarlo.',
+  // Se intentó PRENDER un medio que depende de una integración externa (hoy
+  // solo `mercadopago_qr`) sin la cuenta vinculada. El panel ya corta antes de
+  // llamar (ver `paymentMethodUtils.ts`), pero una op encolada que se sincroniza
+  // horas después llega igual acá, y el toast de sync lo muestra tal cual.
+  PAYMENT_METHOD_INTEGRATION_NOT_LINKED:
+    'Este medio no se puede prender desde acá. El dueño tiene que vincular Mercado Pago desde el panel web, en Integraciones.',
+
+  // Mercado Pago. Acá le hablamos al OPERARIO en medio de un cobro, con el
+  // cliente en la ventanilla: primero qué pasó, después la salida inmediata
+  // (cobrar por otro medio) y recién al final quién lo arregla. El dueño es el
+  // único que puede revincular, y lo hace desde el panel web.
+  MP_NOT_LINKED:
+    'No hay una cuenta de Mercado Pago vinculada. Cobrá en efectivo o por transferencia y avisale al dueño para que la vincule desde el panel.',
+  MP_ACCOUNT_TOKEN_EXPIRED:
+    'Se venció la conexión con Mercado Pago. Cobrá por otro medio y avisale al dueño para que la vuelva a vincular desde el panel.',
+  MP_ACCOUNT_REVOKED:
+    'Se desvinculó la cuenta de Mercado Pago. Cobrá en efectivo o por transferencia y avisale al dueño para que la vuelva a vincular desde el panel.',
+  // Transitorio y del lado de Mercado Pago: no hay nada que el dueño pueda
+  // arreglar, así que no lo mandamos a tocar el panel al pedo.
+  MP_UNAVAILABLE:
+    'Mercado Pago no está respondiendo. Cobrá en efectivo o por transferencia y probá de nuevo en unos minutos.',
+
   // Validacion (envoltorio — el detalle por campo se traduce con
   // translateValidationCode).
   VALIDATION_FAILED: 'Revisá los datos del formulario.',
