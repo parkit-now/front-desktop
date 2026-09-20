@@ -19,6 +19,12 @@ import { useToast } from '../../lib/notifications/ToastProvider';
 import { useSync } from '../../lib/sync/SyncContext';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { generateUuidV7 } from '../entries/entryUtils';
+import {
+  INTEGRATION_DELETE_HINT,
+  INTEGRATION_MANAGED_HINT,
+  canToggleEnabled,
+  isIntegrationBacked,
+} from './paymentMethodUtils';
 
 type Props = {
   accessToken: string;
@@ -288,6 +294,25 @@ export function PaymentMethodsPanel({
 
   async function handleConfirmAction(): Promise<void> {
     if (!canManage || !confirmAction) return;
+
+    // El corte va ACÁ, antes de `enqueuePendingOp`, no sólo en el render.
+    // Deshabilitar un botón esconde la acción; no la cierra. Y estando sin
+    // red, lo que se encola se aplica a ciegas cuando vuelve la conexión.
+    if (
+      isIntegrationBacked(confirmAction.pm.type) &&
+      confirmAction.kind !== 'setDefault'
+    ) {
+      showToast({
+        message:
+          confirmAction.kind === 'delete'
+            ? INTEGRATION_DELETE_HINT
+            : INTEGRATION_MANAGED_HINT,
+        kind: 'info',
+      });
+      setConfirmAction(null);
+      return;
+    }
+
     setSaving(true);
     try {
       const pm = confirmAction.pm;
@@ -464,6 +489,14 @@ export function PaymentMethodsPanel({
               {pm.isSystem ? (
                 <span className="status-badge status-muted">Sistema</span>
               ) : null}
+              {isIntegrationBacked(pm.type) ? (
+                <span
+                  className="status-badge status-muted"
+                  title={INTEGRATION_MANAGED_HINT}
+                >
+                  Integrado
+                </span>
+              ) : null}
               {pm.isDefault ? (
                 <span className="status-badge status-ok">Por defecto</span>
               ) : null}
@@ -508,6 +541,9 @@ export function PaymentMethodsPanel({
         cell: ({ row }) => {
           const pm = row.original;
           const disabled = pmStatus(pm) === 'Deshabilitado';
+          // Renombrar sigue habilitado: `name` es cosmético y es del dueño.
+          const integrationBacked = isIntegrationBacked(pm.type);
+          const toggleLocked = !canToggleEnabled(pm.type);
           return (
             <div className="dt-row-actions">
               <button
@@ -544,32 +580,50 @@ export function PaymentMethodsPanel({
                       pm,
                     })
                   }
-                  disabled={saving}
-                  title={disabled ? 'Habilitar método' : 'Deshabilitar método'}
+                  disabled={saving || toggleLocked}
+                  title={
+                    toggleLocked
+                      ? INTEGRATION_MANAGED_HINT
+                      : disabled
+                        ? 'Habilitar método'
+                        : 'Deshabilitar método'
+                  }
                   aria-label={
-                    disabled
-                      ? `Habilitar ${pm.name}`
-                      : `Deshabilitar ${pm.name}`
+                    toggleLocked
+                      ? `${pm.name} se administra desde Integraciones en el panel web`
+                      : disabled
+                        ? `Habilitar ${pm.name}`
+                        : `Deshabilitar ${pm.name}`
                   }
                 >
                   <Power size={16} />
                 </button>
               ) : null}
-              {/* System methods (transfer, cash) can't be deleted. */}
+              {/*
+                System methods (transfer, cash) can't be deleted. Neither can
+                the integration-backed ones: the backend ships them with
+                `isSystem: true` — because closed shifts still reference them —
+                so this is belt and braces, plus a message that says where to
+                go instead of just "no".
+              */}
               <button
                 type="button"
                 className="table-icon-action danger"
                 onClick={() => setConfirmAction({ kind: 'delete', pm })}
-                disabled={saving || pm.isSystem}
+                disabled={saving || pm.isSystem || integrationBacked}
                 title={
-                  pm.isSystem
-                    ? 'Los métodos de sistema no se pueden eliminar'
-                    : 'Eliminar método'
+                  integrationBacked
+                    ? INTEGRATION_DELETE_HINT
+                    : pm.isSystem
+                      ? 'Los métodos de sistema no se pueden eliminar'
+                      : 'Eliminar método'
                 }
                 aria-label={
-                  pm.isSystem
-                    ? `${pm.name} es un método de sistema y no se puede eliminar`
-                    : `Eliminar ${pm.name}`
+                  integrationBacked
+                    ? `${pm.name} se administra desde Integraciones en el panel web y no se puede eliminar`
+                    : pm.isSystem
+                      ? `${pm.name} es un método de sistema y no se puede eliminar`
+                      : `Eliminar ${pm.name}`
                 }
               >
                 <Trash2 size={16} />
