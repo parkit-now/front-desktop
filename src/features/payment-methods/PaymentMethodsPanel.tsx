@@ -20,8 +20,10 @@ import { useSync } from '../../lib/sync/SyncContext';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { generateUuidV7 } from '../entries/entryUtils';
 import {
+  INTEGRATION_DEFAULT_HINT,
   INTEGRATION_DELETE_HINT,
   INTEGRATION_MANAGED_HINT,
+  canSetDefault,
   canToggleEnabled,
   isIntegrationBacked,
 } from './paymentMethodUtils';
@@ -298,15 +300,19 @@ export function PaymentMethodsPanel({
     // El corte va ACÁ, antes de `enqueuePendingOp`, no sólo en el render.
     // Deshabilitar un botón esconde la acción; no la cierra. Y estando sin
     // red, lo que se encola se aplica a ciegas cuando vuelve la conexión.
-    if (
-      isIntegrationBacked(confirmAction.pm.type) &&
-      confirmAction.kind !== 'setDefault'
-    ) {
+    //
+    // `setDefault` entra en el mismo corte: marcar un medio integrado como
+    // predeterminado le saca el toggle de habilitar/deshabilitar (no se
+    // renderiza para la fila default), así que si la integración se cae el
+    // QR muerto queda preseleccionado y sin salida. Ver `canSetDefault`.
+    if (isIntegrationBacked(confirmAction.pm.type)) {
       showToast({
         message:
           confirmAction.kind === 'delete'
             ? INTEGRATION_DELETE_HINT
-            : INTEGRATION_MANAGED_HINT,
+            : confirmAction.kind === 'setDefault'
+              ? INTEGRATION_DEFAULT_HINT
+              : INTEGRATION_MANAGED_HINT,
         kind: 'info',
       });
       setConfirmAction(null);
@@ -544,6 +550,7 @@ export function PaymentMethodsPanel({
           // Renombrar sigue habilitado: `name` es cosmético y es del dueño.
           const integrationBacked = isIntegrationBacked(pm.type);
           const toggleLocked = !canToggleEnabled(pm.type);
+          const defaultLocked = !canSetDefault(pm.type);
           return (
             <div className="dt-row-actions">
               <button
@@ -556,15 +563,29 @@ export function PaymentMethodsPanel({
               >
                 <Pencil size={16} />
               </button>
-              {/* Set as default: only for an enabled, non-default method. */}
+              {/*
+                Set as default: only for an enabled, non-default method. And
+                never for an integration-backed one — the default row loses
+                its enable/disable toggle, so marking it would strand a dead
+                QR as the preselected method. Same treatment as delete: the
+                button still renders, disabled, saying where to go.
+              */}
               {!pm.isDefault && pm.enabled ? (
                 <button
                   type="button"
                   className="table-icon-action"
                   onClick={() => setConfirmAction({ kind: 'setDefault', pm })}
-                  disabled={saving}
-                  title="Marcar como predeterminado"
-                  aria-label={`Marcar ${pm.name} como predeterminado`}
+                  disabled={saving || defaultLocked}
+                  title={
+                    defaultLocked
+                      ? INTEGRATION_DEFAULT_HINT
+                      : 'Marcar como predeterminado'
+                  }
+                  aria-label={
+                    defaultLocked
+                      ? `${pm.name} se administra desde Integraciones en el panel web y no se puede marcar como predeterminado`
+                      : `Marcar ${pm.name} como predeterminado`
+                  }
                 >
                   <Star size={16} />
                 </button>

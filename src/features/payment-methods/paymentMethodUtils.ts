@@ -52,8 +52,42 @@ export function canToggleEnabled(type: PaymentMethodKind | undefined): boolean {
   return !isIntegrationBacked(type);
 }
 
+/**
+ * POR QUÉ MARCAR COMO PREDETERMINADO TAMPOCO ES INOCENTE
+ *
+ * Al principio esto quedó permitido con el argumento de que cuál medio se
+ * preselecciona al cobrar es una preferencia local, no un hecho del sistema
+ * externo. El argumento es falso, y no por una cuestión de permisos: por el
+ * render.
+ *
+ * `isDefault` no es un adorno, cambia por qué rama pasa la fila. El toggle de
+ * habilitar/deshabilitar NO se renderiza para el medio predeterminado (el
+ * default siempre está habilitado, así que el botón no tendría sentido). O
+ * sea que marcar un medio como predeterminado le saca el único control que
+ * queda para apagarlo.
+ *
+ * Encadenado:
+ *
+ *   1. Cuenta de Mercado Pago vinculada, medio habilitado.
+ *   2. Alguien lo marca como predeterminado.
+ *   3. El token se vence o el dueño desvincula la cuenta → el medio queda
+ *      muerto, y el desktop ni se entera porque no sincroniza `mp_accounts`.
+ *   4. La fila es default → no hay toggle.
+ *   5. El QR muerto queda PRESELECCIONADO en el modal de egreso y nadie lo
+ *      puede sacar de ahí desde esta app.
+ *
+ * Es exactamente el estado inválido que `canToggleEnabled` intentaba evitar,
+ * alcanzado por la puerta de al lado. Por eso el bloqueo es el mismo.
+ */
+export function canSetDefault(type: PaymentMethodKind | undefined): boolean {
+  return !isIntegrationBacked(type);
+}
+
 export const INTEGRATION_MANAGED_HINT =
   'Este medio lo administra una integración. Se habilita y se deshabilita desde el panel web, en Integraciones.';
 
 export const INTEGRATION_DELETE_HINT =
   'Este medio no se elimina desde acá. Desvinculá la cuenta desde el panel web, en Integraciones.';
+
+export const INTEGRATION_DEFAULT_HINT =
+  'Este medio no se marca como predeterminado desde acá: si la integración se cae, queda preseleccionado al cobrar y sin forma de apagarlo. Administralo desde el panel web, en Integraciones.';
