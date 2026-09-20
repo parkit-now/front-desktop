@@ -75,6 +75,12 @@ const CODE_MESSAGES: Record<string, string> = {
     'La fecha y hora de egreso debe ser mayor a la de ingreso.',
 
   // Medios de pago.
+  // Llega por el PATCH (renombrar, prender/apagar, marcar predeterminado)
+  // cuando el medio se borró entremedio. En el DELETE no se ve: ahí el panel
+  // se come el 404 a propósito y limpia local, porque el medio ya no está,
+  // que es justo lo que el operario quería.
+  PAYMENT_METHOD_NOT_FOUND:
+    'Este medio de pago ya no existe: lo eliminaron desde otro equipo o desde el panel web. Actualizá la lista y probá de nuevo.',
   PAYMENT_METHOD_SYSTEM_LOCKED:
     'Este medio lo trae el sistema: podés desactivarlo, pero no eliminarlo.',
   // Se intentó PRENDER un medio que depende de una integración externa (hoy
