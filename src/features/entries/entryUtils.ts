@@ -1,4 +1,7 @@
-import type { PaymentMethodKind } from '../../lib/db/localDb';
+import type {
+  LocalPaymentMethod,
+  PaymentMethodKind,
+} from '../../lib/db/localDb';
 import { calcStayPrice, type StayPrices } from './pricing';
 
 export type { StayPrices };
@@ -93,6 +96,85 @@ export function isCashMethod(
   if (type !== undefined) return type === 'cash';
   return name.toLowerCase().includes('efectivo');
 }
+
+/**
+ * Si este medio de pago cobra con el QR de Mercado Pago.
+ *
+ * MIRA EL TIPO Y SÓLO EL TIPO — el `name` viaja en la firma a propósito
+ *
+ * Recibe el medio entero, no el tipo suelto, para que el que venga a leer esto
+ * vea que el nombre ESTÁ disponible y aun así no se usa. Es la misma trampa
+ * que ya se cobró una en `isCashMethod`: `name` es editable por el dueño, así
+ * que cualquier regla que lo mire falla en las dos direcciones.
+ *
+ *   * Un medio `type='other'` llamado "Mercado Pago" —porque el dueño anota
+ *     ahí las transferencias que le entran por la app— arrancaría un cobro con
+ *     QR que nadie pidió, y le dejaría al operario una pantalla de espera por
+ *     un pago que nunca va a llegar.
+ *   * El medio real renombrado a "QR", "Código" o "Celular" dejaría de ofrecer
+ *     el cobro con QR, que es justo la feature.
+ *
+ * Y A DIFERENCIA DE `isCashMethod`, ACÁ NO HAY FALLBACK POR NOMBRE
+ *
+ * En el arqueo, un tipo faltante se resuelve mirando el nombre porque el error
+ * seguro es CONTAR DE MÁS: plata invisible es peor que plata mal etiquetada.
+ * Acá el error seguro es el opuesto. Sin tipo no podemos afirmar que este
+ * medio tenga una cuenta de Mercado Pago detrás, y adivinar termina en un POST
+ * que falla con el cliente parado en la ventanilla. Sin tipo → no es QR, y el
+ * operario cobra por donde venía cobrando hasta hoy.
+ */
+export function isMercadoPagoMethod(
+  method: Pick<LocalPaymentMethod, 'type' | 'name'> | undefined,
+): boolean {
+  return method?.type === 'mercadopago_qr';
+}
+
+/**
+ * Por qué NO se puede arrancar un cobro con QR ahora mismo. `null` = se puede.
+ */
+export type QrChargeBlockReason = 'offline' | 'entry-not-synced';
+
+/**
+ * Las dos precondiciones del cobro con QR, en un solo lugar y sin React para
+ * poder testearlas.
+ *
+ * 1. EXIGE CONEXIÓN. No hay camino offline posible: el cobro vive en Mercado
+ *    Pago, no en Dexie. Encolarlo sería peor que no ofrecerlo — la operación
+ *    se aplicaría a ciegas horas después, contra un cliente que hace rato se
+ *    fue. Es la misma excepción deliberada que el cierre de caja (ver
+ *    AGENTS.md, "Excepción deliberada: cerrar caja exige conexión").
+ *
+ * 2. LA ESTADÍA TIENE QUE ESTAR SINCRONIZADA. `payment_intents.entry_id` tiene
+ *    FK contra `entries` DEL SERVIDOR. Una estadía creada sin red todavía no
+ *    existe del otro lado, así que el POST se estrella contra la FK y vuelve
+ *    un error de base que no le dice nada a nadie. Las locales nacen con
+ *    `syncSeq: 0` (ver `EntryFormCore`) y sólo el pull les pone uno > 0, así
+ *    que ese número es el chequeo exacto: no "parece" sincronizada, LO ESTÁ.
+ *
+ * El orden importa: sin red, lo que hay que decirle al operario es que no hay
+ * red. Que además la estadía esté sin sincronizar es una CONSECUENCIA de eso
+ * —se creó en el mismo corte— y mostrarlo primero lo mandaría a resolver algo
+ * que se arregla solo cuando vuelve la conexión.
+ *
+ * En los dos casos el efectivo sigue disponible. Ese es el punto: el auto sale
+ * igual.
+ */
+export function qrChargeBlockReason(input: {
+  isOnline: boolean;
+  entrySyncSeq: number;
+}): QrChargeBlockReason | null {
+  if (!input.isOnline) return 'offline';
+  if (input.entrySyncSeq <= 0) return 'entry-not-synced';
+  return null;
+}
+
+/** Qué se le dice al operario cuando el QR no está disponible. */
+export const QR_BLOCK_MESSAGES: Record<QrChargeBlockReason, string> = {
+  offline:
+    'Cobrar con QR necesita conexión con el servidor. Cobrá en efectivo y el auto sale igual.',
+  'entry-not-synced':
+    'Este ingreso se registró sin conexión y todavía no se sincronizó, así que Mercado Pago no lo conoce. Sincronizá y volvé a intentar, o cobrá en efectivo.',
+};
 
 export function computeChange(amountDue: number, received: number): number {
   return Math.max(0, received - amountDue);

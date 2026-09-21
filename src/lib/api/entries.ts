@@ -13,8 +13,8 @@ export type EntryChangesResponseDto =
  * transacciones, así que sin ese campo corregir un cobro en efectivo lo
  * degradaba a "otros medios" y descuadraba el arqueo.
  */
-export type CorrectEntryPaymentLineDto =
-  components['schemas']['PaymentLineDto'];
+export type PaymentLineDto = components['schemas']['PaymentLineDto'];
+export type CorrectEntryPaymentLineDto = PaymentLineDto;
 export type CorrectEntryDto = components['schemas']['CorrectEntryDto'];
 
 type EntryChangesQuery = {
