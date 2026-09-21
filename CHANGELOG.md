@@ -1,3 +1,15 @@
+# [1.3.0](https://github.com/parkit-now/front-desktop/compare/v1.2.0...v1.3.0) (2026-09-21)
+
+
+### Features
+
+* **egreso:** cobrar con QR de Mercado Pago desde el modal de salida ([66ba7f7](https://github.com/parkit-now/front-desktop/commit/66ba7f7b46538d053d5a7a0711d2697e667a6c91))
+* **errores:** traducir los codes de los cobros con QR de Mercado Pago ([eef975e](https://github.com/parkit-now/front-desktop/commit/eef975e3f385526af8afb61ed3cb6c3e6c549a2f))
+* **errores:** traducir PAYMENT_INTENT_NOT_CONSUMABLE en el desktop ([6f3459e](https://github.com/parkit-now/front-desktop/commit/6f3459eef1b54d827b667951f8827dec80a8d117))
+* **mercado-pago:** agregar el cliente HTTP de los cobros con QR ([c8e68b5](https://github.com/parkit-now/front-desktop/commit/c8e68b5c182fcdd06d6ec3a50330ee095338de43))
+* se agregó cámara IP ([b042dcf](https://github.com/parkit-now/front-desktop/commit/b042dcf6ecd8e152193f79ef15b1a6e7f6e65b5e))
+* se agregó configuración de cámara completa, tanto para webCam como para cámaras IP ([9e6c527](https://github.com/parkit-now/front-desktop/commit/9e6c527280d36eb705b970c9c059e5b8858b400e))
+
 # [1.2.0](https://github.com/parkit-now/front-desktop/compare/v1.1.1...v1.2.0) (2026-09-21)
 
 
