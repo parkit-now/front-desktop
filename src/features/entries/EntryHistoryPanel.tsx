@@ -5,7 +5,7 @@ import type {
 } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   localDb,
   type LocalEntry,
@@ -248,10 +248,13 @@ export function EntryHistoryPanel({
   const focusedFromCashSession = Boolean(
     initialCashSessionId || initialOnlyCurrentSession,
   );
+  const isOperator = actorRole === 'operator';
   const [onlyCurrentSession, setOnlyCurrentSession] = useState(() =>
-    focusedFromCashSession
-      ? initialOnlyCurrentSession
-      : (persistedSwitches.onlyCurrentSession ?? true),
+    isOperator
+      ? true
+      : focusedFromCashSession
+        ? initialOnlyCurrentSession
+        : (persistedSwitches.onlyCurrentSession ?? true),
   );
   const [includeInLot, setIncludeInLot] = useState(
     () => persistedSwitches.includeInLot ?? true,
@@ -308,12 +311,20 @@ export function EntryHistoryPanel({
     [sessionLabelById],
   );
 
+  const filterableColumns = useMemo(
+    () =>
+      isOperator
+        ? FILTERABLE_COLUMNS.filter((column) => column !== 'cashSessionId')
+        : FILTERABLE_COLUMNS,
+    [isOperator],
+  );
+
   const initialColumnFilters = useMemo<ColumnFiltersState>(
     () =>
-      initialCashSessionId
+      initialCashSessionId && !isOperator
         ? [{ id: 'cashSessionId', value: [initialCashSessionId] }]
         : [],
-    [initialCashSessionId],
+    [initialCashSessionId, isOperator],
   );
 
   const allEntries = useLiveQuery(
@@ -389,12 +400,36 @@ export function EntryHistoryPanel({
     ? allSessions?.find((session) => session.id === editingEntry.cashSessionId)
     : undefined;
   const tableSwitches = useMemo(
-    () => ({ onlyCurrentSession, includeInLot }),
-    [includeInLot, onlyCurrentSession],
+    () => ({
+      onlyCurrentSession: isOperator ? true : onlyCurrentSession,
+      includeInLot,
+    }),
+    [includeInLot, isOperator, onlyCurrentSession],
   );
+
+  useEffect(() => {
+    if (!isOperator) return;
+    setOnlyCurrentSession(true);
+    setColumnFiltersOverride(
+      columnFilters.filter((filter) => filter.id !== 'cashSessionId'),
+    );
+    setColumnFiltersOverrideKey((current) => current + 1);
+  }, [columnFilters, isOperator]);
+
   const handleColumnFiltersChange = useCallback(
     (filters: ColumnFiltersState) => {
-      setColumnFilters(filters);
+      const nextFilters = isOperator
+        ? filters.filter((filter) => filter.id !== 'cashSessionId')
+        : filters;
+      setColumnFilters(nextFilters);
+      if (isOperator) {
+        setOnlyCurrentSession(true);
+        if (nextFilters.length !== filters.length) {
+          setColumnFiltersOverride(nextFilters);
+          setColumnFiltersOverrideKey((current) => current + 1);
+        }
+        return;
+      }
       const cashSessionFilter = filters.find(
         (filter) => filter.id === 'cashSessionId',
       );
@@ -405,10 +440,15 @@ export function EntryHistoryPanel({
         setOnlyCurrentSession(false);
       }
     },
-    [],
+    [isOperator],
   );
 
   function handleOnlyCurrentSessionChange(next: boolean) {
+    if (isOperator) {
+      setOnlyCurrentSession(true);
+      return;
+    }
+
     setOnlyCurrentSession(next);
     if (!next) return;
 
@@ -427,7 +467,7 @@ export function EntryHistoryPanel({
         emptyMessage="No hay movimientos registrados todavía."
         searchPlaceholder="Buscar por patente, vehículo o notas…"
         searchableKeys={SEARCHABLE_KEYS}
-        filterableColumns={FILTERABLE_COLUMNS}
+        filterableColumns={filterableColumns}
         filterOptionsByColumn={{
           amountPaid: paymentMethodFilterOptions,
           cashSessionId: cashSessionFilterOptions,
@@ -448,7 +488,8 @@ export function EntryHistoryPanel({
           {
             id: 'onlyCurrentSession',
             label: 'Solo caja actual',
-            checked: onlyCurrentSession,
+            checked: isOperator ? true : onlyCurrentSession,
+            disabled: isOperator,
             onChange: handleOnlyCurrentSessionChange,
           },
           {

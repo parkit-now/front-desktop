@@ -649,6 +649,7 @@ export function DataTable<TData>({
               <Switch
                 key={item.id}
                 checked={item.checked}
+                disabled={item.disabled}
                 onChange={item.onChange}
                 label={item.label}
               />

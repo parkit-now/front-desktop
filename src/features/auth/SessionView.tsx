@@ -363,6 +363,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
     activeTenantId,
   );
   const ratesManageAllowed = canManageRates(profile, activeMembership);
+  const canViewCashSessionHistory =
+    activeRole === 'admin' || activeRole === 'owner';
   const hasMemberships = memberships.length > 0;
   const canShowRatesNav =
     hasMemberships ||
@@ -1007,17 +1009,19 @@ export function SessionView({ session, sessionStale = false }: Props) {
                       setSection('historial');
                     }}
                   />
-                  <CashSessionHistoryPanel
-                    tenantId={activeTenantId}
-                    accessToken={session.access_token}
-                    onSelectSession={(cashSession) => {
-                      setHistorialFocus({
-                        kind: 'cashSession',
-                        sessionId: cashSession.id,
-                      });
-                      setSection('historial');
-                    }}
-                  />
+                  {canViewCashSessionHistory ? (
+                    <CashSessionHistoryPanel
+                      tenantId={activeTenantId}
+                      accessToken={session.access_token}
+                      onSelectSession={(cashSession) => {
+                        setHistorialFocus({
+                          kind: 'cashSession',
+                          sessionId: cashSession.id,
+                        });
+                        setSection('historial');
+                      }}
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <section className="dashboard-card warning">
