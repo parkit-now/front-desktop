@@ -869,6 +869,10 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         tenantId={activeTenantId}
                         accessToken={session.access_token}
                         userId={session.user.id}
+                        actorRole={activeRole}
+                        parkingName={activeTenantName}
+                        parkingAddress={activeTenantAddress}
+                        parkingCuit={activeTenantCuit}
                       />
                     </div>
                     <AutoEntriesColumns

@@ -223,7 +223,7 @@ const FILTERABLE_COLUMNS = [
   'color',
 ];
 
-const SEARCHABLE_KEYS = ['plate', 'notes'];
+const SEARCHABLE_KEYS = ['plate', 'vehicleBrand', 'vehicleModel', 'notes'];
 
 export function EntryHistoryPanel({
   tenantId,
@@ -425,7 +425,7 @@ export function EntryHistoryPanel({
         columns={columns}
         isLoading={entries === undefined}
         emptyMessage="No hay movimientos registrados todavía."
-        searchPlaceholder="Buscar por patente o notas…"
+        searchPlaceholder="Buscar por patente, vehículo o notas…"
         searchableKeys={SEARCHABLE_KEYS}
         filterableColumns={FILTERABLE_COLUMNS}
         filterOptionsByColumn={{

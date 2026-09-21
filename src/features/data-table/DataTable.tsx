@@ -568,6 +568,7 @@ export function DataTable<TData>({
     columnFilters.length > 0 ||
     globalFilter.trim().length > 0 ||
     Boolean(filterSwitches?.some((item) => item.checked));
+  const hasHeaderContent = Boolean(title || subtitle || headerAction);
   const showLoading = Boolean(isLoading || serverState?.isFetching);
 
   useEffect(() => {
@@ -598,18 +599,15 @@ export function DataTable<TData>({
 
   return (
     <section className="dt-card">
-      <div className="dt-card-header">
-        <div>
-          {title ? <h3>{title}</h3> : null}
-          {subtitle ? <p>{subtitle}</p> : null}
+      {hasHeaderContent ? (
+        <div className="dt-card-header">
+          <div>
+            {title ? <h3>{title}</h3> : null}
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          <div className="dt-card-header-right">{headerAction ?? null}</div>
         </div>
-        <div className="dt-card-header-right">
-          {hasActiveFilters ? (
-            <span className="dt-active-chip">Vista filtrada</span>
-          ) : null}
-          {headerAction ?? null}
-        </div>
-      </div>
+      ) : null}
 
       <div className="dt-toolbar">
         <div className="dt-search-cluster">
@@ -790,6 +788,11 @@ export function DataTable<TData>({
         pageSizeOptions={pageSizeOptions}
         canPreviousPage={safePageIndex > 0}
         canNextPage={safePageIndex + 1 < pageCount}
+        status={
+          hasActiveFilters ? (
+            <span className="dt-active-chip">Vista filtrada</span>
+          ) : null
+        }
         onPageIndexChange={(pageIndex) => table.setPageIndex(pageIndex)}
         onPageSizeChange={(pageSize) => table.setPageSize(pageSize)}
       />
