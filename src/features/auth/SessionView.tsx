@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CameraPanel } from '../camera/CameraPanel';
+import { CameraSettingsPanel } from '../camera/CameraSettingsPanel';
 import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
@@ -66,7 +67,8 @@ type WorkspaceSection =
   | 'vehicles'
   | 'vehicle-types'
   | 'caja'
-  | 'impresora';
+  | 'impresora'
+  | 'camara-config';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -303,6 +305,15 @@ export function SessionView({ session, sessionStale = false }: Props) {
     }
   }, [ratesAllowed, section]);
 
+  // Cambiar a un estacionamiento donde sos operador no debe dejarte adentro de
+  // la configuración de cámara: el botón desaparece del sidebar, pero el panel
+  // seguiría montado porque `section` no cambia solo.
+  useEffect(() => {
+    if (!ratesManageAllowed && section === 'camara-config') {
+      setSection('operativo');
+    }
+  }, [ratesManageAllowed, section]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -496,6 +507,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     'vehicle-types': 'Tipos de Vehículo',
     caja: 'Caja',
     impresora: 'Impresora',
+    'camara-config': 'Configuración de cámara',
   };
 
   const sectionIcon = (s: WorkspaceSection) => {
@@ -507,6 +519,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
     if (s === 'impresora') return <Printer size={20} aria-hidden />;
+    if (s === 'camara-config') return <Cctv size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
 
@@ -633,6 +646,22 @@ export function SessionView({ session, sessionStale = false }: Props) {
               <Printer size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Impresora</span> : null}
             </button>
+
+            {/* Única sección oculta para el operador. La cámara es hardware del
+                estacionamiento y tocarla mal deja la detección automática sin
+                funcionar, así que la decisión es del dueño. `ratesManageAllowed`
+                es la flag que significa "owner o admin" — NO `canShowRatesNav`,
+                que no distingue owner de operator. */}
+            {ratesManageAllowed ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'camara-config' ? 'active' : ''}`}
+                onClick={() => setSection('camara-config')}
+              >
+                <Cctv size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Configurar cámara</span> : null}
+              </button>
+            ) : null}
           </nav>
 
           <div className="sidebar-foot">
@@ -850,6 +879,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   </p>
                 </section>
               )
+            ) : section === 'camara-config' ? (
+              <CameraSettingsPanel />
             ) : section === 'impresora' ? (
               <PrinterSettingsPanel
                 tenantName={activeTenantName}

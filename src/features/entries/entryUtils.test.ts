@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeChange, isCashMethod } from './entryUtils';
+import {
+  computeChange,
+  isCashMethod,
+  isMercadoPagoMethod,
+  qrChargeBlockReason,
+} from './entryUtils';
 
 describe('entryUtils', () => {
   describe('computeChange', () => {
@@ -73,6 +78,73 @@ describe('entryUtils', () => {
         expect(isCashMethod('other', 'Efectivo')).toBe(false);
         expect(isCashMethod('cash', 'Tarjeta')).toBe(true);
       });
+    });
+  });
+  /**
+   * COBRO CON QR — las precondiciones, que son lo único que separa al operario
+   * de una pantalla de espera que no va a terminar nunca.
+   */
+  describe('isMercadoPagoMethod', () => {
+    it('discrimina por TIPO y no por nombre, en las dos direcciones', () => {
+      // El caso que justifica la función: el dueño anota en un medio
+      // `other` las transferencias que le entran por la app y lo llama
+      // "Mercado Pago". No hay ninguna cuenta vinculada detrás. Si esto
+      // devolviera `true`, el operario se comería una espera por un pago que
+      // nadie encoló nunca.
+      expect(isMercadoPagoMethod({ type: 'other', name: 'Mercado Pago' })).toBe(
+        false,
+      );
+      expect(
+        isMercadoPagoMethod({ type: 'other', name: 'Mercado Pago QR' }),
+      ).toBe(false);
+
+      // Y al revés: el medio real renombrado sigue siendo el medio real.
+      // `name` es del dueño y lo puede cambiar cuando quiera.
+      expect(isMercadoPagoMethod({ type: 'mercadopago_qr', name: 'QR' })).toBe(
+        true,
+      );
+      expect(
+        isMercadoPagoMethod({ type: 'mercadopago_qr', name: 'Celular' }),
+      ).toBe(true);
+
+      // Sin tipo NO adivinamos por nombre (a diferencia de `isCashMethod`):
+      // acá el error seguro es no ofrecer el QR, no ofrecerlo de más.
+      expect(
+        isMercadoPagoMethod({ type: undefined, name: 'Mercado Pago' }),
+      ).toBe(false);
+      expect(isMercadoPagoMethod(undefined)).toBe(false);
+    });
+  });
+
+  describe('qrChargeBlockReason', () => {
+    it('sin conexión no se puede cobrar con QR', () => {
+      // El cobro vive en Mercado Pago, no en Dexie: no hay camino offline que
+      // encolar. Con red y la estadía sincronizada, en cambio, no hay bloqueo.
+      expect(qrChargeBlockReason({ isOnline: false, entrySyncSeq: 42 })).toBe(
+        'offline',
+      );
+      expect(
+        qrChargeBlockReason({ isOnline: true, entrySyncSeq: 42 }),
+      ).toBeNull();
+
+      // Sin red Y sin sincronizar gana 'offline': lo segundo es consecuencia
+      // de lo primero y se arregla solo cuando vuelve la conexión.
+      expect(qrChargeBlockReason({ isOnline: false, entrySyncSeq: 0 })).toBe(
+        'offline',
+      );
+    });
+
+    it('una estadía todavía no sincronizada tampoco puede cobrarse con QR', () => {
+      // `payment_intents.entry_id` tiene FK contra `entries` del SERVIDOR. Una
+      // estadía local (nace con `syncSeq: 0`) no existe del otro lado y el
+      // POST se estrella contra la FK con un error que no le dice nada a
+      // nadie. Con `syncSeq > 0` el servidor ya la conoce.
+      expect(qrChargeBlockReason({ isOnline: true, entrySyncSeq: 0 })).toBe(
+        'entry-not-synced',
+      );
+      expect(
+        qrChargeBlockReason({ isOnline: true, entrySyncSeq: 1 }),
+      ).toBeNull();
     });
   });
 });

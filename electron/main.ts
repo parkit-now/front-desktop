@@ -5,6 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { ServiceManager, type ServiceConfig } from './services.js';
 import { resolveServiceRuntime, type ServiceName } from './serviceRuntime.js';
 import { destroyPrintWindows, listPrinters, printTicketHtml } from './print.js';
+import {
+  cameraServiceEnv,
+  clearCameraTuning,
+  readCameraConfig,
+  readCameraTuning,
+  resolveCameraSource,
+  resolveSourceFor,
+  writeCameraConfig,
+  type CameraConfigInput,
+} from './cameraConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,6 +91,65 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+/**
+ * Le manda al servicio de cámara la configuración guardada en este equipo.
+ *
+ * Reintenta porque el servicio puede tardar en levantar: con PyInstaller el
+ * arranque en frío ronda los segundos, y en desarrollo lo lanza el Makefile en
+ * paralelo con Electron. Si no contesta en ese lapso se abandona en silencio —
+ * el servicio sigue con su cámara por defecto y el usuario puede volver a
+ * guardar desde el panel.
+ */
+async function applyStoredCameraConfig(port: number): Promise<void> {
+  const config = readCameraConfig();
+  const source = resolveCameraSource();
+  if (!source) return;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/config/source`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source,
+          cameraId: config.cameraId,
+          location: config.location,
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.ok) {
+        await pushCameraTuning(port);
+        return;
+      }
+    } catch {
+      // Todavía no levantó.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  console.warn('[camera] no se pudo aplicar la cámara guardada al servicio');
+}
+
+/**
+ * Reaplica los ajustes de detección calibrados en este equipo.
+ *
+ * Se manda solo lo guardado: lo que nadie tocó lo resuelve el servicio con sus
+ * propios defaults, así no hay dos lugares diciendo cuál es el valor normal.
+ */
+async function pushCameraTuning(port: number): Promise<void> {
+  const tuning = readCameraTuning();
+  if (Object.keys(tuning).length === 0) return;
+  try {
+    await fetch(`http://127.0.0.1:${port}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tuning),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    console.warn('[camera] no se pudieron aplicar los ajustes guardados');
+  }
+}
+
 // ── App lifecycle ──────────────────────────────────────────────────────────
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -132,6 +201,10 @@ if (!gotTheLock) {
         // Writable data dir so the service works when the bundle is read-only.
         CAMERA_DB_PATH: path.join(userData, 'camera.db'),
         CAMERA_IMAGES_DIR: path.join(userData, 'images'),
+        // La cámara IP de este equipo, si está configurada. Devuelve `{}` cuando
+        // no lo está, y entonces el servicio usa su default (la webcam USB): un
+        // equipo que todavía no migró sigue andando igual.
+        ...cameraServiceEnv(),
       },
     };
     const ports: Record<ServiceName, number> = {
@@ -170,9 +243,37 @@ if (!gotTheLock) {
     await services.spawnAll();
     const failed = runtime.manage ? await services.waitAllHealthy() : [];
 
+    // Aplicarle al servicio la cámara guardada, ya arrancado.
+    //
+    // El `env` del spawn de arriba solo alcanza cuando ES Electron el que lanza
+    // el servicio. En desarrollo no lo es: `make dev` corre con
+    // PARKIT_MANAGE_SERVICES=0 y levanta cámara y LPR por su cuenta, sin
+    // CAMERA_SOURCE — así que la cámara configurada se perdía en cada reinicio
+    // y el equipo volvía a la webcam. Empujar la configuración después hace que
+    // funcione sin importar quién arrancó el proceso.
+    //
+    // Es idempotente: si el servicio ya está en esa cámara, `set_source` corta
+    // sin reconectar y el video no se interrumpe.
+    void applyStoredCameraConfig(ports['camera-service']);
+
     const win = createWindow();
     mainWindow = win;
     let shuttingDownServices = false;
+
+    // El panel de configuración necesita `getUserMedia` una vez para que el
+    // navegador revele los NOMBRES de las webcams (sin permiso, `enumerateDevices`
+    // devuelve los dispositivos con el label vacío).
+    //
+    // Se concede explícitamente en vez de confiar en el default de Electron, que
+    // es justo el tipo de cosa que cambia entre versiones mayores: si algún día
+    // pasara a denegar, la lista se quedaría sin nombres sin que nadie entienda
+    // por qué. Todo lo demás se niega — esta app no necesita micrófono,
+    // ubicación ni notificaciones.
+    win.webContents.session.setPermissionRequestHandler(
+      (_contents, permission, callback) => {
+        callback(permission === 'media');
+      },
+    );
 
     // Once the renderer is loaded, forward any health failures so the UI can
     // show an actionable error instead of silently operating with broken
@@ -190,6 +291,99 @@ if (!gotTheLock) {
     ipcMain.handle('shell:openExternal', (_event, url: string) =>
       shell.openExternal(url),
     );
+
+    // ── Cámara ──────────────────────────────────────────────────────────────
+    //
+    // La contraseña NUNCA cruza hacia el renderer: `readCameraConfig` la omite y
+    // solo informa `hasPassword`. El panel manda `password` únicamente cuando el
+    // usuario la escribe de nuevo; si no la manda, se conserva la guardada.
+    const CAMERA_PORT = ports['camera-service'];
+
+    ipcMain.handle('camera:getConfig', () => readCameraConfig());
+
+    // Los ajustes vigentes salen del SERVICIO, no del archivo: el archivo solo
+    // tiene lo que alguien cambió, y el panel tiene que mostrar los valores
+    // reales con los que está corriendo la detección ahora mismo.
+    ipcMain.handle('camera:getTuning', async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${CAMERA_PORT}/config`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as unknown;
+      } catch {
+        return null;
+      }
+    });
+
+    ipcMain.handle('camera:probe', async (_event, input: CameraConfigInput) => {
+      const source = resolveSourceFor(input);
+      if (!source) return { ok: false, error: 'falta_direccion' };
+      try {
+        const res = await fetch(`http://127.0.0.1:${CAMERA_PORT}/probe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source }),
+          // El probe del servicio ya corta a los 5 s; este margen es para que
+          // el error sea el suyo (descriptivo) y no un timeout nuestro.
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) return { ok: false, error: 'servicio_no_disponible' };
+        return (await res.json()) as unknown;
+      } catch {
+        return { ok: false, error: 'servicio_no_disponible' };
+      }
+    });
+
+    ipcMain.handle(
+      'camera:setConfig',
+      async (_event, input: CameraConfigInput) => {
+        writeCameraConfig(input);
+        const source = resolveCameraSource();
+        if (!source) return { ok: true, reconnected: false };
+        try {
+          // Reconfigurar en caliente evita reiniciar la app entera para probar
+          // un cambio de cámara. Si el servicio no contesta, la config igual
+          // quedó guardada y se aplica en el próximo arranque.
+          const res = await fetch(
+            `http://127.0.0.1:${CAMERA_PORT}/config/source`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                source,
+                cameraId: input.cameraId,
+                location: input.location,
+              }),
+              signal: AbortSignal.timeout(10_000),
+            },
+          );
+          await pushCameraTuning(CAMERA_PORT);
+          return { ok: true, reconnected: res.ok };
+        } catch {
+          return { ok: true, reconnected: false };
+        }
+      },
+    );
+
+    ipcMain.handle('camera:resetTuning', async () => {
+      // Primero el archivo: si el servicio no contestara, igual queremos que el
+      // próximo arranque no reviva la calibración vieja.
+      clearCameraTuning();
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:${CAMERA_PORT}/config/reset`,
+          {
+            method: 'POST',
+            signal: AbortSignal.timeout(5_000),
+          },
+        );
+        if (!res.ok) return null;
+        return (await res.json()) as unknown;
+      } catch {
+        return null;
+      }
+    });
 
     ipcMain.handle('printer:list', () => listPrinters(mainWindow));
     ipcMain.handle(
