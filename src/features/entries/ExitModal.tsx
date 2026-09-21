@@ -15,12 +15,17 @@ import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
 import { PaymentMethodSelect } from './PaymentMethodSelect';
+import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
+import { useMercadoPagoIntent } from './useMercadoPagoIntent';
 import {
   calcSuggestedAmount,
   computeChange,
   formatDuration,
   generateUuidV7,
   isCashMethod,
+  isMercadoPagoMethod,
+  qrChargeBlockReason,
+  QR_BLOCK_MESSAGES,
   type StayPrices,
 } from './entryUtils';
 
@@ -152,6 +157,70 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   // below the charge blocks confirmation.
   const canConfirm = !isCash || cashState !== 'short';
 
+  // ── Cobro con QR de Mercado Pago ──────────────────────────────────────────
+  // Sólo en cobro de un solo medio: repartir una estadía entre QR y efectivo
+  // exigiría atar una línea del split a un intento, y hoy el backend crea UN
+  // intento por estadía. Ver el reporte de la feature.
+  const isMpQr = !splitEnabled && isMercadoPagoMethod(effectivePm);
+
+  // Las dos precondiciones (hay red, y la estadía existe del lado del
+  // servidor) viven en `entryUtils` para poder testearlas sin React.
+  const qrBlockReason = qrChargeBlockReason({
+    isOnline,
+    entrySyncSeq: entry.syncSeq,
+  });
+
+  const mpIntent = useMercadoPagoIntent({
+    tenantId,
+    accessToken,
+    entryId: entry.id,
+    amount: amountToCharge,
+  });
+
+  // El error del POST sale por el mismo canal que el resto de la app: un toast
+  // con el texto de `translateApiError`. Ahí es donde el 409 de caja ocupada
+  // se convierte en "hay un cobro con QR en curso, esperá a que termine".
+  const { errorMessage: mpErrorMessage } = mpIntent;
+  useEffect(() => {
+    if (!mpErrorMessage) return;
+    showToast({ message: mpErrorMessage, kind: 'error' });
+  }, [mpErrorMessage, showToast]);
+
+  /**
+   * Cortar en el CLICK y no en el submit, igual que el botón de cerrar caja.
+   *
+   * El medio se sigue viendo y se sigue pudiendo tocar: un ítem gris no
+   * explica por qué no anda, y encima no es focusable ni lo anuncian los
+   * lectores de pantalla (ver AGENTS.md). Lo que hacemos es no mover la
+   * selección — el operario queda parado sobre un medio con el que SÍ puede
+   * cobrar — y decirle en el toast qué pasó y qué hacer.
+   */
+  function handlePaymentMethodChange(id: string): void {
+    const picked = pms.find((pm) => pm.id === id);
+    if (isMercadoPagoMethod(picked) && qrBlockReason) {
+      showToast({ message: QR_BLOCK_MESSAGES[qrBlockReason], kind: 'error' });
+      return;
+    }
+    setSelectedPmId(id);
+  }
+
+  /**
+   * El gate se vuelve a chequear ACÁ y no sólo al elegir el medio.
+   *
+   * El QR puede llegar preseleccionado sin que nadie lo haya tocado: si es el
+   * medio predeterminado, o si es el único habilitado, `effectivePm` lo agarra
+   * solo. Sin este chequeo, un equipo sin red entra al modal ya parado sobre
+   * "Cobrar con QR" y el click sale igual, para morir en un error de red que
+   * no explica nada.
+   */
+  function handleStartQr(): void {
+    if (qrBlockReason) {
+      showToast({ message: QR_BLOCK_MESSAGES[qrBlockReason], kind: 'error' });
+      return;
+    }
+    void mpIntent.start();
+  }
+
   // Split mode: compare the entered total against the amount to charge so the
   // operator sees what's left to cover (advisory, does not block confirm).
   const splitRemaining = amountToCharge - splitTotal;
@@ -164,7 +233,13 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           ? 'over'
           : 'exact';
 
-  async function handleConfirm(): Promise<void> {
+  /**
+   * @param paymentIntentId Cobro con QR ya acreditado que hay que aplicar.
+   *   Viaja DENTRO de la línea de pago (`payments[].paymentIntentId`), no al
+   *   nivel raíz: es el contrato acordado con el cierre de estadía, porque lo
+   *   que el intento respalda es UNA línea del cobro y no el egreso entero.
+   */
+  async function handleConfirm(paymentIntentId?: string): Promise<void> {
     setSaving(true);
     const leftAt = new Date().toISOString();
     const cashSessionId = entry.cashSessionId ?? activeSession?.id;
@@ -182,6 +257,14 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           paymentMethodName: string;
           paymentMethodType?: PaymentMethodKind;
           amount: number;
+          /**
+           * Todavía NO está en `PaymentLineDto` del OpenAPI: el endpoint que
+           * lo consume se está construyendo en paralelo y `sync-types` no
+           * corrió (el backend no está levantado). Se manda igual porque el
+           * contrato ya está acordado, y al regenerar los tipos esto tiene que
+           * quedar cubierto por el DTO en vez de por esta declaración local.
+           */
+          paymentIntentId?: string;
         }>
       | undefined;
 
@@ -215,6 +298,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             paymentMethodName: effectivePm.name,
             paymentMethodType: effectivePm.type,
             amount: amountPaid,
+            paymentIntentId,
           },
         ];
       }
@@ -420,10 +504,31 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               </button>
             </div>
           </div>
+        ) : mpIntent.intent && mpIntent.view ? (
+          <MercadoPagoQrPanel
+            // El monto es el CONGELADO en el intento, no el del input: si el
+            // operario tocara el campo con el QR ya generado, mostrarle el
+            // nuevo sería decirle que el cliente va a ver un importe que no es
+            // el que Mercado Pago tiene cargado.
+            amount={mpIntent.intent.amount}
+            view={mpIntent.view}
+            secondsLeft={mpIntent.secondsLeft}
+            isCanceling={mpIntent.isCanceling}
+            isConfirming={saving}
+            onCancel={() => void mpIntent.cancel()}
+            onRetry={handleStartQr}
+            onUseAnotherMethod={mpIntent.reset}
+            onConfirm={() => void handleConfirm(mpIntent.intent?.id)}
+          />
         ) : (
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              // Con QR el cobro no se confirma acá: primero hay que generar la
+              // orden y esperar a que el cliente pague. Sin este corte, un
+              // Enter en el campo del monto cerraría la estadía como si ya
+              // estuviera cobrada.
+              if (isMpQr) return;
               if (saving || !canConfirm) return;
               void handleConfirm();
             }}
@@ -562,9 +667,15 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                     <PaymentMethodSelect
                       options={pms}
                       value={effectivePmId}
-                      onChange={setSelectedPmId}
+                      onChange={handlePaymentMethodChange}
                       ariaLabel="Medio de pago"
                     />
+                    {isMpQr ? (
+                      <p className="form-helper">
+                        El cliente escanea el QR del mostrador: el importe le
+                        aparece solo.
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -617,13 +728,26 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               >
                 Cancelar
               </button>
-              <button
-                type="submit"
-                className="primary-button compact"
-                disabled={saving || !canConfirm}
-              >
-                {saving ? 'Confirmando...' : 'Confirmar cobro'}
-              </button>
+              {isMpQr ? (
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={handleStartQr}
+                  // Sin monto no hay orden que encolar: el backend exige un
+                  // importe positivo y el cliente no tendría qué pagar.
+                  disabled={mpIntent.isStarting || amountToCharge <= 0}
+                >
+                  {mpIntent.isStarting ? 'Generando QR...' : 'Cobrar con QR'}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="primary-button compact"
+                  disabled={saving || !canConfirm}
+                >
+                  {saving ? 'Confirmando...' : 'Confirmar cobro'}
+                </button>
+              )}
             </div>
           </form>
         )}

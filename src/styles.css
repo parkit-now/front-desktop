@@ -5038,3 +5038,93 @@ h2 {
 .dr-cal-day.is-range-middle .dr-cal-day-button:hover {
   background: var(--color-bg-end);
 }
+
+/* ── Cobro con QR de Mercado Pago (pantalla de espera del ExitModal) ────────
+   El monto es el protagonista: es lo único que el operario tiene que poder
+   verificar de un vistazo contra lo que el cliente ve en el celular. */
+.qr-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.qr-status {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  border: 1.5px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.qr-status-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.qr-status-detail {
+  font-size: 14px;
+}
+
+.qr-status--wait {
+  background: var(--color-bg-start);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.qr-status--ok {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.qr-status--warn {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.qr-status--error {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.qr-amount-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.qr-amount-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.qr-amount {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.qr-countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--color-muted);
+}
+
+.qr-countdown strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  color: var(--color-text);
+}
