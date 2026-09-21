@@ -20,12 +20,14 @@ export function CameraAlert() {
   // Tick every second while the camera is down so elapsed time stays live
   // instead of freezing between 10 s poll cycles.
   useEffect(() => {
-    if (!status || status.camera === 'ok') return;
+    // Solo 'down': durante 'initializing' la cámara todavía se está abriendo y
+    // no hay nada que cronometrar.
+    if (status?.camera !== 'down') return;
     const id = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(id);
   }, [status?.camera]);
 
-  if (!status || status.camera === 'ok') return null;
+  if (status?.camera !== 'down') return null;
 
   const elapsedMs = status.downSince ? now - status.downSince.getTime() : 0;
 

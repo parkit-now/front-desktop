@@ -11,6 +11,10 @@
 # The resulting binary embeds the Python runtime, OpenCV, httpx and all
 # dependencies. Electron only needs the binary path in extraResources.
 
+import glob
+import importlib.util
+import os
+
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 # ── Data files ────────────────────────────────────────────────────────────────
@@ -19,6 +23,42 @@ datas += collect_data_files("cv2")
 datas += collect_data_files("numpy")
 binaries = []
 binaries += collect_dynamic_libs("numpy")
+binaries += collect_dynamic_libs("cv2")
+
+
+def _opencv_ffmpeg_libs():
+    """El backend FFmpeg de OpenCV: lo que abre las URLs `rtsp://`.
+
+    POR QUÉ ESTÁ A MANO Y NO ALCANZA CON collect_dynamic_libs
+
+    En Windows, `opencv-python-headless` trae `opencv_videoio_ffmpeg*.dll` dentro
+    del paquete `cv2/`, y cv2 lo carga con LoadLibrary **en tiempo de ejecución**,
+    solo cuando alguien abre una fuente que lo necesita. No figura en la tabla de
+    imports de `cv2.pyd`, así que el analizador de dependencias de PyInstaller no
+    tiene cómo verlo.
+
+    El síntoma si falta es engañoso: la webcam USB sigue andando (MSMF y DSHOW
+    son del sistema) y la cámara IP falla con `isOpened() == False`, sin ningún
+    mensaje que apunte a un DLL. O sea, el `.exe` del release se rompe justo en
+    lo único que este cambio agrega.
+
+    En Linux/macOS estas libs viven en `opencv_python_headless.libs/`, hermano de
+    `cv2/`, y se resuelven por el RPATH del `.so`: acá esta función no encuentra
+    nada y no hace daño.
+    """
+    spec = importlib.util.find_spec("cv2")
+    if spec is None or not spec.submodule_search_locations:
+        return []
+    package_dir = list(spec.submodule_search_locations)[0]
+    found = []
+    for pattern in ("*videoio_ffmpeg*.dll", "*videoio_ffmpeg*.so*", "*videoio_ffmpeg*.dylib"):
+        for path in glob.glob(os.path.join(package_dir, pattern)):
+            # Destino "." = raíz del bundle, que es donde cv2 lo busca.
+            found.append((path, "."))
+    return found
+
+
+binaries += _opencv_ffmpeg_libs()
 
 # ── Hidden imports ────────────────────────────────────────────────────────────
 hiddenimports = (

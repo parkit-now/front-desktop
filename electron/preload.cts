@@ -64,4 +64,27 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     pageWidthMm: number | null;
   }): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> =>
     ipcRenderer.invoke('printer:printTicket', payload),
+
+  // ── Cámara ────────────────────────────────────────────────────────────────
+  //
+  // La contraseña es de una sola vía: se puede mandar, nunca se puede leer.
+  // `getCameraConfig` devuelve `hasPassword` en vez del valor, así que ni el
+  // renderer ni el DevTools de quien abra la app pueden verla.
+
+  getCameraConfig: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:getConfig'),
+
+  probeCamera: (config: unknown): Promise<unknown> =>
+    ipcRenderer.invoke('camera:probe', config),
+
+  setCameraConfig: (config: unknown): Promise<unknown> =>
+    ipcRenderer.invoke('camera:setConfig', config),
+
+  /** Ajustes VIGENTES del servicio de detección (no los guardados en disco). */
+  getCameraTuning: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:getTuning'),
+
+  /** Vuelve la calibración a los valores con los que arranca el servicio. */
+  resetCameraTuning: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:resetTuning'),
 });

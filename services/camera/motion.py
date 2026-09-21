@@ -68,6 +68,21 @@ class MotionDetector:
             self._prev_gray = gray
             return False, None
 
+        # Cambió la resolución: hay otra cámara del otro lado.
+        #
+        # `cv2.absdiff` TIRA una excepción si los tamaños no coinciden, y como
+        # esto corre dentro del loop de detección, esa excepción mataba la tarea
+        # entera: el video seguía viéndose y la detección de patentes quedaba
+        # muerta para siempre, sin un solo error a la vista. Pasó al cambiar en
+        # caliente de la webcam (1280x720) a una cámara IP (1920x1080).
+        #
+        # No es un error: es una cámara nueva. Se descarta la referencia vieja y
+        # se arranca de cero, igual que en el warmup.
+        if self._prev_gray.shape != gray.shape:
+            self._prev_gray = gray
+            self._warmup_remaining = self._warmup_frames
+            return False, None
+
         diff = cv2.absdiff(self._prev_gray, gray)
         self._prev_gray = gray  # always update so next diff is frame-to-frame
 
@@ -80,6 +95,30 @@ class MotionDetector:
 
         self._last_trigger = now
         return True, frame.copy()
+
+    def configure(
+        self,
+        threshold: float | None = None,
+        cooldown: float | None = None,
+        roi: _ROI_T | None = None,
+        roi_given: bool = False,
+    ) -> None:
+        """Reajustar la sensibilidad sin recrear el detector.
+
+        `roi_given` distingue "no me mandes el ROI" de "borrá el ROI": sin esa
+        bandera, `roi=None` sería ambiguo y no habría forma de volver al cuadro
+        completo desde el panel.
+
+        Cambiar el ROI descarta la referencia: la zona comparada es otra y el
+        primer diff contra la anterior daría un falso positivo enorme.
+        """
+        if threshold is not None:
+            self._threshold = threshold
+        if cooldown is not None:
+            self._cooldown = cooldown
+        if roi_given and roi != self._roi:
+            self._roi = roi
+            self.reset()
 
     def reset(self) -> None:
         """Clear accumulated state so the next frames are treated as warmup.
