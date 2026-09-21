@@ -46,7 +46,36 @@ declare global {
    * Lo que se manda al guardar o probar. `password` ausente significa "dejá la
    * que ya está guardada": el panel solo la envía si el usuario la reescribe.
    */
-  type DesktopCameraConfigInput = DesktopCameraConfig & { password?: string };
+  type DesktopCameraConfigInput = DesktopCameraConfig & {
+    password?: string;
+    /** Ajustes de detección. Ausente = no tocar los guardados. */
+    tuning?: DesktopCameraTuning;
+  };
+
+  /**
+   * Ajustes que se calibran en cada instalación.
+   *
+   * Los defaults viven en el servicio Python, no acá: es su única fuente de
+   * verdad y el panel muestra siempre los valores vigentes que él reporta.
+   */
+  interface DesktopCameraTuning {
+    motionThreshold: number;
+    motionCooldown: number;
+    minConfidence: number;
+    plateCooldown: number;
+    fallbackInterval: number;
+    clusterWindow: number;
+    clusterSettle: number;
+    bboxCloseRatio: number;
+    fps: number;
+    width: number;
+    height: number;
+    watchdogTimeout: number;
+    streamFps: number;
+    streamQuality: number;
+    /** `[x1, y1, x2, y2]` en píxeles del frame, o null = cuadro completo. */
+    roi: [number, number, number, number] | null;
+  }
 
   type DesktopCameraProbeResult =
     | { ok: true; width: number; height: number }
@@ -82,6 +111,8 @@ declare global {
       setCameraConfig: (
         config: DesktopCameraConfigInput,
       ) => Promise<{ ok: true; reconnected: boolean }>;
+      getCameraTuning: () => Promise<DesktopCameraTuning | null>;
+      resetCameraTuning: () => Promise<DesktopCameraTuning | null>;
     };
   }
 }

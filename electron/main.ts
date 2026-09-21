@@ -7,7 +7,9 @@ import { resolveServiceRuntime, type ServiceName } from './serviceRuntime.js';
 import { destroyPrintWindows, listPrinters, printTicketHtml } from './print.js';
 import {
   cameraServiceEnv,
+  clearCameraTuning,
   readCameraConfig,
+  readCameraTuning,
   resolveCameraSource,
   resolveSourceFor,
   writeCameraConfig,
@@ -115,13 +117,37 @@ async function applyStoredCameraConfig(port: number): Promise<void> {
         }),
         signal: AbortSignal.timeout(5_000),
       });
-      if (res.ok) return;
+      if (res.ok) {
+        await pushCameraTuning(port);
+        return;
+      }
     } catch {
       // Todavía no levantó.
     }
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
   console.warn('[camera] no se pudo aplicar la cámara guardada al servicio');
+}
+
+/**
+ * Reaplica los ajustes de detección calibrados en este equipo.
+ *
+ * Se manda solo lo guardado: lo que nadie tocó lo resuelve el servicio con sus
+ * propios defaults, así no hay dos lugares diciendo cuál es el valor normal.
+ */
+async function pushCameraTuning(port: number): Promise<void> {
+  const tuning = readCameraTuning();
+  if (Object.keys(tuning).length === 0) return;
+  try {
+    await fetch(`http://127.0.0.1:${port}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tuning),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    console.warn('[camera] no se pudieron aplicar los ajustes guardados');
+  }
 }
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
@@ -275,6 +301,21 @@ if (!gotTheLock) {
 
     ipcMain.handle('camera:getConfig', () => readCameraConfig());
 
+    // Los ajustes vigentes salen del SERVICIO, no del archivo: el archivo solo
+    // tiene lo que alguien cambió, y el panel tiene que mostrar los valores
+    // reales con los que está corriendo la detección ahora mismo.
+    ipcMain.handle('camera:getTuning', async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${CAMERA_PORT}/config`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as unknown;
+      } catch {
+        return null;
+      }
+    });
+
     ipcMain.handle('camera:probe', async (_event, input: CameraConfigInput) => {
       const source = resolveSourceFor(input);
       if (!source) return { ok: false, error: 'falta_direccion' };
@@ -317,12 +358,32 @@ if (!gotTheLock) {
               signal: AbortSignal.timeout(10_000),
             },
           );
+          await pushCameraTuning(CAMERA_PORT);
           return { ok: true, reconnected: res.ok };
         } catch {
           return { ok: true, reconnected: false };
         }
       },
     );
+
+    ipcMain.handle('camera:resetTuning', async () => {
+      // Primero el archivo: si el servicio no contestara, igual queremos que el
+      // próximo arranque no reviva la calibración vieja.
+      clearCameraTuning();
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:${CAMERA_PORT}/config/reset`,
+          {
+            method: 'POST',
+            signal: AbortSignal.timeout(5_000),
+          },
+        );
+        if (!res.ok) return null;
+        return (await res.json()) as unknown;
+      } catch {
+        return null;
+      }
+    });
 
     ipcMain.handle('printer:list', () => listPrinters(mainWindow));
     ipcMain.handle(

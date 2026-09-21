@@ -2965,6 +2965,242 @@ h2 {
   width: auto;
 }
 
+.camera-settings-shell {
+  display: grid;
+  gap: var(--space-3);
+  width: min(780px, 100%);
+}
+
+.camera-settings-hero,
+.camera-settings-card,
+.camera-settings-actions {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+}
+
+.camera-settings-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 20px;
+  background:
+    linear-gradient(135deg, rgba(14, 95, 216, 0.1), rgba(255, 255, 255, 0)),
+    var(--color-card);
+}
+
+.camera-settings-hero h2,
+.camera-settings-card h3 {
+  margin: 0;
+}
+
+.camera-settings-hero p {
+  margin: 6px 0 0;
+  max-width: 620px;
+}
+
+.camera-settings-kicker {
+  margin: 0 0 4px;
+  color: var(--color-brand);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.camera-status-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 230px;
+  padding: 12px 14px;
+  border: 1px solid #d8e4f5;
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.camera-status-card > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.camera-status-card strong {
+  font-size: 14px;
+}
+
+.camera-status-card span:last-child {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #98a6ba;
+  box-shadow: 0 0 0 4px rgba(152, 166, 186, 0.14);
+}
+
+.camera-status-card.live .camera-status-dot {
+  background: #14a35b;
+  box-shadow: 0 0 0 4px rgba(20, 163, 91, 0.14);
+}
+
+.camera-status-card.down .camera-status-dot {
+  background: #d17a00;
+  box-shadow: 0 0 0 4px rgba(209, 122, 0, 0.14);
+}
+
+.camera-settings-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: 18px;
+}
+
+.camera-settings-shell .printer-panel-field {
+  margin-top: 0;
+}
+
+.camera-settings-shell input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-card);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.camera-settings-shell input:focus {
+  border-color: var(--color-brand);
+  outline: 2px solid var(--color-brand);
+  outline-offset: 1px;
+}
+
+.camera-settings-shell input:disabled {
+  background: #f2f5f9;
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+.camera-settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.camera-mode-segments {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(430px, 100%);
+  min-height: 48px;
+  padding: 4px;
+  border: 1px solid #cbd8ea;
+  border-radius: var(--radius-control);
+  background: #eef4fb;
+}
+
+.camera-mode-segments button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #37516f;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.camera-mode-segments button.active {
+  background: #fff;
+  color: var(--color-brand-strong);
+  box-shadow: 0 8px 18px rgba(19, 47, 93, 0.1);
+}
+
+.camera-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.camera-source-grid--webcam {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.camera-card-note {
+  margin: 0;
+  font-size: 13px;
+}
+
+.camera-roi-card {
+  gap: var(--space-2);
+}
+
+.camera-roi-card .roi-editor__stage,
+.camera-roi-card .roi-editor__placeholder {
+  max-width: none;
+}
+
+.camera-roi-card .roi-editor__stage,
+.camera-roi-card .roi-editor__placeholder {
+  border-radius: var(--radius-control);
+}
+
+.camera-advanced-grid {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.camera-settings-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 14px 18px;
+}
+
+.camera-settings-actions .csd-note {
+  margin: 0;
+}
+
+.camera-settings-actions .printer-panel-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+@media (max-width: 820px) {
+  .camera-settings-hero,
+  .camera-settings-card-head,
+  .camera-settings-actions {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .camera-status-card {
+    min-width: 0;
+  }
+
+  .camera-source-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Egresos zone (ticket lookup + autos en base) — always at the column bottom. */
 .exit-controls {
   margin-top: auto;
@@ -5071,4 +5307,75 @@ h2 {
 
 .dr-cal-day.is-range-middle .dr-cal-day-button:hover {
   background: var(--color-bg-end);
+}
+
+/* ── Ajustes de cámara ─────────────────────────────────────────────────────
+   El editor de zona muestra el video en vivo y deja dibujar el rectángulo
+   encima. `touch-action: none` es necesario: sin eso el navegador interpreta
+   el arrastre como scroll y el rectángulo nunca se dibuja. */
+.camera-tuning-head {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.camera-tuning-head h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.roi-editor {
+  margin-top: var(--space-2);
+}
+
+.roi-editor__stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  background: #0b1220;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.roi-editor__video {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.roi-editor__box {
+  position: absolute;
+  border: 2px solid var(--color-brand);
+  background: rgba(14, 95, 216, 0.18);
+  pointer-events: none;
+}
+
+.roi-editor__placeholder {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  max-width: 640px;
+}
+
+.roi-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.camera-tuning-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
 }

@@ -96,6 +96,30 @@ class MotionDetector:
         self._last_trigger = now
         return True, frame.copy()
 
+    def configure(
+        self,
+        threshold: float | None = None,
+        cooldown: float | None = None,
+        roi: _ROI_T | None = None,
+        roi_given: bool = False,
+    ) -> None:
+        """Reajustar la sensibilidad sin recrear el detector.
+
+        `roi_given` distingue "no me mandes el ROI" de "borrá el ROI": sin esa
+        bandera, `roi=None` sería ambiguo y no habría forma de volver al cuadro
+        completo desde el panel.
+
+        Cambiar el ROI descarta la referencia: la zona comparada es otra y el
+        primer diff contra la anterior daría un falso positivo enorme.
+        """
+        if threshold is not None:
+            self._threshold = threshold
+        if cooldown is not None:
+            self._cooldown = cooldown
+        if roi_given and roi != self._roi:
+            self._roi = roi
+            self.reset()
+
     def reset(self) -> None:
         """Clear accumulated state so the next frames are treated as warmup.
 

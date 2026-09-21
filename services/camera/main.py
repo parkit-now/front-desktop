@@ -81,7 +81,10 @@ MOTION_COOLDOWN   = float(os.environ.get("CAMERA_MOTION_COOLDOWN", "3.0"))
 FALLBACK_INTERVAL = float(os.environ.get("CAMERA_FALLBACK_INTERVAL", "300.0"))
 
 STREAM_FPS     = max(1, min(CAMERA_FPS, int(os.environ.get("CAMERA_STREAM_FPS", "12"))))
-_STREAM_JPEG   = [cv2.IMWRITE_JPEG_QUALITY, int(os.environ.get("CAMERA_STREAM_QUALITY", "70"))]
+# Variable propia y no un literal dentro de _STREAM_JPEG: el panel la ajusta en
+# caliente, y para eso tiene que poder leerse y escribirse por nombre.
+STREAM_QUALITY = int(os.environ.get("CAMERA_STREAM_QUALITY", "70"))
+_STREAM_JPEG   = [cv2.IMWRITE_JPEG_QUALITY, STREAM_QUALITY]
 
 
 def _parse_roi(raw: str) -> tuple[int, int, int, int] | None:
@@ -522,6 +525,7 @@ async def lifespan(app: FastAPI):
     _watchdog = CameraWatchdog(_capture, WATCHDOG_TIMEOUT)
     _motion   = MotionDetector(MOTION_THRESHOLD, MOTION_COOLDOWN, ROI)
 
+    _snapshot_defaults()
     _capture.start()
     _watchdog.start()
     task = asyncio.create_task(_process_loop())
@@ -659,6 +663,144 @@ def probe_source(payload: dict):
     return probe.probe()
 
 
+# ── Ajustes en caliente ───────────────────────────────────────────────────────
+#
+# Cada instalación es distinta —el ángulo del portón, cuánta calle entra en
+# cuadro, qué tan transitada es— así que estos valores se calibran en el lugar,
+# mirando el video, y no se pueden fijar de antemano en el código.
+#
+# nombre -> (tipo, mínimo, máximo)
+_TUNABLES: dict[str, tuple[type, float, float]] = {
+    # Detección
+    "motionThreshold": (float, 0.1, 50.0),
+    "motionCooldown": (float, 0.1, 60.0),
+    "minConfidence": (float, 0.0, 1.0),
+    "plateCooldown": (float, 0.0, 300.0),
+    "fallbackInterval": (float, 10.0, 3600.0),
+    # Agrupamiento de lecturas de un mismo auto
+    "clusterWindow": (float, 0.5, 60.0),
+    "clusterSettle": (float, 0.1, 30.0),
+    "bboxCloseRatio": (float, 0.05, 1.0),
+    # Captura (width/height/fps solo aplican a webcam: una cámara IP manda lo suyo)
+    "fps": (int, 1, 60),
+    "width": (int, 160, 7680),
+    "height": (int, 120, 4320),
+    "watchdogTimeout": (int, 1, 120),
+    # Preview
+    "streamFps": (int, 1, 30),
+    "streamQuality": (int, 10, 100),
+}
+
+_GLOBAL_BY_KEY = {
+    "motionThreshold": "MOTION_THRESHOLD",
+    "motionCooldown": "MOTION_COOLDOWN",
+    "minConfidence": "MIN_CONFIDENCE",
+    "plateCooldown": "COOLDOWN",
+    "fallbackInterval": "FALLBACK_INTERVAL",
+    "clusterWindow": "CLUSTER_WINDOW",
+    "clusterSettle": "CLUSTER_SETTLE",
+    "bboxCloseRatio": "BBOX_CLOSE_RATIO",
+    "fps": "CAMERA_FPS",
+    "width": "CAMERA_WIDTH",
+    "height": "CAMERA_HEIGHT",
+    "watchdogTimeout": "WATCHDOG_TIMEOUT",
+    "streamFps": "STREAM_FPS",
+    "streamQuality": "STREAM_QUALITY",
+}
+
+
+# Los valores con los que arrancó el proceso, capturados ANTES de que el panel
+# pueda tocar nada. Son el destino del botón "Restablecer": sin esta foto, la
+# primera edición pisa los globales y ya no hay a dónde volver.
+_DEFAULT_TUNING: dict = {}
+_DEFAULT_ROI = ROI
+
+
+def _snapshot_defaults() -> None:
+    g = globals()
+    for key, name in _GLOBAL_BY_KEY.items():
+        _DEFAULT_TUNING[key] = g[name]
+
+
+def _current_config() -> dict:
+    g = globals()
+    values = {key: g[name] for key, name in _GLOBAL_BY_KEY.items()}
+    values["roi"] = list(ROI) if ROI else None
+    values["cameraId"] = CAMERA_ID
+    values["location"] = CAMERA_LOCATION
+    values["source"] = redact_source(_capture.source) if _capture else None
+    return values
+
+
+@app.get("/config")
+def get_config():
+    """Todos los ajustes vigentes. `source` va redactada."""
+    return _current_config()
+
+
+@app.post("/config")
+def set_config(payload: dict):
+    """Aplicar ajustes sin reiniciar el proceso.
+
+    Valida contra `_TUNABLES` y RECHAZA el lote entero si algo está fuera de
+    rango, en vez de aplicar la mitad: una configuración a medio aplicar es
+    imposible de diagnosticar después mirando el panel.
+    """
+    g = globals()
+    updates: dict[str, float | int] = {}
+
+    for key, (kind, low, high) in _TUNABLES.items():
+        if key not in payload or payload[key] is None:
+            continue
+        try:
+            value = kind(payload[key])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{key}: no es un número")
+        if not (low <= value <= high):
+            raise HTTPException(
+                status_code=400, detail=f"{key}: fuera de rango [{low}, {high}]"
+            )
+        updates[key] = value
+
+    roi_given = "roi" in payload
+    roi = None
+    if roi_given and payload["roi"] is not None:
+        raw = payload["roi"]
+        if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+            raise HTTPException(status_code=400, detail="roi: se esperaban 4 números")
+        try:
+            x1, y1, x2, y2 = (int(v) for v in raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="roi: valores no enteros")
+        if x1 >= x2 or y1 >= y2 or min(x1, y1) < 0:
+            raise HTTPException(status_code=400, detail="roi: rectángulo inválido")
+        roi = (x1, y1, x2, y2)
+
+    # Recién acá se escribe: si algo falló arriba, no se tocó nada.
+    for key, value in updates.items():
+        g[_GLOBAL_BY_KEY[key]] = value
+    if roi_given:
+        g["ROI"] = roi
+
+    # STREAM_FPS nunca puede superar el FPS de captura: pedir más cuadros de los
+    # que entran solo hace que el generador duerma de más.
+    g["STREAM_FPS"] = max(1, min(CAMERA_FPS, STREAM_FPS))
+    g["_STREAM_JPEG"] = [cv2.IMWRITE_JPEG_QUALITY, STREAM_QUALITY]
+
+    if _motion is not None:
+        _motion.configure(
+            threshold=MOTION_THRESHOLD,
+            cooldown=MOTION_COOLDOWN,
+            roi=ROI,
+            roi_given=roi_given,
+        )
+    if _watchdog is not None:
+        _watchdog.set_timeout(WATCHDOG_TIMEOUT)
+
+    logger.info("camera_config_updated", extra={"keys": sorted(updates) + (["roi"] if roi_given else [])})
+    return _current_config()
+
+
 @app.post("/config/source")
 def config_source(payload: dict):
     """Apuntar a otra cámara sin reiniciar el proceso.
@@ -695,6 +837,33 @@ def config_source(payload: dict):
         "cameraId": CAMERA_ID,
         "location": CAMERA_LOCATION,
     }
+
+
+@app.post("/config/reset")
+def reset_config():
+    """Volver a los valores con los que arrancó el servicio.
+
+    No toca la fuente de video: restablecer la calibración no debería
+    desconectarle la cámara a nadie.
+    """
+    g = globals()
+    for key, value in _DEFAULT_TUNING.items():
+        g[_GLOBAL_BY_KEY[key]] = value
+    g["ROI"] = _DEFAULT_ROI
+    g["_STREAM_JPEG"] = [cv2.IMWRITE_JPEG_QUALITY, STREAM_QUALITY]
+
+    if _motion is not None:
+        _motion.configure(
+            threshold=MOTION_THRESHOLD,
+            cooldown=MOTION_COOLDOWN,
+            roi=ROI,
+            roi_given=True,
+        )
+    if _watchdog is not None:
+        _watchdog.set_timeout(WATCHDOG_TIMEOUT)
+
+    logger.info("camera_config_reset")
+    return _current_config()
 
 
 @app.get("/detections")

@@ -79,4 +79,12 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
 
   setCameraConfig: (config: unknown): Promise<unknown> =>
     ipcRenderer.invoke('camera:setConfig', config),
+
+  /** Ajustes VIGENTES del servicio de detección (no los guardados en disco). */
+  getCameraTuning: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:getTuning'),
+
+  /** Vuelve la calibración a los valores con los que arranca el servicio. */
+  resetCameraTuning: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:resetTuning'),
 });

@@ -72,6 +72,10 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 ## Servicios locales (camera + LPR)
 
+> Para instalar una **cámara IP** en un equipo —conectarla, dejarla segura y
+> diagnosticar cuando no detecta— ver [CAMERA_SETUP.md](./CAMERA_SETUP.md). Esta
+> sección es solo el arranque de los servicios en desarrollo.
+
 En desarrollo los servicios Python se levantan manualmente en terminales separadas:
 
 ```bash
@@ -196,14 +200,14 @@ que un `push: tags:` en un archivo distinto nunca se activaría acá.
 Si no hay commits liberables (p. ej. solo `chore`/`docs`/`wip`), el workflow
 no hace nada — no se crea versión ni Release.
 
-Para probar el cálculo de versión sin crear nada real: pestaña *Actions* →
-**Release** → *Run workflow* con `dry_run: true` (o local:
+Para probar el cálculo de versión sin crear nada real: pestaña _Actions_ →
+**Release** → _Run workflow_ con `dry_run: true` (o local:
 `bun run release:dry-run`).
 
 **Prerrequisitos** (ya resueltos en este repo, dejo la nota por si se mueve a
 otro): variables de repo `VITE_API_URL`, `VITE_SUPABASE_URL`,
-`VITE_SUPABASE_ANON_KEY` en *Settings → Secrets and variables → Actions →
-Variables* (mismos valores que `.env.production`) — sin esas variables, el
+`VITE_SUPABASE_ANON_KEY` en _Settings → Secrets and variables → Actions →
+Variables_ (mismos valores que `.env.production`) — sin esas variables, el
 instalador queda sin URL de backend configurada. La branch protection de
 `main` no aplica acá: el plan Free de GitHub no la soporta en repos privados.
 

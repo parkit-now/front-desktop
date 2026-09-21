@@ -42,8 +42,20 @@ export interface CameraConfig {
   location: 'entrada' | 'salida';
 }
 
+/**
+ * Ajustes de detección que se calibran en el lugar.
+ *
+ * Se guardan como PARCIAL y sin defaults propios: los defaults viven en el
+ * servicio Python y son su única fuente de verdad. Duplicarlos acá garantizaría
+ * que en algún momento los dos lados digan cosas distintas y nadie sepa cuál
+ * gana. El panel lee los valores vigentes con `GET /config` y acá solo queda lo
+ * que alguien cambió a mano, para poder reaplicarlo al reiniciar.
+ */
+export type CameraTuning = Record<string, number | number[] | null>;
+
 /** Lo que se persiste: igual que `CameraConfig` más la contraseña cifrada. */
 interface StoredCameraConfig extends CameraConfig {
+  tuning: CameraTuning;
   /** base64 del blob de `safeStorage`, o texto plano si no hay cifrado. */
   password: string;
   /** `false` cuando el SO no ofreció cifrado y hubo que guardar en claro. */
@@ -73,6 +85,7 @@ function defaults(): StoredCameraConfig {
     streamPath: DEFAULT_STREAM_PATH,
     cameraId: DEFAULT_CAMERA_ID,
     location: 'entrada',
+    tuning: {},
   };
 }
 
@@ -113,6 +126,10 @@ function readStored(): StoredCameraConfig {
       streamPath: asString(value.streamPath, base.streamPath),
       cameraId: asString(value.cameraId, base.cameraId) || base.cameraId,
       location: value.location === 'salida' ? 'salida' : 'entrada',
+      tuning:
+        typeof value.tuning === 'object' && value.tuning !== null
+          ? (value.tuning as CameraTuning)
+          : base.tuning,
     };
   } catch {
     return defaults();
@@ -134,6 +151,23 @@ function decryptPassword(stored: StoredCameraConfig): string {
   }
 }
 
+/**
+ * Olvida los ajustes calibrados en este equipo.
+ *
+ * Imprescindible al restablecer: si solo se reseteara el servicio, al próximo
+ * arranque `pushCameraTuning` volvería a aplicarle los valores viejos y el botón
+ * parecería no haber hecho nada.
+ */
+export function clearCameraTuning(): void {
+  const stored = readStored();
+  writeCameraConfig({ ...stored, tuning: {} });
+}
+
+/** Los ajustes de detección guardados, para reaplicarlos al arrancar. */
+export function readCameraTuning(): CameraTuning {
+  return readStored().tuning;
+}
+
 /** Config sin la contraseña: es lo único que puede cruzar al renderer. */
 export function readCameraConfig(): CameraConfig & { hasPassword: boolean } {
   const stored = readStored();
@@ -145,6 +179,8 @@ export function readCameraConfig(): CameraConfig & { hasPassword: boolean } {
 export interface CameraConfigInput extends CameraConfig {
   /** `undefined` = dejar la que ya está guardada (el panel no la re-manda). */
   password?: string;
+  /** `undefined` = no tocar los ajustes guardados. */
+  tuning?: CameraTuning;
 }
 
 export function writeCameraConfig(input: CameraConfigInput): void {
@@ -179,6 +215,7 @@ export function writeCameraConfig(input: CameraConfigInput): void {
     streamPath: input.streamPath.trim() || DEFAULT_STREAM_PATH,
     cameraId: input.cameraId.trim() || DEFAULT_CAMERA_ID,
     location: input.location,
+    tuning: input.tuning ?? previous.tuning,
   };
 
   fs.writeFileSync(configPath(), JSON.stringify(next, null, 2), {

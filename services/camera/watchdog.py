@@ -83,6 +83,10 @@ class CameraWatchdog(threading.Thread):
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    def set_timeout(self, timeout: int) -> None:
+        """Segundos sin frames antes de declarar la cámara caída."""
+        self._timeout = timeout
+
     def note_source_change(self) -> None:
         """Avisar que se apuntó a otra cámara: arranca de cero.
 
