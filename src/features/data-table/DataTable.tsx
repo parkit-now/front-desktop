@@ -227,6 +227,9 @@ export function DataTable<TData>({
   initialColumnFiltersOverridePersistedState = false,
   initialPageSize = 10,
   initialColumnFilters,
+  onColumnFiltersChange,
+  columnFiltersOverride,
+  columnFiltersOverrideKey,
   initialSorting,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   getRowId,
@@ -319,6 +322,15 @@ export function DataTable<TData>({
       current.pageIndex === 0 ? current : { ...current, pageIndex: 0 },
     );
   }, [columnFilters, globalFilter, sorting]);
+
+  useEffect(() => {
+    onColumnFiltersChange?.(columnFilters);
+  }, [columnFilters, onColumnFiltersChange]);
+
+  useEffect(() => {
+    if (columnFiltersOverrideKey === undefined) return;
+    setColumnFilters(columnFiltersOverride ?? []);
+  }, [columnFiltersOverride, columnFiltersOverrideKey]);
 
   useEffect(() => {
     serverState?.onPaginationChange?.(pagination);

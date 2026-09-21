@@ -60,6 +60,7 @@ interface Props {
   /** Header of the printed ticket. Only used by the manual variant. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  parkingCuit?: string | null;
   /** Temporary in-memory draft for the manual operativo form. */
   initialDraft?: ManualEntryDraft | null;
   /** Called as the manual operativo draft changes. Should not update parent state per key stroke. */
@@ -277,6 +278,7 @@ export function EntryFormCore({
   onRegistered,
   parkingName = null,
   parkingAddress = null,
+  parkingCuit = null,
   initialDraft = null,
   onDraftChange,
   onDraftReset,
@@ -1106,15 +1108,24 @@ export function EntryFormCore({
         // de impresión NO puede reportarse como un ingreso fallido ni revertir
         // nada. Tampoco se espera: el operador sigue tipeando la patente que
         // viene mientras el trabajo se encola en el spooler.
-        void printEntryTicket({
-          parkingName,
-          parkingAddress,
-          vehicle: [finalBrand, finalModel].filter(Boolean).join(' ') || null,
-          color: color.trim() || null,
-          enteredAt: now,
-          rateNumber: selectedRate?.shortcutNumber ?? null,
-          ticketNumber: ticketNumber ?? null,
-        }).then((outcome) => {
+        void printEntryTicket(
+          {
+            parkingName,
+            parkingAddress,
+            parkingCuit,
+            plate: normalizedPlate,
+            vehicleBrand: finalBrand || null,
+            vehicleModel: finalModel || null,
+            color: color.trim() || null,
+            cochera: cochera.trim() || null,
+            notes: notes.trim() || null,
+            enteredAt: now,
+            rateNumber: selectedRate?.shortcutNumber ?? null,
+            rateName: selectedRate?.name ?? null,
+            ticketNumber: ticketNumber ?? null,
+          },
+          tenantId,
+        ).then((outcome) => {
           if (!outcome.ok) {
             showToast({
               message: describePrintFailure(outcome),

@@ -41,10 +41,18 @@ import {
   type MeResponseDto,
 } from '../../lib/api/auth';
 import { listAdminParkings, type ParkingDto } from '../../lib/api/tenants';
+import {
+  fetchEntityProfileSettings,
+  type DesktopCameraConfigPayload,
+} from '../../lib/api/entities';
 import { translateApiError, translateRole } from '../../lib/api/translate';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { PARKIT_LOGO_URL } from '../../lib/brand';
+import {
+  normalizeTicketTemplateSettings,
+  writeTicketTemplateSettings,
+} from '../../lib/print/ticketTemplate';
 import { SyncProvider } from '../../lib/sync/SyncContext';
 import { signOut } from '../../lib/supabase/session';
 import { getErrorMessage } from './errors';
@@ -240,6 +248,24 @@ function sameMemberships(a: MeMembershipDto[], b: MeMembershipDto[]): boolean {
   return true;
 }
 
+function desktopCameraInputFromSettings(
+  config: DesktopCameraConfigPayload,
+): DesktopCameraConfigInput {
+  return {
+    mode: config.mode,
+    deviceIndex: config.deviceIndex,
+    host: config.host,
+    port: config.port,
+    username: config.username,
+    streamPath: config.streamPath,
+    cameraId: config.cameraId,
+    location: config.location,
+    ...(config.tuning
+      ? { tuning: config.tuning as unknown as DesktopCameraTuning }
+      : {}),
+  };
+}
+
 export function SessionView({ session, sessionStale = false }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
@@ -325,7 +351,11 @@ export function SessionView({ session, sessionStale = false }: Props) {
   }, [activeMembership, activeTenantId, adminParkings]);
   // Sale del perfil cacheado, así el ticket también se imprime offline. Un
   // admin sin membership no tiene dirección: el ticket omite la línea.
-  const activeTenantAddress = activeMembership?.tenantAddress ?? null;
+  const activeAdminParking =
+    adminParkings?.find((parking) => parking.id === activeTenantId) ?? null;
+  const activeTenantAddress =
+    activeMembership?.tenantAddress ?? activeAdminParking?.address ?? null;
+  const activeTenantCuit = activeAdminParking?.cuit ?? null;
   const activeRole = entityRoleForRates(profile, activeMembership);
   const ratesAllowed = canAccessRates(
     profile,
@@ -359,6 +389,40 @@ export function SessionView({ session, sessionStale = false }: Props) {
   useEffect(() => {
     writeStoredValue(tenantKey, activeTenantId);
   }, [activeTenantId, tenantKey]);
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+
+    let mounted = true;
+    void fetchEntityProfileSettings(activeTenantId, session.access_token)
+      .then((settings) => {
+        if (!mounted) return;
+        if (settings.ticketTemplate) {
+          writeTicketTemplateSettings(
+            normalizeTicketTemplateSettings(
+              activeTenantId,
+              settings.ticketTemplate,
+            ),
+          );
+        }
+        if (
+          settings.desktopCameraConfig &&
+          window.parkitDesktop &&
+          typeof window.parkitDesktop.setCameraConfig === 'function'
+        ) {
+          void window.parkitDesktop
+            .setCameraConfig(
+              desktopCameraInputFromSettings(settings.desktopCameraConfig),
+            )
+            .catch(() => undefined);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenantId, session.access_token]);
 
   useEffect(() => {
     if (!ratesAllowed && section === 'rates') {
@@ -790,6 +854,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         accessToken={session.access_token}
                         parkingName={activeTenantName}
                         parkingAddress={activeTenantAddress}
+                        parkingCuit={activeTenantCuit}
                         initialDraft={
                           activeManualEntryDraftKey
                             ? (manualEntryDraftsRef.current[
@@ -859,6 +924,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   }
                   parkingName={activeTenantName}
                   parkingAddress={activeTenantAddress}
+                  parkingCuit={activeTenantCuit}
                   onBackToCaja={
                     historialFocus
                       ? () => {
@@ -958,11 +1024,18 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 </section>
               )
             ) : section === 'camara-config' ? (
-              <CameraSettingsPanel />
+              <CameraSettingsPanel
+                tenantId={activeTenantId}
+                accessToken={session.access_token}
+              />
             ) : section === 'impresora' ? (
               <PrinterSettingsPanel
+                tenantId={activeTenantId}
                 tenantName={activeTenantName}
                 tenantAddress={activeTenantAddress}
+                tenantCuit={activeTenantCuit}
+                actorRole={activeRole}
+                accessToken={session.access_token}
               />
             ) : section === 'dashboard' ? (
               <section

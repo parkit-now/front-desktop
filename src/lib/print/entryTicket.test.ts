@@ -10,7 +10,10 @@ function ticket(overrides: Partial<EntryTicketData> = {}): EntryTicketData {
   return {
     parkingName: 'Estacionamiento Apex',
     parkingAddress: 'Balcarce 560',
-    vehicle: 'VW Suran',
+    parkingCuit: '20-16865508-0',
+    plate: 'ABC123',
+    vehicleBrand: 'VW',
+    vehicleModel: 'Suran',
     color: 'Negra',
     // Instante UTC fijo: el formateo está clavado a Argentina, así que el
     // resultado no depende de la zona de la máquina que corre el test.
@@ -57,7 +60,10 @@ describe('buildEntryTicketHtml', () => {
     const html = buildEntryTicketHtml(ticket());
     expect(html).toContain('Estacionamiento Apex');
     expect(html).toContain('Balcarce 560');
-    expect(html).toContain('VW Suran');
+    expect(html).toContain('20-16865508-0');
+    expect(html).toContain('ABC123');
+    expect(html).toContain('VW');
+    expect(html).toContain('Suran');
     expect(html).toContain('Negra');
     expect(html).toContain('14/09/2026');
     expect(html).toContain('13:43 hs');
@@ -103,7 +109,7 @@ describe('buildEntryTicketHtml', () => {
 
   it('escapa texto cargado por el operador', () => {
     const html = buildEntryTicketHtml(
-      ticket({ vehicle: '<img src=x onerror=alert(1)>' }),
+      ticket({ vehicleModel: '<img src=x onerror=alert(1)>' }),
     );
     // El payload sobrevive como texto inerte; lo que importa es que no quede
     // ninguna etiqueta viva ni comilla capaz de cerrar un atributo.
@@ -121,9 +127,7 @@ describe('buildEntryTicketHtml', () => {
 
   it('omite la dirección cuando no hay', () => {
     const html = buildEntryTicketHtml(ticket({ parkingAddress: null }));
-    // `.t-addr` vive siempre en la hoja de estilos: lo que no debe existir es
-    // el div renderizado.
-    expect(html).not.toContain('<div class="t-addr">');
+    expect(html).not.toContain('Balcarce 560');
     expect(html).not.toContain('null');
   });
 
@@ -136,14 +140,76 @@ describe('buildEntryTicketHtml', () => {
   });
 
   it('trata como vacío un valor con solo espacios', () => {
-    const html = buildEntryTicketHtml(ticket({ vehicle: '   ' }));
-    expect(html).not.toContain('Vehículo');
+    const html = buildEntryTicketHtml(ticket({ vehicleModel: '   ' }));
+    expect(html).not.toContain('Modelo');
   });
 
   it('marca S/N cuando no hay número de ticket', () => {
     const html = buildEntryTicketHtml(ticket({ ticketNumber: null }));
     expect(html).toContain('S/N');
-    expect(html).toContain('t-ticket-number--missing');
     expect(html).not.toContain('undefined');
+  });
+
+  it('respeta orden, visibilidad y tamaño de la plantilla', () => {
+    const html = buildEntryTicketHtml(ticket(), {
+      template: {
+        version: 1,
+        tenantId: 'tenant-1',
+        cuitOverride: '',
+        grossIncomeText: '',
+        nonFiscalControlText: '',
+        fields: [
+          { id: 'plate', visible: true, fontSizePt: 18, emphasis: 'bold' },
+          {
+            id: 'parkingName',
+            visible: false,
+            fontSizePt: 10,
+            emphasis: 'normal',
+          },
+          { id: 'color', visible: true, fontSizePt: 7, emphasis: 'normal' },
+        ],
+      },
+    });
+
+    expect(html.indexOf('ABC123')).toBeLessThan(html.indexOf('Negra'));
+    expect(html).toContain('font-size:18pt');
+    expect(html).toContain('font-size:7pt');
+    expect(html).not.toContain('>Estacionamiento Apex</div>');
+  });
+
+  it('usa textos fiscales editables cuando no vienen del perfil', () => {
+    const html = buildEntryTicketHtml(ticket({ parkingCuit: null }), {
+      template: {
+        version: 1,
+        tenantId: 'tenant-1',
+        cuitOverride: '30-12345678-9',
+        grossIncomeText: 'IIBB: 1027025-06',
+        nonFiscalControlText: 'Control no fiscal',
+        fields: [
+          {
+            id: 'parkingCuit',
+            visible: true,
+            fontSizePt: 8,
+            emphasis: 'normal',
+          },
+          {
+            id: 'grossIncome',
+            visible: true,
+            fontSizePt: 8,
+            emphasis: 'normal',
+          },
+          {
+            id: 'nonFiscalControl',
+            visible: true,
+            fontSizePt: 8,
+            emphasis: 'normal',
+          },
+        ],
+      },
+    });
+
+    expect(html).toContain('CUIT: 30-12345678-9');
+    expect(html).toContain('IIBB: 1027025-06');
+    expect(html).toContain('Control no fiscal');
   });
 });

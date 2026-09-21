@@ -5,7 +5,7 @@ import type {
 } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   localDb,
   type LocalEntry,
@@ -30,6 +30,7 @@ interface Props {
   /** Encabezado del ticket al reimprimir desde el diálogo de edición. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  parkingCuit?: string | null;
   onBackToCaja?: () => void;
 }
 
@@ -233,6 +234,7 @@ export function EntryHistoryPanel({
   initialOnlyCurrentSession = false,
   parkingName = null,
   parkingAddress = null,
+  parkingCuit = null,
   onBackToCaja,
 }: Props) {
   const tableScope = useMemo<TableTemplateScope>(
@@ -249,14 +251,18 @@ export function EntryHistoryPanel({
   const [onlyCurrentSession, setOnlyCurrentSession] = useState(() =>
     focusedFromCashSession
       ? initialOnlyCurrentSession
-      : (persistedSwitches.onlyCurrentSession ?? false),
+      : (persistedSwitches.onlyCurrentSession ?? true),
   );
   const [includeInLot, setIncludeInLot] = useState(
-    () => persistedSwitches.includeInLot ?? false,
+    () => persistedSwitches.includeInLot ?? true,
   );
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFiltersOverride, setColumnFiltersOverride] =
+    useState<ColumnFiltersState>([]);
+  const [columnFiltersOverrideKey, setColumnFiltersOverrideKey] = useState(0);
 
   const allSessions = useLiveQuery(
     () =>
@@ -386,6 +392,31 @@ export function EntryHistoryPanel({
     () => ({ onlyCurrentSession, includeInLot }),
     [includeInLot, onlyCurrentSession],
   );
+  const handleColumnFiltersChange = useCallback(
+    (filters: ColumnFiltersState) => {
+      setColumnFilters(filters);
+      const cashSessionFilter = filters.find(
+        (filter) => filter.id === 'cashSessionId',
+      );
+      const selectedCashSessionIds = Array.isArray(cashSessionFilter?.value)
+        ? cashSessionFilter.value.map(String)
+        : [];
+      if (selectedCashSessionIds.length > 0) {
+        setOnlyCurrentSession(false);
+      }
+    },
+    [],
+  );
+
+  function handleOnlyCurrentSessionChange(next: boolean) {
+    setOnlyCurrentSession(next);
+    if (!next) return;
+
+    setColumnFiltersOverride(
+      columnFilters.filter((filter) => filter.id !== 'cashSessionId'),
+    );
+    setColumnFiltersOverrideKey((current) => current + 1);
+  }
 
   return (
     <>
@@ -402,6 +433,9 @@ export function EntryHistoryPanel({
           cashSessionId: cashSessionFilterOptions,
         }}
         initialColumnFilters={initialColumnFilters}
+        onColumnFiltersChange={handleColumnFiltersChange}
+        columnFiltersOverride={columnFiltersOverride}
+        columnFiltersOverrideKey={columnFiltersOverrideKey}
         initialColumnFiltersOverridePersistedState={focusedFromCashSession}
         initialPageSize={20}
         pageSizeOptions={[10, 20, 50, 100]}
@@ -415,7 +449,7 @@ export function EntryHistoryPanel({
             id: 'onlyCurrentSession',
             label: 'Solo caja actual',
             checked: onlyCurrentSession,
-            onChange: setOnlyCurrentSession,
+            onChange: handleOnlyCurrentSessionChange,
           },
           {
             id: 'includeInLot',
@@ -453,6 +487,7 @@ export function EntryHistoryPanel({
           cashSession={editingCashSession}
           parkingName={parkingName}
           parkingAddress={parkingAddress}
+          parkingCuit={parkingCuit}
           onClose={() => setEditingEntry(null)}
         />
       ) : null}

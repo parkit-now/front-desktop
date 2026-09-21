@@ -56,6 +56,7 @@ interface Props {
   /** Encabezado del ticket reimpreso. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  parkingCuit?: string | null;
   onClose: () => void;
 }
 
@@ -207,6 +208,7 @@ export function EntryEditDialog({
   cashSession,
   parkingName = null,
   parkingAddress = null,
+  parkingCuit = null,
   onClose,
 }: Props) {
   const { isOnline } = useNetwork();
@@ -502,17 +504,24 @@ export function EntryEditDialog({
   async function handleReprint(): Promise<void> {
     setReprinting(true);
     try {
-      const outcome = await printEntryTicket({
-        parkingName,
-        parkingAddress,
-        vehicle:
-          [entry.vehicleBrand, entry.vehicleModel].filter(Boolean).join(' ') ||
-          null,
-        color: entry.color ?? null,
-        enteredAt: entry.enteredAt,
-        rateNumber: persistedRate?.shortcutNumber ?? null,
-        ticketNumber: entry.ticketNumber ?? null,
-      });
+      const outcome = await printEntryTicket(
+        {
+          parkingName,
+          parkingAddress,
+          parkingCuit,
+          plate: entry.plate,
+          vehicleBrand: entry.vehicleBrand ?? null,
+          vehicleModel: entry.vehicleModel ?? null,
+          color: entry.color ?? null,
+          cochera: entry.cochera ?? null,
+          notes: entry.notes ?? null,
+          enteredAt: entry.enteredAt,
+          rateNumber: persistedRate?.shortcutNumber ?? null,
+          rateName: persistedRate?.name ?? entry.rateSnapshotName ?? null,
+          ticketNumber: entry.ticketNumber ?? null,
+        },
+        tenantId,
+      );
       showToast(
         outcome.ok
           ? { message: 'Ticket reimpreso.', kind: 'success' }

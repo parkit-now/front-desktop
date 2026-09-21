@@ -41,6 +41,9 @@ export type DataTableProps<TData> = {
   initialColumnFiltersOverridePersistedState?: boolean;
   initialPageSize?: number;
   initialColumnFilters?: ColumnFiltersState;
+  onColumnFiltersChange?: (filters: ColumnFiltersState) => void;
+  columnFiltersOverride?: ColumnFiltersState;
+  columnFiltersOverrideKey?: string | number;
   initialSorting?: SortingState;
   pageSizeOptions?: number[];
   getRowId?: (row: TData, index: number) => string;

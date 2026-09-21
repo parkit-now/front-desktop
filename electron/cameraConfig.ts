@@ -11,10 +11,10 @@
  *
  * QUÉ ES DE ESTE EQUIPO Y QUÉ ES DEL ESTACIONAMIENTO
  *
- * La URL y la contraseña son de este equipo: una IP `192.168.x.x` solo tiene
- * sentido dentro de la red de esa playa, y la clave de la cámara no tiene por
- * qué viajar a la nube. Lo que sí pertenece al estacionamiento —qué cámara es la
- * de la entrada— vive en el backend (`tenants.entry_camera_id`) y baja por sync.
+ * La configuración no sensible de la cámara también puede vivir en el backend,
+ * atada al estacionamiento, para sobrevivir reinstalaciones. Este archivo sigue
+ * siendo necesario porque main arranca antes del login y porque la contraseña
+ * NUNCA viaja a la nube: queda cifrada en esta computadora.
  */
 
 import { app, safeStorage } from 'electron';

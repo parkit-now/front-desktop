@@ -9,6 +9,11 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../lib/notifications/ToastProvider';
+import {
+  fetchEntityProfileSettings,
+  updateEntityDesktopCameraConfig,
+  type DesktopCameraConfigPayload,
+} from '../../lib/api/entities';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { useWebcamDevices } from './useWebcamDevices';
@@ -89,6 +94,11 @@ type ProbeState =
 
 type ResetTarget = 'source' | 'detection' | null;
 
+type Props = {
+  tenantId?: string | null;
+  accessToken?: string | null;
+};
+
 function statusCopy(status: ReturnType<typeof useCameraStatus>) {
   if (!status) {
     return {
@@ -118,7 +128,44 @@ function statusCopy(status: ReturnType<typeof useCameraStatus>) {
   };
 }
 
-export function CameraSettingsPanel() {
+function cameraPayload(
+  input: DesktopCameraConfigInput,
+): DesktopCameraConfigPayload {
+  return {
+    mode: input.mode,
+    deviceIndex: input.deviceIndex,
+    host: input.host,
+    port: input.port,
+    username: input.username,
+    streamPath: input.streamPath,
+    cameraId: input.cameraId,
+    location: input.location,
+    tuning: (input.tuning as Record<string, unknown> | undefined) ?? null,
+  };
+}
+
+function remoteCameraInput(
+  config: DesktopCameraConfigPayload,
+): DesktopCameraConfigInput {
+  return {
+    mode: config.mode,
+    deviceIndex: config.deviceIndex,
+    host: config.host,
+    port: config.port,
+    username: config.username,
+    streamPath: config.streamPath,
+    cameraId: config.cameraId,
+    location: config.location,
+    ...(config.tuning
+      ? { tuning: config.tuning as unknown as DesktopCameraTuning }
+      : {}),
+  };
+}
+
+export function CameraSettingsPanel({
+  tenantId = null,
+  accessToken = null,
+}: Props) {
   const { showToast } = useToast();
   const status = useCameraStatus();
   const statusInfo = statusCopy(status);
@@ -184,6 +231,44 @@ export function CameraSettingsPanel() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!loaded || !tenantId || !accessToken) return;
+    const bridge = window.parkitDesktop;
+    if (!bridge || typeof bridge.setCameraConfig !== 'function') return;
+
+    let mounted = true;
+    void fetchEntityProfileSettings(tenantId, accessToken)
+      .then(async (settings) => {
+        if (!mounted) return;
+        if (!settings.desktopCameraConfig) {
+          await updateEntityDesktopCameraConfig(
+            tenantId,
+            accessToken,
+            cameraPayload(buildInput()),
+          ).catch(() => undefined);
+          return;
+        }
+
+        const input = remoteCameraInput(settings.desktopCameraConfig);
+        await bridge.setCameraConfig(input);
+        if (!mounted) return;
+        setUseWebcam(input.mode === 'webcam');
+        setDeviceIndex(input.deviceIndex);
+        setHost(input.host);
+        setPort(String(input.port));
+        setUsername(input.username);
+        setStreamPath(input.streamPath);
+        setCameraId(input.cameraId);
+        if (input.tuning) setTuning(input.tuning);
+        loadedSourceSignatureRef.current = cameraSourceSignature(input);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+    };
+  }, [accessToken, loaded, tenantId]);
 
   useEffect(() => {
     const bridge = window.parkitDesktop;
@@ -358,6 +443,13 @@ export function CameraSettingsPanel() {
     const bridge = window.parkitDesktop;
     if (!bridge) return;
     const result = await bridge.setCameraConfig(input);
+    if (tenantId && accessToken) {
+      void updateEntityDesktopCameraConfig(
+        tenantId,
+        accessToken,
+        cameraPayload(input),
+      ).catch(() => undefined);
+    }
     loadedSourceSignatureRef.current = cameraSourceSignature(input);
     showToast({
       message:
@@ -413,6 +505,16 @@ export function CameraSettingsPanel() {
     try {
       const defaults = await bridge.resetCameraTuning();
       if (defaults) setTuning(defaults);
+      if (tenantId && accessToken) {
+        void updateEntityDesktopCameraConfig(
+          tenantId,
+          accessToken,
+          cameraPayload({
+            ...buildInput(),
+            tuning: (defaults ?? {}) as unknown as DesktopCameraTuning,
+          }),
+        ).catch(() => undefined);
+      }
       setResetTarget(null);
       showToast({
         message: defaults

@@ -38,7 +38,7 @@ const MIN_WIDTH_MM = 20;
 const MAX_WIDTH_MM = 210;
 
 const FIT_TITLE_SCRIPT = `(() => {
-  const el = document.querySelector('.t-name');
+  const el = document.querySelector('.t-line--first');
   if (!el) return null;
   const available = document.body.clientWidth;
   const MIN_PX = 11;
