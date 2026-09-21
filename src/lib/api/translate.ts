@@ -141,6 +141,22 @@ const CODE_MESSAGES: Record<string, string> = {
     'Este cobro ya no se puede cancelar: se pagó, venció o ya se canceló. Actualizá la pantalla para ver cómo quedó.',
   PAYMENT_INTENT_ENTRY_CLOSED:
     'Esta estadía ya tiene el egreso registrado, así que no se le puede cobrar con QR.',
+  // El único de la familia que NO sale al generar el cobro sino AL CERRAR LA
+  // ESTADÍA, con el auto en la barrera: el `paymentIntentId` que viajó en la
+  // línea de pago no se pudo consumir.
+  //
+  // El backend manda un solo code para cinco casos (ya consumido, de otra
+  // estadía, de otra playa, monto distinto, nunca aprobado) y no es una
+  // simplificación suya: los cinco son el mismo `count === 0` del `updateMany`
+  // con guarda, y distinguirlos exigiría una lectura extra que abriría la
+  // carrera que esa sentencia existe para cerrar.
+  //
+  // Por eso el mensaje NO afirma cuál de los cinco fue. Decir "ya se aplicó" a
+  // secas sería inventarle una causa al operario y mandarlo a buscar un cobro
+  // que capaz nunca estuvo aprobado. Lo honesto es enumerar lo probable y
+  // dejarlo salir por donde siempre: mirar el estado, o cobrar en efectivo.
+  PAYMENT_INTENT_NOT_CONSUMABLE:
+    'Ese cobro con QR no se puede aplicar a esta estadía: ya se usó, es de otro vehículo o el monto no coincide. Fijate cómo quedó y, si hace falta, generá uno nuevo o cobrá en efectivo.',
 
   // Validacion (envoltorio — el detalle por campo se traduce con
   // translateValidationCode).
