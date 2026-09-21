@@ -16,7 +16,7 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { COLORS } from '../../lib/data/colors';
-import { PrinterX } from 'lucide-react';
+import { Printer, PrinterX } from 'lucide-react';
 import { generateUuidV7 } from './entryUtils';
 import {
   describePrintFailure,
@@ -445,7 +445,7 @@ export function EntryFormCore({
         confirmTimeoutRef.current = null;
       }
       // El doble Enter es el mismo camino que tocar "Registrar ingreso": imprime.
-      void submitEntry({ print: variant === 'manual' });
+      void submitEntry({ print: true });
       return;
     }
     setAwaitingConfirm(true);
@@ -1143,7 +1143,7 @@ export function EntryFormCore({
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!validateAll()) return;
-    await submitEntry({ print: variant === 'manual' });
+    await submitEntry({ print: true });
   }
 
   // "Registrar sin imprimir": mismo registro, sin papel.
@@ -1312,30 +1312,35 @@ export function EntryFormCore({
 
         <div className="entry-form-actions">
           {extraActions}
-          {variant === 'manual' ? (
-            <button
-              // type="button" es obligatorio: sin eso sería el submit implícito
-              // del form y terminaría imprimiendo.
-              type="button"
-              className="entry-action-square"
-              onClick={() => void handleSubmitWithoutPrinting()}
-              disabled={saving || !canSubmit}
-              title="Registrar sin imprimir ticket"
-              aria-label="Registrar sin imprimir ticket"
-            >
-              <PrinterX size={20} aria-hidden="true" />
-            </button>
-          ) : null}
+          <button
+            // type="button" es obligatorio: sin eso sería el submit implícito
+            // del form y terminaría imprimiendo.
+            type="button"
+            className="entry-action-square"
+            onClick={() => void handleSubmitWithoutPrinting()}
+            disabled={saving || !canSubmit}
+            title="Registrar sin imprimir ticket"
+            aria-label="Registrar sin imprimir ticket"
+          >
+            <PrinterX size={24} aria-hidden="true" />
+          </button>
           <button
             type="submit"
             className={`primary-button${awaitingConfirm ? ' primary-button--confirm' : ''}`}
             disabled={saving || !canSubmit}
+            title="Registrar ingreso e imprimir ticket"
+            aria-label="Registrar ingreso e imprimir ticket"
           >
-            {saving
-              ? 'Registrando...'
-              : awaitingConfirm
-                ? '¿Confirmar? (Enter)'
-                : 'Registrar ingreso'}
+            {variant === 'auto' || (!saving && !awaitingConfirm) ? (
+              <Printer size={18} aria-hidden="true" />
+            ) : null}
+            <span>
+              {saving
+                ? 'Registrando...'
+                : awaitingConfirm
+                  ? '¿Confirmar? (Enter)'
+                  : 'Registrar ingreso'}
+            </span>
           </button>
         </div>
       </div>

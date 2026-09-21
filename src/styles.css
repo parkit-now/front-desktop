@@ -2908,7 +2908,7 @@ h2 {
 
 .operativo-layout {
   display: grid;
-  grid-template-columns: minmax(290px, 310px) minmax(0, 1fr);
+  grid-template-columns: minmax(290px, 320px) minmax(0, 1fr);
   /* Pin the single row to the container height so the (potentially tall)
      auto-entries column can't inflate the row and push the egresos card off
      screen — the column scrolls internally instead. */
@@ -2959,14 +2959,14 @@ h2 {
   white-space: nowrap;
 }
 
-/* "Registrar sin imprimir": hermano cuadrado del submit. El alto sale del
-   align-items: stretch de la fila, así que queda a la par de los 48px del
-   primary-button. */
+/* "Registrar sin imprimir": hermano compacto del submit. El alto sale del
+   align-items: stretch de la fila, así que queda a la par del primary-button. */
 .entry-action-square {
-  flex: 0 0 48px;
-  width: 48px;
-  display: inline-grid;
-  place-items: center;
+  flex: 0 0 54px;
+  width: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 1px solid #cbd8ea;
   border-radius: var(--radius-control);
@@ -3588,21 +3588,41 @@ h2 {
   min-width: 0;
 }
 
+.entry-form--auto .entry-form-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-content: stretch;
+}
+
+.entry-form--auto .entry-action-square,
 .entry-form--auto .entry-form-actions .primary-button,
 .entry-form--auto .entry-form-actions .ghost-button {
-  padding-inline: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.entry-form--auto .entry-form-actions .primary-button span {
+  display: none;
+}
+
+.entry-form--auto .entry-form-actions .primary-button svg {
+  width: 20px;
+  height: 20px;
 }
 
 .auto-entry-card__dismiss {
-  flex: 0 1 116px;
-  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-color: #f6c7bf;
+  background: #fff7f5;
+  color: var(--color-danger-text);
+}
+
+.auto-entry-card__dismiss:hover:not(:disabled) {
+  border-color: #f4a79d;
+  background: var(--color-danger-bg);
 }
 
 /* Fixed-size dialog for the active-vehicles data table: the table body scrolls
