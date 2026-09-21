@@ -68,6 +68,21 @@ class MotionDetector:
             self._prev_gray = gray
             return False, None
 
+        # Cambió la resolución: hay otra cámara del otro lado.
+        #
+        # `cv2.absdiff` TIRA una excepción si los tamaños no coinciden, y como
+        # esto corre dentro del loop de detección, esa excepción mataba la tarea
+        # entera: el video seguía viéndose y la detección de patentes quedaba
+        # muerta para siempre, sin un solo error a la vista. Pasó al cambiar en
+        # caliente de la webcam (1280x720) a una cámara IP (1920x1080).
+        #
+        # No es un error: es una cámara nueva. Se descarta la referencia vieja y
+        # se arranca de cero, igual que en el warmup.
+        if self._prev_gray.shape != gray.shape:
+            self._prev_gray = gray
+            self._warmup_remaining = self._warmup_frames
+            return False, None
+
         diff = cv2.absdiff(self._prev_gray, gray)
         self._prev_gray = gray  # always update so next diff is frame-to-frame
 

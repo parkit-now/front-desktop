@@ -44,7 +44,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
 import lpr_client
-from capture import CameraCapture
+from capture import CameraCapture, redact_source
 from motion import MotionDetector
 from storage import LocalStorage
 from watchdog import CameraWatchdog
@@ -120,7 +120,7 @@ def _print_banner() -> None:
     print(sep)
     print(f"  Parkit — Camera Service")
     print(sep)
-    print(f"  camera   : {CAMERA_ID}  (source: {CAMERA_SOURCE})")
+    print(f"  camera   : {CAMERA_ID}  (source: {redact_source(CAMERA_SOURCE)})")
     print(f"  location : {CAMERA_LOCATION}  |  tenant: {CAMERA_TENANT_ID}")
     print(f"  LPR      : {lpr_client.LPR_URL}")
     print(f"  storage  : {IMAGES_DIR}  |  {DB_PATH}")
@@ -416,86 +416,96 @@ async def _process_loop() -> None:
     camera_was_down = False
 
     while not _shutting_down:
-        await asyncio.sleep(0.1)  # ~10 Hz — matches capture FPS
-        flushed = _flush_settled_clusters(time.monotonic())
-        if flushed:
-            saved += len(flushed)
-            for event in flushed:
-                plate = event.get("displayPlate") or event.get("text") or ""
-                conf = float(event.get("confidence") or 0)
-                status = event.get("status")
-                print(
-                    f"\r[{_ts()}]  DETECTED  {plate:<12}  [{_conf_bar(conf)}] {conf:.0%}  status={status} saved={saved}",
-                    flush=True,
-                )
-
-        # Skip LPR while the camera is down to avoid running inference on a
-        # stale frame. When the camera recovers, reset the motion detector so
-        # the first new frame starts a fresh warmup instead of diffing against
-        # the pre-outage reference.
-        camera_down = _watchdog is not None and _watchdog.status()["camera"] == "down"
-        if camera_down:
-            camera_was_down = True
-            print(f"\r[{_ts()}]  camera down — pausing LPR...                  ", end="", flush=True)
-            continue
-        if camera_was_down:
-            _motion.reset()
-            camera_was_down = False
-
-        frame = _capture.latest_frame()
-        if frame is None:
-            print(f"\r[{_ts()}]  waiting for camera...                         ", end="", flush=True)
-            continue
-
-        triggered, snapshot = _motion.check(frame)
-
-        # Fallback: if no motion-triggered scan for FALLBACK_INTERVAL seconds,
-        # force one scan to catch vehicles that were already in view at startup
-        # or during a detection gap.
-        now = time.monotonic()
-        if not triggered and (now - last_fallback) >= FALLBACK_INTERVAL:
-            triggered = True
-            snapshot = frame.copy()
-            logger.info("lpr_fallback_scan")
-
-        if _shutting_down or not triggered or lpr_busy:
-            continue
-
-        # Reset fallback clock on every actual LPR call (motion or fallback).
-        last_fallback = time.monotonic()
-        lpr_calls += 1
-        print(
-            f"\r[{_ts()}]  motion → scanning...  (calls={lpr_calls}, saved={saved})",
-            end="",
-            flush=True,
-        )
-
-        # LPR is a blocking HTTP call; run in a single-worker executor so at
-        # most one inference is in flight at a time. Subsequent motion triggers
-        # while lpr_busy are silently dropped — the vehicle is still there and
-        # the next motion event will catch it.
-        lpr_busy = True
+        # El pipeline entero va adentro del try: una excepción acá mataba la
+        # tarea de asyncio y con ella TODA la detección de patentes, sin que
+        # se notara —el video seguía sirviéndose y los endpoints respondiendo—.
+        # Perder un frame y seguir es siempre mejor que quedarse ciego.
         try:
-            result = await loop.run_in_executor(_lpr_executor, lpr_client.recognize, snapshot)
-        finally:
-            lpr_busy = False
+            await asyncio.sleep(0.1)  # ~10 Hz — matches capture FPS
+            flushed = _flush_settled_clusters(time.monotonic())
+            if flushed:
+                saved += len(flushed)
+                for event in flushed:
+                    plate = event.get("displayPlate") or event.get("text") or ""
+                    conf = float(event.get("confidence") or 0)
+                    status = event.get("status")
+                    print(
+                        f"\r[{_ts()}]  DETECTED  {plate:<12}  [{_conf_bar(conf)}] {conf:.0%}  status={status} saved={saved}",
+                        flush=True,
+                    )
 
-        if result is None:
-            continue
+            # Skip LPR while the camera is down to avoid running inference on a
+            # stale frame. When the camera recovers, reset the motion detector so
+            # the first new frame starts a fresh warmup instead of diffing against
+            # the pre-outage reference.
+            camera_down = _watchdog is not None and _watchdog.status()["camera"] == "down"
+            if camera_down:
+                camera_was_down = True
+                print(f"\r[{_ts()}]  camera down — pausing LPR...                  ", end="", flush=True)
+                continue
+            if camera_was_down:
+                _motion.reset()
+                camera_was_down = False
 
-        plate = _display_plate(result)
-        conf  = result["confidence"]
+            frame = _capture.latest_frame()
+            if frame is None:
+                print(f"\r[{_ts()}]  waiting for camera...                         ", end="", flush=True)
+                continue
 
-        if conf < MIN_CONFIDENCE and result.get("qualityStatus") != "invalid_format":
-            result["qualityStatus"] = "low_confidence"
+            triggered, snapshot = _motion.check(frame)
 
-        if conf < MIN_CONFIDENCE:
+            # Fallback: if no motion-triggered scan for FALLBACK_INTERVAL seconds,
+            # force one scan to catch vehicles that were already in view at startup
+            # or during a detection gap.
+            now = time.monotonic()
+            if not triggered and (now - last_fallback) >= FALLBACK_INTERVAL:
+                triggered = True
+                snapshot = frame.copy()
+                logger.info("lpr_fallback_scan")
+
+            if _shutting_down or not triggered or lpr_busy:
+                continue
+
+            # Reset fallback clock on every actual LPR call (motion or fallback).
+            last_fallback = time.monotonic()
+            lpr_calls += 1
             print(
-                f"\r[{_ts()}]  low conf  {plate:<12}  [{_conf_bar(conf)}] {conf:.0%}  (queued)",
+                f"\r[{_ts()}]  motion → scanning...  (calls={lpr_calls}, saved={saved})",
+                end="",
                 flush=True,
             )
 
-        _add_cluster_candidate(result, snapshot, time.monotonic())
+            # LPR is a blocking HTTP call; run in a single-worker executor so at
+            # most one inference is in flight at a time. Subsequent motion triggers
+            # while lpr_busy are silently dropped — the vehicle is still there and
+            # the next motion event will catch it.
+            lpr_busy = True
+            try:
+                result = await loop.run_in_executor(_lpr_executor, lpr_client.recognize, snapshot)
+            finally:
+                lpr_busy = False
+
+            if result is None:
+                continue
+
+            plate = _display_plate(result)
+            conf  = result["confidence"]
+
+            if conf < MIN_CONFIDENCE and result.get("qualityStatus") != "invalid_format":
+                result["qualityStatus"] = "low_confidence"
+
+            if conf < MIN_CONFIDENCE:
+                print(
+                    f"\r[{_ts()}]  low conf  {plate:<12}  [{_conf_bar(conf)}] {conf:.0%}  (queued)",
+                    flush=True,
+                )
+
+            _add_cluster_candidate(result, snapshot, time.monotonic())
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("process_loop_tick_failed")
+            await asyncio.sleep(0.5)
 
 
 @asynccontextmanager
@@ -519,7 +529,7 @@ async def lifespan(app: FastAPI):
     _print_banner()
     logger.info(
         "camera_service_started — source=%s location=%s tenant=%s",
-        CAMERA_SOURCE, CAMERA_LOCATION, CAMERA_TENANT_ID,
+        redact_source(CAMERA_SOURCE), CAMERA_LOCATION, CAMERA_TENANT_ID,
     )
     yield
 
@@ -540,7 +550,10 @@ app = FastAPI(title="Camera Service", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST"],
+    # PATCH y DELETE ya se usaban (`/detections/{id}`, `/detection/latest`) pero
+    # no estaban declarados acá: funcionaba de casualidad porque el renderer no
+    # dispara preflight para requests simples.
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -570,9 +583,17 @@ def shutdown(x_parkit_shutdown_token: str | None = Header(default=None)):
 
 @app.get("/stream/status")
 def stream_status():
+    # `source` va SIEMPRE redactada: este endpoint lo consume el renderer y sin
+    # eso la contraseña de la cámara terminaría en el DevTools de cualquiera.
+    source = redact_source(_capture.source) if _capture is not None else None
     if _watchdog is None:
-        return {"camera": "initializing", "down_since": None, "reconnect_attempts": 0}
-    return _watchdog.status()
+        return {
+            "camera": "initializing",
+            "down_since": None,
+            "reconnect_attempts": 0,
+            "source": source,
+        }
+    return {**_watchdog.status(), "source": source}
 
 
 def _mjpeg_frames():
@@ -601,11 +622,79 @@ def _mjpeg_frames():
 
 @app.get("/stream/mjpeg")
 def stream_mjpeg():
-    """Live MJPEG preview for the desktop UI."""
+    """Live MJPEG preview for the desktop UI.
+
+    Devuelve 503 cuando no hay nada que mostrar, en vez de abrir un stream que
+    se queda esperando frames para siempre. Sin esto, con la cámara caída el
+    <img> del panel nunca dispara `onError` y el operador ve un recuadro en
+    blanco hasta que el poll de estado lo note —hasta 10 segundos—. Con una
+    cámara de red, que se cae mucho más seguido que un cable USB, esa demora es
+    la diferencia entre "está desconectada" y "esta app no anda".
+    """
+    if _capture is None or _capture.latest_frame() is None:
+        raise HTTPException(status_code=503, detail="camera has no frames yet")
     return StreamingResponse(
         _mjpeg_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@app.post("/probe")
+def probe_source(payload: dict):
+    """Probar una fuente de video SIN tocar la captura en curso.
+
+    Es lo que hace útil al botón "Probar conexión" del panel: hoy la única forma
+    de saber si una URL anda es guardarla, reiniciar y mirar si aparece imagen.
+    Abre un VideoCapture aparte, lee un frame y lo cierra.
+
+    Corre en el threadpool de Starlette (la función es `def`, no `async def`),
+    así que el bloqueo de la apertura no frena el loop de asyncio ni el pipeline
+    de detección.
+    """
+    source = payload.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise HTTPException(status_code=400, detail="source is required")
+
+    probe = CameraCapture(source.strip(), CAMERA_FPS, CAMERA_WIDTH, CAMERA_HEIGHT)
+    return probe.probe()
+
+
+@app.post("/config/source")
+def config_source(payload: dict):
+    """Apuntar a otra cámara sin reiniciar el proceso.
+
+    `camera_id` y `location` viajan juntos porque son metadata de la MISMA
+    cámara: si cambia la fuente y no cambian ellos, las detecciones nuevas
+    quedan atribuidas a la cámara anterior.
+    """
+    if _capture is None:
+        raise HTTPException(status_code=503, detail="capture not started")
+
+    source = payload.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise HTTPException(status_code=400, detail="source is required")
+
+    global CAMERA_ID, CAMERA_LOCATION
+    camera_id = payload.get("cameraId")
+    if isinstance(camera_id, str) and camera_id.strip():
+        CAMERA_ID = camera_id.strip()
+    location = payload.get("location")
+    if isinstance(location, str) and location.strip():
+        CAMERA_LOCATION = location.strip()
+
+    _capture.set_source(source.strip())
+    if _watchdog is not None:
+        _watchdog.note_source_change()
+    if _motion is not None:
+        # La referencia de movimiento es de la cámara anterior: compararla con
+        # la nueva no tiene sentido, y si además cambia la resolución, revienta.
+        _motion.reset()
+    logger.info("camera_source_changed", extra={"source": redact_source(source)})
+    return {
+        "source": redact_source(_capture.source),
+        "cameraId": CAMERA_ID,
+        "location": CAMERA_LOCATION,
+    }
 
 
 @app.get("/detections")

@@ -152,25 +152,42 @@ Fallback (cada FALLBACK_INTERVAL = 300 s)
 
 ### Variables de entorno
 
-| Variable                   | Default                 | Descripción                                                              |
-| -------------------------- | ----------------------- | ------------------------------------------------------------------------ |
-| `CAMERA_SOURCE`            | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP.                                   |
-| `CAMERA_FPS`               | `10`                    | FPS objetivo de captura.                                                 |
-| `CAMERA_WIDTH`             | `1280`                  | Ancho del frame en píxeles.                                              |
-| `CAMERA_HEIGHT`            | `720`                   | Alto del frame en píxeles.                                               |
-| `CAMERA_ID`                | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).                |
-| `CAMERA_TENANT_ID`         | `default`               | ID del tenant para el path de imágenes y la DB.                          |
-| `CAMERA_LOCATION`          | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura.             |
-| `CAMERA_MOTION_THRESHOLD`  | `1.5`                   | Diferencia media de píxeles `[0–255]` para detectar movimiento.          |
-| `CAMERA_MOTION_COOLDOWN`   | `3.0`                   | Segundos mínimos entre disparos de LPR por movimiento.                   |
-| `CAMERA_ROI`               | `""`                    | Región de interés `"x1,y1,x2,y2"`. Vacío = frame completo.               |
-| `CAMERA_FALLBACK_INTERVAL` | `300`                   | Segundos entre scans de respaldo (captura vehículos sin movimiento).     |
-| `CAMERA_MIN_CONFIDENCE`    | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.                     |
-| `CAMERA_COOLDOWN`          | `5`                     | Segundos entre guardados de la misma patente (dedup a nivel de patente). |
-| `CAMERA_DB_PATH`           | `./camera.db`           | Path del archivo SQLite local.                                           |
-| `CAMERA_IMAGES_DIR`        | `./images`              | Directorio base para las imágenes.                                       |
-| `CAMERA_WATCHDOG_TIMEOUT`  | `5`                     | Segundos sin frames antes de declarar la cámara caída.                   |
-| `LPR_URL`                  | `http://127.0.0.1:8765` | URL base del LPR service.                                                |
+| Variable                   | Default                 | Descripción                                                                                      |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `CAMERA_SOURCE`            | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP. En la app la setea Electron desde `userData/camera.json`. |
+| `CAMERA_FPS`               | `10`                    | FPS objetivo de captura.                                                                         |
+| `CAMERA_WIDTH`             | `1280`                  | Ancho del frame en píxeles.                                                                      |
+| `CAMERA_HEIGHT`            | `720`                   | Alto del frame en píxeles.                                                                       |
+| `CAMERA_ID`                | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).                                        |
+| `CAMERA_TENANT_ID`         | `default`               | ID del tenant para el path de imágenes y la DB.                                                  |
+| `CAMERA_LOCATION`          | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura.                                     |
+| `CAMERA_MOTION_THRESHOLD`  | `1.5`                   | Diferencia media de píxeles `[0–255]` para detectar movimiento.                                  |
+| `CAMERA_MOTION_COOLDOWN`   | `3.0`                   | Segundos mínimos entre disparos de LPR por movimiento.                                           |
+| `CAMERA_ROI`               | `""`                    | Región de interés `"x1,y1,x2,y2"`. Vacío = frame completo.                                       |
+| `CAMERA_FALLBACK_INTERVAL` | `300`                   | Segundos entre scans de respaldo (captura vehículos sin movimiento).                             |
+| `CAMERA_MIN_CONFIDENCE`    | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.                                             |
+| `CAMERA_COOLDOWN`          | `5`                     | Segundos entre guardados de la misma patente (dedup a nivel de patente).                         |
+| `CAMERA_DB_PATH`           | `./camera.db`           | Path del archivo SQLite local.                                                                   |
+| `CAMERA_IMAGES_DIR`        | `./images`              | Directorio base para las imágenes.                                                               |
+| `CAMERA_WATCHDOG_TIMEOUT`  | `5`                     | Segundos sin frames antes de declarar la cámara caída.                                           |
+| `LPR_URL`                  | `http://127.0.0.1:8765` | URL base del LPR service.                                                                        |
+
+### Cámaras IP (RTSP)
+
+`CAMERA_SOURCE` acepta una URL `rtsp://usuario:clave@host:554/ruta`. Tres cosas
+que el código hace por vos y conviene saber:
+
+- **Se fuerza TCP** (`rtsp_transport;tcp`). Por UDP, un Wi-Fi flojo entrega
+  frames con artefactos y el OCR lee patentes rotas.
+- **Timeouts de 5 s** al abrir y al leer. Sin ellos, una IP inalcanzable deja el
+  thread de captura colgado adentro de `cv2.VideoCapture()` para siempre, y ni
+  el watchdog lo puede rescatar.
+- **La contraseña se redacta** en todo log y en toda respuesta HTTP
+  (`redact_source` en `capture.py`). Si agregás un log que muestre la fuente,
+  usá ese helper.
+
+`CAMERA_WIDTH`, `CAMERA_HEIGHT` y `CAMERA_FPS` **no aplican** a una cámara IP: la
+resolución y el framerate los manda la cámara. Solo valen para webcams USB.
 
 ### Endpoints
 
@@ -191,8 +208,35 @@ cuando la cámara lleva más de 1 minuto caída.
 {
   "camera": "ok",
   "down_since": null,
-  "reconnect_attempts": 0
+  "reconnect_attempts": 0,
+  "source": "rtsp://admin:***@192.168.1.26:554/h264_stream"
 }
+```
+
+`camera` puede ser `ok`, `down` o `initializing` (abriendo la fuente; con RTSP
+tarda unos segundos). `source` viene siempre con la contraseña enmascarada.
+
+#### `POST /probe`
+
+Prueba una fuente **sin tocar la captura en curso**: abre, lee un frame y cierra.
+Es lo que usa el botón "Probar conexión" del panel de configuración.
+
+```json
+{ "source": "rtsp://usuario:clave@192.168.1.26:554/h264_stream" }
+→ { "ok": true, "width": 1920, "height": 1080 }
+→ { "ok": false, "error": "no_se_pudo_conectar" }
+→ { "ok": false, "error": "conecta_pero_no_entrega_video" }
+```
+
+El segundo error distingue el caso más confuso: la cámara responde en el puerto
+pero la ruta del stream está mal, o tiene el cifrado de imagen activado.
+
+#### `POST /config/source`
+
+Apunta a otra cámara sin reiniciar el proceso.
+
+```json
+{ "source": "rtsp://...", "cameraId": "cam-entrada", "location": "entrada" }
 ```
 
 #### `GET /detections?limit=20`

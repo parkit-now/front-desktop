@@ -35,18 +35,20 @@ class CameraWatchdog(threading.Thread):
         self._down = False
         self._down_since: str | None = None
         self._attempts = 0
+        # Inicio de la ventana de gracia. Es un atributo y no una local de run()
+        # porque cambiar de cámara tiene que reiniciarla (ver note_source_change).
+        self._grace_from = time.monotonic()
 
     # ── Thread entry ──────────────────────────────────────────────────────────
 
     def run(self) -> None:
-        started_at = time.monotonic()
         while not self._stop_event.is_set():
             secs = self._capture.seconds_since_last_frame()
             # None means no frame has arrived yet. Only treat it as stalled
             # after the grace period (== timeout) so the camera has time to
             # open on startup without triggering a spurious reconnect.
             if secs is None:
-                stalled = (time.monotonic() - started_at) > self._timeout
+                stalled = (time.monotonic() - self._grace_from) > self._timeout
             else:
                 stalled = secs > self._timeout
 
@@ -80,6 +82,21 @@ class CameraWatchdog(threading.Thread):
                 time.sleep(1)
 
     # ── Public API ────────────────────────────────────────────────────────────
+
+    def note_source_change(self) -> None:
+        """Avisar que se apuntó a otra cámara: arranca de cero.
+
+        Sin esto, el backoff acumulado de la cámara vieja se le aplica a la
+        nueva: si la anterior venía fallando hace rato, `_attempts` ya está en el
+        tope y el operador que acaba de cargar una URL correcta espera 30
+        segundos para ver imagen. Además la ventana de gracia se reinicia, porque
+        una cámara recién abierta todavía no entregó ningún frame y eso no es
+        una falla.
+        """
+        self._attempts = 0
+        self._down = False
+        self._down_since = None
+        self._grace_from = time.monotonic()
 
     def status(self) -> dict:
         """Return current camera status for the /stream/status endpoint."""
