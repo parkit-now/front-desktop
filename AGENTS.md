@@ -229,15 +229,51 @@ electron/                # main.ts, preload.ts
 
 ```bash
 cp .env.example .env
-bun install
+make install   # dependencias + activa los hooks de .githooks/
 bun run dev
 ```
+
+> Los dos activan los hooks: `make install` y `bun install` (`bun install` lo hace
+> por el script `prepare` del `package.json`). Los hooks viven en `.githooks/`,
+> que se versiona, pero git no los usa hasta que el clon tiene
+> `core.hooksPath` apuntado ahí — y esa config es local, no viaja en el repo.
+> Por eso lo setea el instalador y no hace falta que cada uno lo corra a mano.
 
 Para sincronizar tipos desde el backend (requiere backend corriendo en :3000):
 
 ```bash
 bun run sync-types
 ```
+
+## Commits y versionado (obligatorio)
+
+La versión del desktop y los instaladores los genera semantic-release al pushear
+a `main`, y la calcula **leyendo los mensajes de commit**. Conventional Commits
+no es una preferencia de estilo acá: es la entrada del release.
+
+```
+<tipo>(<alcance opcional>): <descripción>
+```
+
+| Tipo          | Efecto en la versión  |
+| ------------- | --------------------- |
+| `feat`        | MINOR (1.1.0 → 1.2.0) |
+| `fix`, `perf` | PATCH (1.1.0 → 1.1.1) |
+| el resto      | ninguno               |
+
+**El error que ya nos costó una release**: un mensaje que no matchea el patrón
+no es "un commit sin tipo", es un commit que el analizador **ignora por
+completo**, sin avisar. La v1.1.1 salió como PATCH aunque traía tres features
+porque estaban escritas `feat (desktop): ...` — con un espacio antes del
+paréntesis. Va `feat(desktop): ...`, pegado.
+
+Lo valida el hook `commit-msg` y el job `Commit messages` del CI (que corre
+sobre los commits del PR, así que `--no-verify` no alcanza para saltearlo). El
+hook se activa solo al instalar (ver _Flujo de trabajo recomendado_).
+
+Corolario: si una release "no sale", el problema son los mensajes. **No** crear
+un commit vacío ni un archivo trigger para forzarla — así aparecieron
+`.release-trigger` y `.trigger-release` en `main`.
 
 ## Checklist antes de PR
 

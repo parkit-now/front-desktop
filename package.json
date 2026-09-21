@@ -6,6 +6,7 @@
   "type": "module",
   "main": "dist/main/main.js",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "dev": "concurrently -k \"bun run dev:renderer\" \"bun run dev:main\" \"bun run dev:electron\"",
     "dev:renderer": "vite --host 127.0.0.1 --port 5174 --strictPort",
     "dev:main": "tsc -p tsconfig.main.json --watch",
