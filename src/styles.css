@@ -193,6 +193,7 @@ h2 {
 
 .auth-form input {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 0 12px;
   border-radius: var(--radius-control);
@@ -638,6 +639,21 @@ h2 {
   opacity: 0.9;
 }
 
+.nav-status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: -2px;
+  border-radius: 999px;
+  background: #f79009;
+  box-shadow: 0 0 0 3px rgba(247, 144, 9, 0.18);
+}
+
+.nav-status-dot.down {
+  background: var(--color-danger-text);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.16);
+}
+
 .nav-item:hover {
   border-color: rgba(208, 217, 230, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -768,6 +784,7 @@ h2 {
 .workspace-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 24px 32px 20px;
   background: linear-gradient(135deg, #f0f6ff 0%, #e8f2ff 45%, #ddeeff 100%);
@@ -808,6 +825,15 @@ h2 {
   pointer-events: none;
 }
 
+.workspace-header-main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 16px;
+}
+
 .workspace-header-icon {
   flex: none;
   width: 46px;
@@ -831,6 +857,40 @@ h2 {
   font-weight: 600;
   color: var(--color-muted);
   letter-spacing: 0.02em;
+}
+
+.operational-camera-badge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 430px);
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #fedf89;
+  border-radius: 999px;
+  background: #fffaeb;
+  color: #93370d;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.operational-camera-badge.down {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.operational-camera-badge small {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.78;
+  text-overflow: ellipsis;
 }
 
 .workspace-meta {
@@ -2641,6 +2701,7 @@ h2 {
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .app-sidebar,
@@ -2651,32 +2712,45 @@ h2 {
   }
 
   .app-sidebar {
-    grid-template-rows: auto auto;
+    display: block;
+    align-self: start;
+    padding: 8px 12px;
+    gap: 0;
+  }
+
+  .sidebar-top,
+  .sidebar-foot {
+    display: none;
   }
 
   .sidebar-nav {
+    display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: minmax(120px, 1fr);
+    grid-auto-columns: max-content;
+    gap: 8px;
+    align-content: center;
     overflow-x: auto;
+    padding-bottom: 2px;
   }
 
-  .sidebar-foot {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 1.1fr) auto;
-    align-items: end;
-  }
-
-  .signout-button.compact {
+  .sidebar-nav .nav-item {
     width: auto;
-    min-width: 112px;
+    min-width: max-content;
+    min-height: 42px;
+    padding: 0 12px;
+    white-space: nowrap;
   }
 
   .app-main {
-    padding: 14px;
+    padding: 0;
   }
 
   .workspace-header {
-    padding: 14px;
-    flex-direction: column;
+    display: none;
+  }
+
+  .workspace-content {
+    padding: 10px;
   }
 
   .dt-card-header,
@@ -2686,13 +2760,33 @@ h2 {
     padding-right: 14px;
   }
 
+  .dt-card-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .dt-card-header:has(h3:empty),
+  .dt-card-header > div:first-child:empty {
+    display: none;
+  }
+
+  .dt-card-header-right {
+    justify-content: flex-end;
+  }
+
   .dt-toolbar {
     align-items: stretch;
     flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 10px;
   }
 
   .dt-search-cluster {
     width: 100%;
+    flex: 0 0 auto;
   }
 
   .dt-toolbar-actions {
@@ -2701,6 +2795,7 @@ h2 {
   }
 
   .dt-toolbar-switches {
+    flex: 0 0 auto;
     justify-content: flex-start;
   }
 
@@ -2729,14 +2824,6 @@ h2 {
 }
 
 @media (max-width: 640px) {
-  .sidebar-foot {
-    grid-template-columns: 1fr;
-  }
-
-  .signout-button.compact {
-    width: 100%;
-  }
-
   .rates-header {
     flex-direction: column;
   }
@@ -2857,13 +2944,18 @@ h2 {
   display: flex;
   gap: 8px;
   align-items: stretch;
+  min-width: 0;
 }
 
-.entry-form-actions .primary-button {
+.entry-form-actions .primary-button,
+.entry-form-actions .ghost-button {
   flex: 1;
+  width: auto;
   /* Deja que flex lo achique en vez de desbordar la columna, y que corte antes
      de envolver a dos líneas (eso estiraría toda la fila de 48px). */
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3330,6 +3422,7 @@ h2 {
   min-height: 0;
   /* Fills the (viewport-bound) layout height; the card grid scrolls inside. */
   height: 100%;
+  overflow: hidden;
 }
 
 .auto-entries__header {
@@ -3383,21 +3476,23 @@ h2 {
 .auto-entries__grid {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   /* Rows take their content height (never compressed by the fixed-height
      scroll container) so cards can't overlap vertically. */
   grid-auto-rows: max-content;
   gap: 14px;
   align-content: start;
   padding: 2px;
+  scrollbar-gutter: stable;
 }
 
 /* A single auto-detected entry card — same frame as the manual entry card,
    with the detected-plate photo full-bleed on top. */
 .auto-entry-card {
   min-width: 0;
+  width: 100%;
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
@@ -3489,12 +3584,25 @@ h2 {
   gap: 12px;
 }
 
+.entry-form--auto .auth-form {
+  min-width: 0;
+}
+
+.entry-form--auto .entry-form-actions .primary-button,
+.entry-form--auto .entry-form-actions .ghost-button {
+  padding-inline: 10px;
+}
+
 .auto-entry-card__dismiss {
-  flex: none;
+  flex: 0 1 116px;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Fixed-size dialog for the active-vehicles data table: the table body scrolls
@@ -3895,10 +4003,12 @@ h2 {
     grid-template-rows: none;
     height: auto;
     overflow: visible;
+    gap: 16px;
   }
 
   .operativo-entry-column {
     height: auto;
+    overflow: visible;
   }
 
   .exit-controls {
@@ -3907,10 +4017,13 @@ h2 {
 
   .auto-entries {
     height: auto;
+    overflow: visible;
   }
 
   .auto-entries__grid {
-    overflow-y: visible;
+    max-height: none;
+    overflow: auto;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
 }
 
@@ -3946,8 +4059,10 @@ h2 {
 .sync-button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
+  min-height: 42px;
   padding: 8px 12px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -3958,6 +4073,15 @@ h2 {
     background 0.15s,
     border-color 0.15s;
   position: relative;
+}
+
+.sync-button.collapsed {
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  border-radius: 12px;
 }
 
 .sync-button:disabled {
@@ -4009,6 +4133,7 @@ h2 {
 }
 
 .sync-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4021,6 +4146,17 @@ h2 {
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
+}
+
+.sync-button.collapsed .sync-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 2px solid #0c2f5d;
+  font-size: 10px;
 }
 
 @keyframes spin {

@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import {
+  AlertTriangle,
   Car,
   Cctv,
   CreditCard,
@@ -15,6 +16,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { CameraPanel } from '../camera/CameraPanel';
 import { CameraSettingsPanel } from '../camera/CameraSettingsPanel';
 import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
+import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { ExitControls } from '../entries/ExitControls';
@@ -42,6 +44,7 @@ import { listAdminParkings, type ParkingDto } from '../../lib/api/tenants';
 import { translateApiError, translateRole } from '../../lib/api/translate';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
+import { PARKIT_LOGO_URL } from '../../lib/brand';
 import { SyncProvider } from '../../lib/sync/SyncContext';
 import { signOut } from '../../lib/supabase/session';
 import { getErrorMessage } from './errors';
@@ -88,6 +91,63 @@ function profileStorageKey(userId: string): string {
 
 function manualEntryDraftKey(userId: string, tenantId: string): string {
   return `${userId}:${tenantId}`;
+}
+
+function formatCameraDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}min`;
+}
+
+function OperationalCameraStatusBadge({
+  status,
+}: {
+  status: CameraStatus | null;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (status?.camera !== 'down') return;
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [status?.camera]);
+
+  if (!status || status.camera === 'ok') return null;
+
+  const elapsed =
+    status.camera === 'down' && status.downSince
+      ? formatCameraDuration(now - status.downSince.getTime())
+      : null;
+  const detail =
+    status.camera === 'initializing'
+      ? 'Abriendo fuente de video'
+      : [
+          elapsed ? `hace ${elapsed}` : null,
+          status.reconnectAttempts > 0
+            ? `reintento ${status.reconnectAttempts}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
+  return (
+    <div
+      className={`operational-camera-badge ${status.camera}`}
+      role="status"
+      aria-live="polite"
+    >
+      <AlertTriangle size={16} aria-hidden="true" />
+      <span>
+        {status.camera === 'initializing'
+          ? 'Conectando cámara'
+          : 'Cámara sin señal'}
+      </span>
+      {detail ? <small>{detail}</small> : null}
+    </div>
+  );
 }
 
 function readStoredValue(key: string): string | null {
@@ -183,6 +243,7 @@ function sameMemberships(a: MeMembershipDto[], b: MeMembershipDto[]): boolean {
 export function SessionView({ session, sessionStale = false }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
+  const cameraStatus = useCameraStatus();
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
@@ -534,7 +595,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
           <div className="sidebar-top">
             <div className="brand-lockup compact">
               <div className="brand-badge" aria-hidden="true">
-                <img src="/logo.jpeg" alt="" />
+                <img src={PARKIT_LOGO_URL} alt="" />
               </div>
               {!sidebarCollapsed ? <h2>Parkit</h2> : null}
             </div>
@@ -559,6 +620,16 @@ export function SessionView({ session, sessionStale = false }: Props) {
             >
               <Home size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Operativo</span> : null}
+              {cameraStatus && cameraStatus.camera !== 'ok' ? (
+                <span
+                  className={`nav-status-dot ${cameraStatus.camera}`}
+                  aria-label={
+                    cameraStatus.camera === 'initializing'
+                      ? 'Cámara conectando'
+                      : 'Cámara sin señal'
+                  }
+                />
+              ) : null}
             </button>
 
             <button
@@ -692,13 +763,20 @@ export function SessionView({ session, sessionStale = false }: Props) {
           {!isOnline && <OfflineBanner staleSession={sessionStale} />}
 
           <header className="workspace-header">
-            <div className="workspace-header-icon">{sectionIcon(section)}</div>
-            <div>
-              <h1>{sectionTitle[section]}</h1>
-              {activeTenantName ? (
-                <p className="workspace-header-parking">{activeTenantName}</p>
-              ) : null}
+            <div className="workspace-header-main">
+              <div className="workspace-header-icon">
+                {sectionIcon(section)}
+              </div>
+              <div>
+                <h1>{sectionTitle[section]}</h1>
+                {activeTenantName ? (
+                  <p className="workspace-header-parking">{activeTenantName}</p>
+                ) : null}
+              </div>
             </div>
+            {section === 'operativo' ? (
+              <OperationalCameraStatusBadge status={cameraStatus} />
+            ) : null}
           </header>
 
           <div className="workspace-content">
