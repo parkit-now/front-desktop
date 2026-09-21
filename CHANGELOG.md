@@ -1,3 +1,18 @@
+# [1.2.0](https://github.com/parkit-now/front-desktop/compare/v1.1.1...v1.2.0) (2026-09-21)
+
+
+### Bug Fixes
+
+* **payment-methods:** impedir marcar como predeterminado un medio integrado ([569f161](https://github.com/parkit-now/front-desktop/commit/569f161f70b3446060af88080d2fe6748f4dde19))
+* precommit y pipelines ([5935725](https://github.com/parkit-now/front-desktop/commit/5935725e9950ff80b13c74aa2f1b32c8dc7a01e3))
+
+
+### Features
+
+* **errores:** traducir los codes de Mercado Pago y medios integrados ([f2bafd2](https://github.com/parkit-now/front-desktop/commit/f2bafd2dfa1ad5da8a2a8bb2ba44b6abe98387ee))
+* **errores:** traducir PAYMENT_METHOD_NOT_FOUND en el desktop ([b4a4e98](https://github.com/parkit-now/front-desktop/commit/b4a4e989c10f0e78af445a876f9ad783c07712b3))
+* **payment-methods:** marcar los medios integrados como solo lectura ([ec3140b](https://github.com/parkit-now/front-desktop/commit/ec3140b2e83e71a29f6a52d946f31c6705ee0e3b))
+
 ## [1.1.1](https://github.com/parkit-now/front-desktop/compare/v1.1.0...v1.1.1) (2026-09-16)
 
 
