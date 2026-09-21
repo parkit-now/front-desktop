@@ -1,3 +1,4 @@
+import type { components } from '../../generated/api-types';
 import { apiRequest } from './client';
 
 /**
@@ -19,25 +20,24 @@ import { apiRequest } from './client';
  *      que el desktop no tiene que llevar ningún reloj autoritativo — el
  *      contador que ve el operario es informativo.
  *
- * ## Por qué los tipos están escritos a mano y no salen del OpenAPI
+ * ## Los tipos salen del OpenAPI, no de acá
  *
- * `AGENTS.md` prohíbe duplicar DTOs que ya existan en `api-types.ts` y manda
- * correr `bun run sync-types`. Ese comando necesita el backend levantado en
- * `:3000`, y no lo está: `src/generated/api-types.ts` todavía no conoce
- * `/payment-intents`. La propia política contempla el caso ("tipos manuales
- * permitidos [...] cuando sync-types no está disponible").
+ * `AGENTS.md` prohíbe duplicar DTOs que ya existan en `api-types.ts`. Mientras
+ * el backend no estuvo levantado, estos tipos se escribieron a mano bajo la
+ * excepción de la política ("tipos manuales permitidos [...] cuando sync-types
+ * no está disponible"). Ya no aplica: `bun run sync-types` corrió y estos son
+ * alias del contrato generado.
  *
- * 🔴 Cuando el backend esté corriendo: `bun run sync-types` y reemplazar estos
- * tipos por `components['schemas']['PaymentIntentDto']`. Una copia a mano no
- * falla al compilar cuando el original cambia — se queda callada, que es el
- * bug que ya se comió `PaymentMethodDto`.
+ * Que sean alias y no copias es lo que hace que un cambio del backend ROMPA la
+ * compilación en vez de quedarse callado — el bug que ya se comió
+ * `PaymentMethodDto`.
  */
 
 /**
  * Estado del intento, tal como lo define el backend.
  *
- * Los tres primeros son los VIVOS (los que entran al índice único por estadía
- * y por caja); el resto es terminal.
+ * `created`, `pending` y `approved` son los VIVOS (los que entran al índice
+ * único por estadía y por caja); el resto es terminal.
  *
  * `created` merece una aclaración porque no es intuitivo: significa que la
  * fila existe pero la orden del lado de Mercado Pago puede o no existir —el
@@ -50,16 +50,7 @@ import { apiRequest } from './client';
  * escaneó son indistinguibles desde acá, así que lo único honesto es esperar
  * hasta que venza.
  */
-export type PaymentIntentStatus =
-  | 'created'
-  | 'pending'
-  | 'approved'
-  | 'consumed'
-  | 'expired'
-  | 'canceled'
-  | 'failed'
-  | 'refunded'
-  | 'charged_back';
+export type PaymentIntentStatus = components['schemas']['PaymentIntentStatus'];
 
 /** Estados en los que el cobro sigue vivo y hay que seguir pooleando. */
 const LIVE_STATUSES: readonly PaymentIntentStatus[] = [
@@ -86,25 +77,11 @@ export function isTerminalIntentStatus(status: PaymentIntentStatus): boolean {
  * al operario (vienen en inglés y no describen una acción). El estado que
  * manda es `status`.
  */
-export interface PaymentIntentDto {
-  id: string;
-  tenantId: string;
-  entryId: string;
-  status: PaymentIntentStatus;
-  amount: number;
-  mpOrderId: string | null;
-  mpStatus: string | null;
-  mpStatusDetail: string | null;
-  /** Cuándo deja de servir. El backend lo calcula al crear (TTL de 5 min). */
-  expiresAt: string;
-  approvedAt: string | null;
-  consumedAt: string | null;
-  paymentTransactionId: string | null;
-  failureReason: string | null;
-  createdByUserId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type PaymentIntentDto = components['schemas']['PaymentIntentDto'];
+
+/** Cuerpo del POST que arranca el cobro. */
+export type CreatePaymentIntentDto =
+  components['schemas']['CreatePaymentIntentDto'];
 
 /**
  * Arranca el cobro.
@@ -125,7 +102,7 @@ export interface PaymentIntentDto {
 export function createPaymentIntent(input: {
   tenantId: string;
   bearer: string;
-  body: { id: string; entryId: string; amount: number };
+  body: CreatePaymentIntentDto;
 }): Promise<PaymentIntentDto> {
   return apiRequest<PaymentIntentDto>({
     method: 'POST',

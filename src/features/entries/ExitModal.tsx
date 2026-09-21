@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { closeEntry } from '../../lib/api/entries';
+import { closeEntry, type PaymentLineDto } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
 import {
   localDb,
   type LocalEntry,
   type LocalPaymentTransaction,
-  type PaymentMethodKind,
 } from '../../lib/db/localDb';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
@@ -250,23 +249,13 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
     // borrarse después, y ni el comprobante ni el arqueo pueden cambiar por
     // eso. El `type` es el que el cierre de caja usa para saber qué plata
     // quedó en el cajón.
-    let payments:
-      | Array<{
-          id: string;
-          paymentMethodId?: string;
-          paymentMethodName: string;
-          paymentMethodType?: PaymentMethodKind;
-          amount: number;
-          /**
-           * Todavía NO está en `PaymentLineDto` del OpenAPI: el endpoint que
-           * lo consume se está construyendo en paralelo y `sync-types` no
-           * corrió (el backend no está levantado). Se manda igual porque el
-           * contrato ya está acordado, y al regenerar los tipos esto tiene que
-           * quedar cubierto por el DTO en vez de por esta declaración local.
-           */
-          paymentIntentId?: string;
-        }>
-      | undefined;
+    //
+    // `paymentIntentId` viaja acá adentro y lo TIPA el DTO generado: hasta que
+    // corrió `sync-types` esto era una declaración local, y como `payments` es
+    // una variable (no un object literal pasado inline) el excess-property
+    // checking de TS no aplicaba — el campo se mandaba sin que nada lo
+    // verificara. Ahora sí lo verifica el contrato.
+    let payments: PaymentLineDto[] | undefined;
 
     if (splitEnabled) {
       const lines = pms
