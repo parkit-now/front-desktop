@@ -23,6 +23,7 @@ export function CloseCashSessionDialog({
   onClose,
 }: Props) {
   const { showToast } = useToast();
+  const [startNextSession, setStartNextSession] = useState(false);
   const [leaveFund, setLeaveFund] = useState(false);
   const [leavingCash, setLeavingCash] = useState('');
   const [notes, setNotes] = useState('');
@@ -45,9 +46,10 @@ export function CloseCashSessionDialog({
   async function handleClose(): Promise<void> {
     setSaving(true);
     const newSessionId = generateUuidV7();
-    const leaving = leaveFund
-      ? parseFloat(leavingCash.replace(',', '.')) || 0
-      : 0;
+    const leaving =
+      startNextSession && leaveFund
+        ? parseFloat(leavingCash.replace(',', '.')) || 0
+        : 0;
 
     try {
       const result = await closeCashSession({
@@ -55,13 +57,15 @@ export function CloseCashSessionDialog({
         bearer: accessToken,
         sessionId: session.id,
         body: {
-          newSessionId,
+          openNextSession: startNextSession,
+          newSessionId: startNextSession ? newSessionId : undefined,
           leavingCash: leaving,
           notes: notes.trim() || undefined,
         },
       });
 
       // Find active entries from the old session to mirror server-side carry-over
+      // or detaching when the next shift is not opened immediately.
       const activeEntries = await localDb.entries
         .where('cashSessionId')
         .equals(session.id)
@@ -89,32 +93,42 @@ export function CloseCashSessionDialog({
             syncSeq: result.closedSession.syncSeq,
             updatedAt: result.closedSession.updatedAt,
           });
-          await localDb.cashSessions.put({
-            id: result.newSession.id,
-            tenantId: result.newSession.tenantId,
-            openedAt: result.newSession.openedAt,
-            closedAt: result.newSession.closedAt ?? undefined,
-            openingCash: result.newSession.openingCash,
-            leavingCash: result.newSession.leavingCash ?? undefined,
-            notes: result.newSession.notes ?? undefined,
-            version: result.newSession.version,
-            syncSeq: result.newSession.syncSeq,
-            updatedAt: result.newSession.updatedAt,
-          });
-          // Replicate server carry-over: reassign cashSessionId + renumber
-          for (let i = 0; i < activeEntries.length; i++) {
-            await localDb.entries.update(activeEntries[i].id, {
-              cashSessionId: result.newSession.id,
-              ticketNumber: i + 1,
+          if (result.newSession) {
+            await localDb.cashSessions.put({
+              id: result.newSession.id,
+              tenantId: result.newSession.tenantId,
+              openedAt: result.newSession.openedAt,
+              closedAt: result.newSession.closedAt ?? undefined,
+              openingCash: result.newSession.openingCash,
+              leavingCash: result.newSession.leavingCash ?? undefined,
+              notes: result.newSession.notes ?? undefined,
+              version: result.newSession.version,
+              syncSeq: result.newSession.syncSeq,
+              updatedAt: result.newSession.updatedAt,
             });
+            // Replicate server carry-over: reassign cashSessionId + renumber
+            for (let i = 0; i < activeEntries.length; i++) {
+              await localDb.entries.update(activeEntries[i].id, {
+                cashSessionId: result.newSession.id,
+                ticketNumber: i + 1,
+              });
+            }
+          } else {
+            for (const entry of activeEntries) {
+              await localDb.entries.update(entry.id, {
+                cashSessionId: undefined,
+                ticketNumber: undefined,
+              });
+            }
           }
         },
       );
 
-      const msg =
-        result.carriedOverCount > 0
+      const msg = result.newSession
+        ? result.carriedOverCount > 0
           ? `Caja cerrada. ${result.carriedOverCount} vehículo${result.carriedOverCount > 1 ? 's' : ''} traspasado${result.carriedOverCount > 1 ? 's' : ''} al nuevo turno.`
-          : 'Caja cerrada. Nueva caja abierta automáticamente.';
+          : 'Caja cerrada. Nueva caja abierta.'
+        : 'Caja cerrada.';
       showToast({ message: msg, kind: 'success' });
       onClose();
     } catch (error) {
@@ -202,29 +216,48 @@ export function CloseCashSessionDialog({
           <label className="session-leave-fund-label">
             <input
               type="checkbox"
-              checked={leaveFund}
-              onChange={(e) => setLeaveFund(e.target.checked)}
+              checked={startNextSession}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setStartNextSession(checked);
+                if (!checked) setLeaveFund(false);
+              }}
             />
-            <span>Dejar fondo para el siguiente turno</span>
+            <span>Iniciar siguiente turno automáticamente</span>
           </label>
 
-          {leaveFund && (
-            <div className="form-field">
-              <label className="form-label">Efectivo a dejar (ARS)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={leavingCash}
-                onChange={(e) => setLeavingCash(e.target.value)}
-                autoFocus
-              />
-            </div>
+          {startNextSession && (
+            <>
+              <label className="session-leave-fund-label">
+                <input
+                  type="checkbox"
+                  checked={leaveFund}
+                  onChange={(e) => setLeaveFund(e.target.checked)}
+                />
+                <span>Dejar fondo para el siguiente turno</span>
+              </label>
+
+              {leaveFund && (
+                <div className="form-field">
+                  <label className="form-label">Efectivo a dejar (ARS)</label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={leavingCash}
+                    onChange={(e) => setLeavingCash(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              )}
+            </>
           )}
 
           <div className="form-field">
             <label className="form-label">Notas (opcional)</label>
             <input
+              className="form-input"
               type="text"
               placeholder="Observaciones del turno..."
               value={notes}

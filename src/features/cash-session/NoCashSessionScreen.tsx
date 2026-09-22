@@ -91,6 +91,7 @@ export function NoCashSessionScreen({ tenantId, accessToken }: Props) {
           <div className="form-field">
             <label className="form-label">Efectivo inicial (ARS)</label>
             <input
+              className="form-input"
               type="text"
               inputMode="decimal"
               placeholder="0.00"

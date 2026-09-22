@@ -7,6 +7,7 @@ import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { CashSessionStats } from './CashSessionStats';
 import { CloseCashSessionDialog } from './CloseCashSessionDialog';
+import { NoCashSessionScreen } from './NoCashSessionScreen';
 
 interface Props {
   tenantId: string;
@@ -33,16 +34,9 @@ export function CashSessionPanel({
     [tenantId],
   );
 
-  if (activeSession === undefined) {
-    return <p className="muted">Cargando...</p>;
-  }
-
   if (!activeSession) {
     return (
-      <div className="dashboard-card">
-        <h2>Sin caja activa</h2>
-        <p className="muted">Abrí una caja desde el panel operativo.</p>
-      </div>
+      <NoCashSessionScreen tenantId={tenantId} accessToken={accessToken} />
     );
   }
 
@@ -69,10 +63,10 @@ export function CashSessionPanel({
           {/*
             Cerrar caja es la única operativa que EXIGE conexión, a diferencia
             del resto del panel: el servidor cierra el turno, abre el
-            siguiente y renumera los tickets de los autos que siguen adentro,
-            todo en una transacción. Replicar esa renumeración offline dejaría
-            dos fuentes de verdad para un número que el conductor tiene
-            impreso en la mano.
+            siguiente y renumera los tickets de los autos que siguen adentro
+            sólo si el operador lo pide, todo en una transacción. Replicar esa
+            renumeración offline dejaría dos fuentes de verdad para un número
+            que el conductor tiene impreso en la mano.
 
             El botón queda habilitado a propósito y avisa al tocarlo: uno
             deshabilitado no explica nada, y encima no es focusable ni lo

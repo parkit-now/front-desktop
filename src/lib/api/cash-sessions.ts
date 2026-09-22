@@ -20,7 +20,8 @@ export interface CreateCashSessionDto {
 }
 
 export interface CloseCashSessionDto {
-  newSessionId: string;
+  openNextSession?: boolean;
+  newSessionId?: string;
   closedAt?: string;
   leavingCash?: number;
   notes?: string;
@@ -32,7 +33,7 @@ export interface UpdateCashSessionDto {
 
 export interface CloseCashSessionResponseDto {
   closedSession: CashSessionDto;
-  newSession: CashSessionDto;
+  newSession: CashSessionDto | null;
   carriedOverCount: number;
 }
 
