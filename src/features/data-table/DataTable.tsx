@@ -227,6 +227,9 @@ export function DataTable<TData>({
   initialColumnFiltersOverridePersistedState = false,
   initialPageSize = 10,
   initialColumnFilters,
+  onColumnFiltersChange,
+  columnFiltersOverride,
+  columnFiltersOverrideKey,
   initialSorting,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   getRowId,
@@ -319,6 +322,15 @@ export function DataTable<TData>({
       current.pageIndex === 0 ? current : { ...current, pageIndex: 0 },
     );
   }, [columnFilters, globalFilter, sorting]);
+
+  useEffect(() => {
+    onColumnFiltersChange?.(columnFilters);
+  }, [columnFilters, onColumnFiltersChange]);
+
+  useEffect(() => {
+    if (columnFiltersOverrideKey === undefined) return;
+    setColumnFilters(columnFiltersOverride ?? []);
+  }, [columnFiltersOverride, columnFiltersOverrideKey]);
 
   useEffect(() => {
     serverState?.onPaginationChange?.(pagination);
@@ -556,6 +568,7 @@ export function DataTable<TData>({
     columnFilters.length > 0 ||
     globalFilter.trim().length > 0 ||
     Boolean(filterSwitches?.some((item) => item.checked));
+  const hasHeaderContent = Boolean(title || subtitle || headerAction);
   const showLoading = Boolean(isLoading || serverState?.isFetching);
 
   useEffect(() => {
@@ -586,18 +599,15 @@ export function DataTable<TData>({
 
   return (
     <section className="dt-card">
-      <div className="dt-card-header">
-        <div>
-          {title ? <h3>{title}</h3> : null}
-          {subtitle ? <p>{subtitle}</p> : null}
+      {hasHeaderContent ? (
+        <div className="dt-card-header">
+          <div>
+            {title ? <h3>{title}</h3> : null}
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          <div className="dt-card-header-right">{headerAction ?? null}</div>
         </div>
-        <div className="dt-card-header-right">
-          {hasActiveFilters ? (
-            <span className="dt-active-chip">Vista filtrada</span>
-          ) : null}
-          {headerAction ?? null}
-        </div>
-      </div>
+      ) : null}
 
       <div className="dt-toolbar">
         <div className="dt-search-cluster">
@@ -639,6 +649,7 @@ export function DataTable<TData>({
               <Switch
                 key={item.id}
                 checked={item.checked}
+                disabled={item.disabled}
                 onChange={item.onChange}
                 label={item.label}
               />
@@ -778,6 +789,11 @@ export function DataTable<TData>({
         pageSizeOptions={pageSizeOptions}
         canPreviousPage={safePageIndex > 0}
         canNextPage={safePageIndex + 1 < pageCount}
+        status={
+          hasActiveFilters ? (
+            <span className="dt-active-chip">Vista filtrada</span>
+          ) : null
+        }
         onPageIndexChange={(pageIndex) => table.setPageIndex(pageIndex)}
         onPageSizeChange={(pageSize) => table.setPageSize(pageSize)}
       />

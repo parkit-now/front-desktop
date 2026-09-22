@@ -33,6 +33,7 @@ export function SyncButton({ collapsed = false }: Props) {
   else if (syncError || hasBlocked) statusClass += ' sync-button--error';
   else if (hasPending) statusClass += ' sync-button--pending';
   else statusClass += ' sync-button--ok';
+  if (collapsed) statusClass += ' collapsed';
 
   const syncedAt = lastSyncAt
     ? `Sincronizado ${lastSyncAt.toLocaleTimeString('es-AR', {
@@ -104,7 +105,7 @@ export function SyncButton({ collapsed = false }: Props) {
         className={isSyncing ? 'spin' : ''}
       />
       {!collapsed && <span className="sync-button-label">{label}</span>}
-      {!collapsed && unsynced > 0 && !isSyncing && (
+      {unsynced > 0 && !isSyncing && (
         <span className="sync-badge">{unsynced}</span>
       )}
     </button>

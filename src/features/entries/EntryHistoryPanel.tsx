@@ -5,7 +5,7 @@ import type {
 } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   localDb,
   type LocalEntry,
@@ -30,6 +30,7 @@ interface Props {
   /** Encabezado del ticket al reimprimir desde el diálogo de edición. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  parkingCuit?: string | null;
   onBackToCaja?: () => void;
 }
 
@@ -222,7 +223,7 @@ const FILTERABLE_COLUMNS = [
   'color',
 ];
 
-const SEARCHABLE_KEYS = ['plate', 'notes'];
+const SEARCHABLE_KEYS = ['plate', 'vehicleBrand', 'vehicleModel', 'notes'];
 
 export function EntryHistoryPanel({
   tenantId,
@@ -233,6 +234,7 @@ export function EntryHistoryPanel({
   initialOnlyCurrentSession = false,
   parkingName = null,
   parkingAddress = null,
+  parkingCuit = null,
   onBackToCaja,
 }: Props) {
   const tableScope = useMemo<TableTemplateScope>(
@@ -246,17 +248,24 @@ export function EntryHistoryPanel({
   const focusedFromCashSession = Boolean(
     initialCashSessionId || initialOnlyCurrentSession,
   );
+  const isOperator = actorRole === 'operator';
   const [onlyCurrentSession, setOnlyCurrentSession] = useState(() =>
-    focusedFromCashSession
-      ? initialOnlyCurrentSession
-      : (persistedSwitches.onlyCurrentSession ?? false),
+    isOperator
+      ? true
+      : focusedFromCashSession
+        ? initialOnlyCurrentSession
+        : (persistedSwitches.onlyCurrentSession ?? true),
   );
   const [includeInLot, setIncludeInLot] = useState(
-    () => persistedSwitches.includeInLot ?? false,
+    () => persistedSwitches.includeInLot ?? true,
   );
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFiltersOverride, setColumnFiltersOverride] =
+    useState<ColumnFiltersState>([]);
+  const [columnFiltersOverrideKey, setColumnFiltersOverrideKey] = useState(0);
 
   const allSessions = useLiveQuery(
     () =>
@@ -302,12 +311,20 @@ export function EntryHistoryPanel({
     [sessionLabelById],
   );
 
+  const filterableColumns = useMemo(
+    () =>
+      isOperator
+        ? FILTERABLE_COLUMNS.filter((column) => column !== 'cashSessionId')
+        : FILTERABLE_COLUMNS,
+    [isOperator],
+  );
+
   const initialColumnFilters = useMemo<ColumnFiltersState>(
     () =>
-      initialCashSessionId
+      initialCashSessionId && !isOperator
         ? [{ id: 'cashSessionId', value: [initialCashSessionId] }]
         : [],
-    [initialCashSessionId],
+    [initialCashSessionId, isOperator],
   );
 
   const allEntries = useLiveQuery(
@@ -383,9 +400,63 @@ export function EntryHistoryPanel({
     ? allSessions?.find((session) => session.id === editingEntry.cashSessionId)
     : undefined;
   const tableSwitches = useMemo(
-    () => ({ onlyCurrentSession, includeInLot }),
-    [includeInLot, onlyCurrentSession],
+    () => ({
+      onlyCurrentSession: isOperator ? true : onlyCurrentSession,
+      includeInLot,
+    }),
+    [includeInLot, isOperator, onlyCurrentSession],
   );
+
+  useEffect(() => {
+    if (!isOperator) return;
+    setOnlyCurrentSession(true);
+    setColumnFiltersOverride(
+      columnFilters.filter((filter) => filter.id !== 'cashSessionId'),
+    );
+    setColumnFiltersOverrideKey((current) => current + 1);
+  }, [columnFilters, isOperator]);
+
+  const handleColumnFiltersChange = useCallback(
+    (filters: ColumnFiltersState) => {
+      const nextFilters = isOperator
+        ? filters.filter((filter) => filter.id !== 'cashSessionId')
+        : filters;
+      setColumnFilters(nextFilters);
+      if (isOperator) {
+        setOnlyCurrentSession(true);
+        if (nextFilters.length !== filters.length) {
+          setColumnFiltersOverride(nextFilters);
+          setColumnFiltersOverrideKey((current) => current + 1);
+        }
+        return;
+      }
+      const cashSessionFilter = filters.find(
+        (filter) => filter.id === 'cashSessionId',
+      );
+      const selectedCashSessionIds = Array.isArray(cashSessionFilter?.value)
+        ? cashSessionFilter.value.map(String)
+        : [];
+      if (selectedCashSessionIds.length > 0) {
+        setOnlyCurrentSession(false);
+      }
+    },
+    [isOperator],
+  );
+
+  function handleOnlyCurrentSessionChange(next: boolean) {
+    if (isOperator) {
+      setOnlyCurrentSession(true);
+      return;
+    }
+
+    setOnlyCurrentSession(next);
+    if (!next) return;
+
+    setColumnFiltersOverride(
+      columnFilters.filter((filter) => filter.id !== 'cashSessionId'),
+    );
+    setColumnFiltersOverrideKey((current) => current + 1);
+  }
 
   return (
     <>
@@ -394,14 +465,17 @@ export function EntryHistoryPanel({
         columns={columns}
         isLoading={entries === undefined}
         emptyMessage="No hay movimientos registrados todavía."
-        searchPlaceholder="Buscar por patente o notas…"
+        searchPlaceholder="Buscar por patente, vehículo o notas…"
         searchableKeys={SEARCHABLE_KEYS}
-        filterableColumns={FILTERABLE_COLUMNS}
+        filterableColumns={filterableColumns}
         filterOptionsByColumn={{
           amountPaid: paymentMethodFilterOptions,
           cashSessionId: cashSessionFilterOptions,
         }}
         initialColumnFilters={initialColumnFilters}
+        onColumnFiltersChange={handleColumnFiltersChange}
+        columnFiltersOverride={columnFiltersOverride}
+        columnFiltersOverrideKey={columnFiltersOverrideKey}
         initialColumnFiltersOverridePersistedState={focusedFromCashSession}
         initialPageSize={20}
         pageSizeOptions={[10, 20, 50, 100]}
@@ -414,8 +488,9 @@ export function EntryHistoryPanel({
           {
             id: 'onlyCurrentSession',
             label: 'Solo caja actual',
-            checked: onlyCurrentSession,
-            onChange: setOnlyCurrentSession,
+            checked: isOperator ? true : onlyCurrentSession,
+            disabled: isOperator,
+            onChange: handleOnlyCurrentSessionChange,
           },
           {
             id: 'includeInLot',
@@ -453,6 +528,7 @@ export function EntryHistoryPanel({
           cashSession={editingCashSession}
           parkingName={parkingName}
           parkingAddress={parkingAddress}
+          parkingCuit={parkingCuit}
           onClose={() => setEditingEntry(null)}
         />
       ) : null}

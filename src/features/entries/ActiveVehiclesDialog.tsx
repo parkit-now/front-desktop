@@ -1,18 +1,33 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { LogOut, X } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
-import { localDb, type LocalEntry } from '../../lib/db/localDb';
+import {
+  localDb,
+  type LocalCashSession,
+  type LocalEntry,
+  type LocalPaymentTransaction,
+} from '../../lib/db/localDb';
 import { formatArgentinaDateTime } from '../../lib/format/argentina';
 import { formatDuration } from './entryUtils';
+import { EntryEditDialog } from './EntryEditDialog';
 
 interface Props {
   tenantId: string;
   userId: string;
+  accessToken: string;
+  actorRole: 'admin' | 'owner' | 'operator' | null;
+  parkingName?: string | null;
+  parkingAddress?: string | null;
+  parkingCuit?: string | null;
   onExit: (entry: LocalEntry) => void;
   onClose: () => void;
 }
+
+type EditableActiveEntry = LocalEntry & {
+  paymentLines: LocalPaymentTransaction[];
+};
 
 type ActiveRow = {
   id: string;
@@ -26,10 +41,13 @@ type ActiveRow = {
   notes: string;
   enteredAt: string;
   enteredMs: number;
-  entry: LocalEntry;
+  entry: EditableActiveEntry;
 };
 
-function toRow(e: LocalEntry): ActiveRow {
+function toRow(
+  e: LocalEntry,
+  paymentLines: LocalPaymentTransaction[],
+): ActiveRow {
   return {
     id: e.id,
     ticketNumber: e.ticketNumber ?? null,
@@ -42,16 +60,24 @@ function toRow(e: LocalEntry): ActiveRow {
     notes: e.notes ?? '',
     enteredAt: e.enteredAt,
     enteredMs: new Date(e.enteredAt).getTime(),
-    entry: e,
+    entry: { ...e, paymentLines },
   };
 }
 
 export function ActiveVehiclesDialog({
   tenantId,
   userId,
+  accessToken,
+  actorRole,
+  parkingName = null,
+  parkingAddress = null,
+  parkingCuit = null,
   onExit,
   onClose,
 }: Props) {
+  const [editingEntry, setEditingEntry] = useState<EditableActiveEntry | null>(
+    null,
+  );
   const activeEntries = useLiveQuery(
     () =>
       localDb.entries
@@ -62,21 +88,49 @@ export function ActiveVehiclesDialog({
     [tenantId],
   );
 
+  const allPaymentTransactions = useLiveQuery(
+    () =>
+      localDb.paymentTransactions.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
+  const allSessions = useLiveQuery(
+    () => localDb.cashSessions.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && !editingEntry) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [editingEntry, onClose]);
 
-  const rows = useMemo<ActiveRow[]>(
-    () =>
-      (activeEntries ?? [])
-        .map(toRow)
-        .sort((a, b) => b.enteredMs - a.enteredMs),
-    [activeEntries],
-  );
+  const rows = useMemo<ActiveRow[]>(() => {
+    const paymentsByEntryId = new Map<string, LocalPaymentTransaction[]>();
+    (allPaymentTransactions ?? [])
+      .filter((tx) => !tx.deletedAt)
+      .forEach((tx) => {
+        const lines = paymentsByEntryId.get(tx.entryId);
+        if (lines) {
+          lines.push(tx);
+        } else {
+          paymentsByEntryId.set(tx.entryId, [tx]);
+        }
+      });
+
+    return (activeEntries ?? [])
+      .map((entry) => toRow(entry, paymentsByEntryId.get(entry.id) ?? []))
+      .sort((a, b) => b.enteredMs - a.enteredMs);
+  }, [activeEntries, allPaymentTransactions]);
+
+  const editingCashSession: LocalCashSession | undefined =
+    editingEntry?.cashSessionId
+      ? allSessions?.find(
+          (session) => session.id === editingEntry.cashSessionId,
+        )
+      : undefined;
 
   const columns = useMemo<ColumnDef<ActiveRow, unknown>[]>(
     () => [
@@ -167,7 +221,10 @@ export function ActiveVehiclesDialog({
           <button
             type="button"
             className="primary-button compact"
-            onClick={() => onExit(row.original.entry)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onExit(row.original.entry);
+            }}
           >
             <LogOut size={15} aria-hidden="true" />
             Egreso
@@ -215,9 +272,13 @@ export function ActiveVehiclesDialog({
           <DataTable
             data={rows}
             columns={columns}
-            isLoading={activeEntries === undefined}
+            isLoading={
+              activeEntries === undefined ||
+              allPaymentTransactions === undefined ||
+              allSessions === undefined
+            }
             emptyMessage="No hay vehículos estacionados en este momento."
-            searchPlaceholder="Buscar por patente, vehículo o notas..."
+            searchPlaceholder="Buscar por patente, vehículo o notas…"
             searchableKeys={[
               'plate',
               'vehicleBrand',
@@ -232,11 +293,25 @@ export function ActiveVehiclesDialog({
               'rate',
             ]}
             getRowId={(r) => r.id}
+            onRowClick={(row) => setEditingEntry(row.entry)}
             initialPageSize={8}
             templateScope={{ userId, tenantId, tableKey: 'active-vehicles' }}
           />
         </div>
       </section>
+      {editingEntry ? (
+        <EntryEditDialog
+          entry={editingEntry}
+          tenantId={tenantId}
+          accessToken={accessToken}
+          actorRole={actorRole}
+          cashSession={editingCashSession}
+          parkingName={parkingName}
+          parkingAddress={parkingAddress}
+          parkingCuit={parkingCuit}
+          onClose={() => setEditingEntry(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -2007,20 +2007,22 @@ export interface components {
              * @description Close timestamp. Defaults to now() on the server.
              */
             closedAt?: string;
-            /** @description Cash left in the drawer for the next shift. Defaults to 0. */
+            /** @description Cash left in the drawer for the next shift. Used only when openNextSession is true. */
             leavingCash?: number;
             /**
              * Format: uuid
-             * @description Client-generated UUIDv7 for the new session.
+             * @description Client-generated UUIDv7 for the new session. Required when openNextSession is true.
              */
-            newSessionId: string;
+            newSessionId?: string;
             notes?: string;
+            /** @description Whether to open the next cash session immediately. Defaults to false. */
+            openNextSession?: boolean;
         };
         CloseCashSessionResponseDto: {
             /** @description Number of active entries reassigned to the new session. */
             carriedOverCount: number;
             closedSession: components["schemas"]["CashSessionDto"];
-            newSession: components["schemas"]["CashSessionDto"];
+            newSession: components["schemas"]["CashSessionDto"] | null;
         };
         CloseEntryDto: {
             /** @description Total amount paid in ARS. Computed from payments[] if provided; otherwise stored directly (legacy / offline fallback). */

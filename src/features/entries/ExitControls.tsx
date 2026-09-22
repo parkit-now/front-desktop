@@ -10,11 +10,23 @@ interface Props {
   tenantId: string;
   accessToken: string;
   userId: string;
+  actorRole: 'admin' | 'owner' | 'operator' | null;
+  parkingName?: string | null;
+  parkingAddress?: string | null;
+  parkingCuit?: string | null;
 }
 
 // Egresos zone under the manual entry form: charge a car by its ticket number,
 // or open the full "autos en base" table to pick one. Both routes open ExitModal.
-export function ExitControls({ tenantId, accessToken, userId }: Props) {
+export function ExitControls({
+  tenantId,
+  accessToken,
+  userId,
+  actorRole,
+  parkingName = null,
+  parkingAddress = null,
+  parkingCuit = null,
+}: Props) {
   const { showToast } = useToast();
   const [ticket, setTicket] = useState('');
   const [searching, setSearching] = useState(false);
@@ -128,6 +140,11 @@ export function ExitControls({ tenantId, accessToken, userId }: Props) {
         <ActiveVehiclesDialog
           tenantId={tenantId}
           userId={userId}
+          accessToken={accessToken}
+          actorRole={actorRole}
+          parkingName={parkingName}
+          parkingAddress={parkingAddress}
+          parkingCuit={parkingCuit}
           onExit={(entry) => {
             setExitEntry(entry);
             setDialogOpen(false);

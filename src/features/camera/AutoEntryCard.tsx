@@ -98,9 +98,10 @@ export function AutoEntryCard({
             type="button"
             className="ghost-button auto-entry-card__dismiss"
             onClick={() => onDismiss(detection.id)}
+            title="Descartar detección"
+            aria-label="Descartar detección"
           >
-            <X size={16} aria-hidden="true" />
-            Descartar
+            <X size={20} aria-hidden="true" />
           </button>
         }
       />

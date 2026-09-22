@@ -52,11 +52,24 @@ export const AppSelect = React.forwardRef<AppSelectHandle, AppSelectProps>(
     function calcPosition() {
       if (!triggerRef.current) return;
       const rect = triggerRef.current.getBoundingClientRect();
+      const gutter = 12;
+      const gap = 4;
+      const preferredHeight = Math.min(260, options.length * 40 + 8);
+      const availableBelow = window.innerHeight - rect.bottom - gutter;
+      const availableAbove = rect.top - gutter;
+      const openUp =
+        availableBelow < preferredHeight && availableAbove > availableBelow;
+      const maxHeight = Math.max(
+        80,
+        Math.min(preferredHeight, openUp ? availableAbove : availableBelow),
+      );
+
       setDropdownStyle({
         position: 'fixed',
-        top: rect.bottom + 4,
+        top: openUp ? rect.top - maxHeight - gap : rect.bottom + gap,
         left: rect.left,
         width: rect.width,
+        maxHeight,
         zIndex: 200,
       });
     }
@@ -81,17 +94,8 @@ export const AppSelect = React.forwardRef<AppSelectHandle, AppSelectProps>(
 
     // Recalculate position on open (handles resize edge cases)
     useLayoutEffect(() => {
-      if (open && triggerRef.current) {
-        const rect = triggerRef.current.getBoundingClientRect();
-        setDropdownStyle({
-          position: 'fixed',
-          top: rect.bottom + 4,
-          left: rect.left,
-          width: rect.width,
-          zIndex: 200,
-        });
-      }
-    }, [open]);
+      if (open) calcPosition();
+    }, [open, options.length]);
 
     /**
      * Trae a la vista la opción resaltada al navegar con las flechas.

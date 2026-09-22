@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { getPaginationSummary, getVisiblePageNumbers } from '../utils';
 
 type PaginationProps = {
@@ -9,6 +10,7 @@ type PaginationProps = {
   pageSizeOptions: number[];
   canPreviousPage: boolean;
   canNextPage: boolean;
+  status?: ReactNode;
   onPageIndexChange: (pageIndex: number) => void;
   onPageSizeChange: (pageSize: number) => void;
 };
@@ -21,6 +23,7 @@ export function Pagination({
   pageSizeOptions,
   canPreviousPage,
   canNextPage,
+  status,
   onPageIndexChange,
   onPageSizeChange,
 }: PaginationProps) {
@@ -44,10 +47,13 @@ export function Pagination({
         </select>
       </label>
 
-      <p className="dt-pagination-summary">
-        Mostrando <strong>{summary.from}</strong> a{' '}
-        <strong>{summary.to}</strong> de <strong>{summary.totalRows}</strong>
-      </p>
+      <div className="dt-pagination-status">
+        <p className="dt-pagination-summary">
+          Mostrando <strong>{summary.from}</strong> a{' '}
+          <strong>{summary.to}</strong> de <strong>{summary.totalRows}</strong>
+        </p>
+        {status}
+      </div>
 
       <div className="dt-pagination-pages">
         <button

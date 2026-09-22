@@ -1,6 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { CameraAlert } from './features/camera/CameraAlert';
 import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
@@ -12,6 +11,7 @@ import {
   onSessionChange,
   restoreSession,
 } from './lib/supabase/session';
+import { PARKIT_LOGO_URL } from './lib/brand';
 
 type View = 'login' | 'register' | 'forgot';
 
@@ -101,12 +101,7 @@ export function App() {
   }, [showToast]);
 
   if (session) {
-    return (
-      <>
-        <CameraAlert />
-        <SessionView session={session} sessionStale={sessionStale} />
-      </>
-    );
+    return <SessionView session={session} sessionStale={sessionStale} />;
   }
 
   return (
@@ -114,7 +109,7 @@ export function App() {
       <section className="auth-card">
         <div className="brand-lockup">
           <div className="brand-badge" aria-hidden="true">
-            <img src="/logo.jpeg" alt="" />
+            <img src={PARKIT_LOGO_URL} alt="" />
           </div>
           <h1>Parkit</h1>
         </div>

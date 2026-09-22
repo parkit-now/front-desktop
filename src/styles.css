@@ -191,8 +191,13 @@ h2 {
   gap: 6px;
 }
 
-.auth-form input {
+.auth-form input,
+.form-field input,
+.form-field select,
+.form-field textarea,
+.form-input {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 0 12px;
   border-radius: var(--radius-control);
@@ -203,7 +208,17 @@ h2 {
   font-family: inherit;
 }
 
-.auth-form input:focus {
+.form-field textarea {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  resize: vertical;
+}
+
+.auth-form input:focus,
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus,
+.form-input:focus {
   outline: 2px solid var(--color-brand);
   outline-offset: 1px;
   border-color: var(--color-brand);
@@ -638,6 +653,21 @@ h2 {
   opacity: 0.9;
 }
 
+.nav-status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: -2px;
+  border-radius: 999px;
+  background: #f79009;
+  box-shadow: 0 0 0 3px rgba(247, 144, 9, 0.18);
+}
+
+.nav-status-dot.down {
+  background: var(--color-danger-text);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.16);
+}
+
 .nav-item:hover {
   border-color: rgba(208, 217, 230, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -768,6 +798,7 @@ h2 {
 .workspace-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 24px 32px 20px;
   background: linear-gradient(135deg, #f0f6ff 0%, #e8f2ff 45%, #ddeeff 100%);
@@ -808,6 +839,15 @@ h2 {
   pointer-events: none;
 }
 
+.workspace-header-main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 16px;
+}
+
 .workspace-header-icon {
   flex: none;
   width: 46px;
@@ -831,6 +871,40 @@ h2 {
   font-weight: 600;
   color: var(--color-muted);
   letter-spacing: 0.02em;
+}
+
+.operational-camera-badge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 430px);
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #fedf89;
+  border-radius: 999px;
+  background: #fffaeb;
+  color: #93370d;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.operational-camera-badge.down {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.operational-camera-badge small {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.78;
+  text-overflow: ellipsis;
 }
 
 .workspace-meta {
@@ -889,6 +963,7 @@ h2 {
 }
 
 .dashboard-card {
+  min-width: 0;
   border: 1px solid #d0d9e6;
   border-radius: 18px;
   padding: 24px;
@@ -2205,8 +2280,15 @@ h2 {
   padding: 0 8px;
 }
 
-.dt-pagination-summary {
+.dt-pagination-status {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.dt-pagination-summary {
   margin: 0;
   color: var(--color-muted);
   font-size: 13px;
@@ -2641,6 +2723,7 @@ h2 {
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .app-sidebar,
@@ -2651,32 +2734,45 @@ h2 {
   }
 
   .app-sidebar {
-    grid-template-rows: auto auto;
+    display: block;
+    align-self: start;
+    padding: 8px 12px;
+    gap: 0;
+  }
+
+  .sidebar-top,
+  .sidebar-foot {
+    display: none;
   }
 
   .sidebar-nav {
+    display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: minmax(120px, 1fr);
+    grid-auto-columns: max-content;
+    gap: 8px;
+    align-content: center;
     overflow-x: auto;
+    padding-bottom: 2px;
   }
 
-  .sidebar-foot {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 1.1fr) auto;
-    align-items: end;
-  }
-
-  .signout-button.compact {
+  .sidebar-nav .nav-item {
     width: auto;
-    min-width: 112px;
+    min-width: max-content;
+    min-height: 42px;
+    padding: 0 12px;
+    white-space: nowrap;
   }
 
   .app-main {
-    padding: 14px;
+    padding: 0;
   }
 
   .workspace-header {
-    padding: 14px;
-    flex-direction: column;
+    display: none;
+  }
+
+  .workspace-content {
+    padding: 10px;
   }
 
   .dt-card-header,
@@ -2686,13 +2782,33 @@ h2 {
     padding-right: 14px;
   }
 
+  .dt-card-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .dt-card-header:has(h3:empty),
+  .dt-card-header > div:first-child:empty {
+    display: none;
+  }
+
+  .dt-card-header-right {
+    justify-content: flex-end;
+  }
+
   .dt-toolbar {
     align-items: stretch;
     flex-direction: column;
+    gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 10px;
   }
 
   .dt-search-cluster {
     width: 100%;
+    flex: 0 0 auto;
   }
 
   .dt-toolbar-actions {
@@ -2701,6 +2817,7 @@ h2 {
   }
 
   .dt-toolbar-switches {
+    flex: 0 0 auto;
     justify-content: flex-start;
   }
 
@@ -2718,7 +2835,7 @@ h2 {
     flex-direction: column;
   }
 
-  .dt-pagination-summary {
+  .dt-pagination-status {
     flex: none;
   }
 
@@ -2729,14 +2846,6 @@ h2 {
 }
 
 @media (max-width: 640px) {
-  .sidebar-foot {
-    grid-template-columns: 1fr;
-  }
-
-  .signout-button.compact {
-    width: 100%;
-  }
-
   .rates-header {
     flex-direction: column;
   }
@@ -2781,6 +2890,10 @@ h2 {
     flex-wrap: wrap;
   }
 
+  .dt-pagination-status {
+    min-width: 0;
+  }
+
   .dt-pagination-summary {
     display: none;
   }
@@ -2821,7 +2934,7 @@ h2 {
 
 .operativo-layout {
   display: grid;
-  grid-template-columns: minmax(290px, 310px) minmax(0, 1fr);
+  grid-template-columns: minmax(290px, 320px) minmax(0, 1fr);
   /* Pin the single row to the container height so the (potentially tall)
      auto-entries column can't inflate the row and push the egresos card off
      screen — the column scrolls internally instead. */
@@ -2857,24 +2970,29 @@ h2 {
   display: flex;
   gap: 8px;
   align-items: stretch;
+  min-width: 0;
 }
 
-.entry-form-actions .primary-button {
+.entry-form-actions .primary-button,
+.entry-form-actions .ghost-button {
   flex: 1;
+  width: auto;
   /* Deja que flex lo achique en vez de desbordar la columna, y que corte antes
      de envolver a dos líneas (eso estiraría toda la fila de 48px). */
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* "Registrar sin imprimir": hermano cuadrado del submit. El alto sale del
-   align-items: stretch de la fila, así que queda a la par de los 48px del
-   primary-button. */
+/* "Registrar sin imprimir": hermano compacto del submit. El alto sale del
+   align-items: stretch de la fila, así que queda a la par del primary-button. */
 .entry-action-square {
-  flex: 0 0 48px;
-  width: 48px;
-  display: inline-grid;
-  place-items: center;
+  flex: 0 0 54px;
+  width: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 1px solid #cbd8ea;
   border-radius: var(--radius-control);
@@ -2912,13 +3030,23 @@ h2 {
 .printer-panel {
   display: grid;
   gap: var(--space-3);
-  max-width: 560px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+  align-items: start;
+  width: 100%;
+  max-width: 1120px;
+}
+
+.printer-panel-main {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .printer-panel-field {
   display: grid;
   gap: 6px;
   margin-top: var(--space-3);
+  min-width: 0;
 }
 
 .printer-panel-hint {
@@ -2963,6 +3091,237 @@ h2 {
   align-items: center;
   gap: 7px;
   width: auto;
+}
+
+.printer-panel-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.printer-panel-title-row .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  white-space: nowrap;
+}
+
+.printer-template-card.is-readonly .form-input:disabled {
+  color: var(--color-text);
+  background: #f7f9fc;
+  opacity: 1;
+}
+
+.printer-template-text-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.ticket-template-list {
+  display: grid;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+
+.ticket-template-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 10px;
+  min-height: 40px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.04);
+}
+
+.ticket-template-row.is-hidden {
+  color: var(--color-muted);
+  background: #f7f9fc;
+  box-shadow: none;
+}
+
+.ticket-template-row.is-disabled {
+  opacity: 0.72;
+}
+
+.ticket-template-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--color-muted);
+  background: transparent;
+  cursor: grab;
+}
+
+.ticket-template-drag:hover {
+  background: #eef4ff;
+  color: var(--color-brand);
+}
+
+.ticket-template-drag:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ticket-template-drag:disabled:hover {
+  color: var(--color-muted);
+  background: transparent;
+}
+
+.ticket-template-drag:active {
+  cursor: grabbing;
+}
+
+.ticket-template-visible {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.ticket-template-visible:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.ticket-template-visible input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand);
+}
+
+.ticket-template-visible span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ticket-template-controls {
+  display: grid;
+  grid-template-columns: minmax(112px, 1fr) 40px;
+  grid-column: 2;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.ticket-template-controls .app-select-trigger {
+  min-height: 40px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.ticket-template-bold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.ticket-template-bold span {
+  display: none;
+  font-weight: 700;
+}
+
+.ticket-template-bold:hover {
+  border-color: #9eb8db;
+  background: #eef6ff;
+  color: var(--color-brand);
+}
+
+.ticket-template-bold.active {
+  border-color: #9eb8db;
+  background: #e8f1ff;
+  color: var(--color-brand);
+}
+
+.ticket-template-bold:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: var(--color-border);
+  background: #f4f7fb;
+  color: var(--color-muted);
+}
+
+.ticket-preview-shell {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  overflow: auto;
+}
+
+.ticket-preview-frame {
+  width: 302px;
+  min-height: 80px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+@media (max-width: 980px) {
+  .printer-panel {
+    grid-template-columns: 1fr;
+    max-width: 720px;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-card {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .printer-panel-title-row {
+    display: grid;
+  }
+
+  .printer-panel-title-row .ghost-button {
+    justify-self: start;
+  }
+
+  .ticket-template-controls {
+    grid-template-columns: 1fr;
+    grid-column: 2;
+  }
+
+  .ticket-template-bold {
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0 12px;
+  }
+
+  .ticket-template-bold span {
+    display: inline;
+  }
+
+  .ticket-preview-frame {
+    width: min(302px, 100%);
+  }
 }
 
 .camera-settings-shell {
@@ -3330,6 +3689,7 @@ h2 {
   min-height: 0;
   /* Fills the (viewport-bound) layout height; the card grid scrolls inside. */
   height: 100%;
+  overflow: hidden;
 }
 
 .auto-entries__header {
@@ -3383,21 +3743,23 @@ h2 {
 .auto-entries__grid {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   /* Rows take their content height (never compressed by the fixed-height
      scroll container) so cards can't overlap vertically. */
   grid-auto-rows: max-content;
   gap: 14px;
   align-content: start;
   padding: 2px;
+  scrollbar-gutter: stable;
 }
 
 /* A single auto-detected entry card — same frame as the manual entry card,
    with the detected-plate photo full-bleed on top. */
 .auto-entry-card {
   min-width: 0;
+  width: 100%;
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
@@ -3489,12 +3851,45 @@ h2 {
   gap: 12px;
 }
 
+.entry-form--auto .auth-form {
+  min-width: 0;
+}
+
+.entry-form--auto .entry-form-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-content: stretch;
+}
+
+.entry-form--auto .entry-action-square,
+.entry-form--auto .entry-form-actions .primary-button,
+.entry-form--auto .entry-form-actions .ghost-button {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.entry-form--auto .entry-form-actions .primary-button span {
+  display: none;
+}
+
+.entry-form--auto .entry-form-actions .primary-button svg {
+  width: 20px;
+  height: 20px;
+}
+
 .auto-entry-card__dismiss {
-  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  border-color: #f6c7bf;
+  background: #fff7f5;
+  color: var(--color-danger-text);
+}
+
+.auto-entry-card__dismiss:hover:not(:disabled) {
+  border-color: #f4a79d;
+  background: var(--color-danger-bg);
 }
 
 /* Fixed-size dialog for the active-vehicles data table: the table body scrolls
@@ -3895,10 +4290,12 @@ h2 {
     grid-template-rows: none;
     height: auto;
     overflow: visible;
+    gap: 16px;
   }
 
   .operativo-entry-column {
     height: auto;
+    overflow: visible;
   }
 
   .exit-controls {
@@ -3907,10 +4304,13 @@ h2 {
 
   .auto-entries {
     height: auto;
+    overflow: visible;
   }
 
   .auto-entries__grid {
-    overflow-y: visible;
+    max-height: none;
+    overflow: auto;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
 }
 
@@ -3946,8 +4346,10 @@ h2 {
 .sync-button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
+  min-height: 42px;
   padding: 8px 12px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -3958,6 +4360,15 @@ h2 {
     background 0.15s,
     border-color 0.15s;
   position: relative;
+}
+
+.sync-button.collapsed {
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  border-radius: 12px;
 }
 
 .sync-button:disabled {
@@ -4009,6 +4420,7 @@ h2 {
 }
 
 .sync-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4021,6 +4433,17 @@ h2 {
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
+}
+
+.sync-button.collapsed .sync-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 2px solid #0c2f5d;
+  font-size: 10px;
 }
 
 @keyframes spin {

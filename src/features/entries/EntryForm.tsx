@@ -6,6 +6,7 @@ interface Props {
   /** Header of the printed entry ticket. */
   parkingName?: string | null;
   parkingAddress?: string | null;
+  parkingCuit?: string | null;
   initialDraft?: ManualEntryDraft | null;
   onDraftChange?: (draft: ManualEntryDraft) => void;
   onDraftReset?: () => void;
@@ -18,6 +19,7 @@ export function EntryForm({
   accessToken,
   parkingName = null,
   parkingAddress = null,
+  parkingCuit = null,
   initialDraft = null,
   onDraftChange,
   onDraftReset,
@@ -29,6 +31,7 @@ export function EntryForm({
       variant="manual"
       parkingName={parkingName}
       parkingAddress={parkingAddress}
+      parkingCuit={parkingCuit}
       initialDraft={initialDraft}
       onDraftChange={onDraftChange}
       onDraftReset={onDraftReset}
