@@ -1,3 +1,19 @@
+# [1.4.0](https://github.com/parkit-now/front-desktop/compare/v1.3.0...v1.4.0) (2026-09-22)
+
+
+### Bug Fixes
+
+* el operador no puede ver cajas anteriores ni historial de ingresos de cajas anteriores ([ecdf76b](https://github.com/parkit-now/front-desktop/commit/ecdf76b8a01be1381e94a43c77daa125b705bb94))
+
+
+### Features
+
+* ahora la app es más responsive en cualquier tamaño de pantalla ([2e55a2a](https://github.com/parkit-now/front-desktop/commit/2e55a2a63f50e1fc8e86723f7dfa1c5729bc2197))
+* ahora se puede editar autos en base. Además se puede buscar por marca y modelo y se mejoró partes del front ([0fa270c](https://github.com/parkit-now/front-desktop/commit/0fa270cab57137279abf5326f1d277b16b2f89ca))
+* al cerrar una caja no se inicia la siguiente automáticamente ([84be0b4](https://github.com/parkit-now/front-desktop/commit/84be0b43646adc874676b6833bd0f136a366e69b))
+* mejoras en el diseño del panel operativo ([3f9ba43](https://github.com/parkit-now/front-desktop/commit/3f9ba43a6e3c605319ebf3c0e68c90967304d25d))
+* se agregó un sistema para configurar qué campos se quieren imprimir en el ticket. Además los campos de configuración de impresion y de cámara del tenant se persisten en el backend ([d95f0ac](https://github.com/parkit-now/front-desktop/commit/d95f0ac5deba0ad7e3802f8c71352860fd53a448))
+
 # [1.3.0](https://github.com/parkit-now/front-desktop/compare/v1.2.0...v1.3.0) (2026-09-21)
 
 
