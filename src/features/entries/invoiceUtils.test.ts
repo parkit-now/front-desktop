@@ -53,6 +53,20 @@ describe('invoiceUtils', () => {
     });
   });
 
+  it('no duplica el punto final del motivo', () => {
+    expect(
+      describeInvoiceResult({
+        invoice: {
+          ...base,
+          status: 'error',
+          errorMessage: 'ARCA no respondió en 1 ms.',
+        },
+        offline: false,
+        lineModes: [],
+      })?.text,
+    ).toBe('No se pudo facturar: ARCA no respondió en 1 ms. Quedó pendiente.');
+  });
+
   it('pendiente, "no requiere" o sin ARCA → no se muestra nada', () => {
     for (const invoice of [
       { ...base, status: 'pending' as const },

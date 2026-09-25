@@ -58,7 +58,8 @@ export function describeInvoiceResult(input: {
     }
     case 'error':
     case 'issuing': {
-      const reason = invoice.errorMessage?.trim();
+      // Los mensajes de ARCA suelen terminar en punto: sin sacarlo queda «..».
+      const reason = invoice.errorMessage?.trim().replace(/[.\s]+$/, '');
       return {
         tone: 'warning',
         text: `No se pudo facturar${reason ? `: ${reason}` : ''}. Quedó pendiente.`,
