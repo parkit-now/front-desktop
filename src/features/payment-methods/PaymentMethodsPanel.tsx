@@ -70,6 +70,8 @@ function localToDisplay(r: LocalPaymentMethod): PaymentMethodDto {
     enabled: r.enabled,
     isDefault: r.isDefault,
     isSystem: r.isSystem ?? false,
+    // Default de DISPLAY para filas que todavía no bajaron el campo.
+    invoiceMode: r.invoiceMode ?? 'none',
     syncSeq: r.syncSeq,
     version: r.version,
     updatedAt: r.updatedAt,
@@ -86,6 +88,7 @@ function apiToLocal(r: PaymentMethodDto, tenantId: string): LocalPaymentMethod {
     enabled: r.enabled,
     isDefault: r.isDefault,
     isSystem: r.isSystem,
+    invoiceMode: r.invoiceMode,
     syncSeq: r.syncSeq,
     version: r.version,
     updatedAt: r.updatedAt,

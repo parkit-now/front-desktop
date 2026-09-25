@@ -11,6 +11,8 @@ import type { components } from '../../generated/api-types';
  * segunda fuente de verdad silenciosa.
  */
 export type PaymentMethodKind = components['schemas']['PaymentMethodType'];
+export type PaymentMethodInvoiceMode =
+  components['schemas']['PaymentMethodInvoiceMode'];
 
 export interface LocalRate {
   id: string;
@@ -167,6 +169,13 @@ export interface LocalPaymentMethod {
   enabled: boolean;
   isDefault: boolean;
   isSystem: boolean;
+  /**
+   * Si se factura al cobrar con este medio. Opcional: la columna nació sin
+   * bumpear `sync_seq`, así que una fila vieja no lo trae hasta que el dueño
+   * toque el medio (y ahí sí baja). `undefined` = no sabemos, no se promete
+   * ninguna factura.
+   */
+  invoiceMode?: PaymentMethodInvoiceMode;
   syncSeq: number;
   version: number;
   updatedAt: string;

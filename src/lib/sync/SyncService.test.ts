@@ -570,6 +570,7 @@ function serverPaymentMethod(
     enabled: true,
     isDefault: false,
     isSystem: false,
+    invoiceMode: 'none',
     version: 1,
     syncSeq: 1,
     createdAt: ENTERED_AT,
