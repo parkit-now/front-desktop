@@ -1,4 +1,5 @@
 import type { InvoiceSummaryDto } from '../../lib/api/entries';
+import { translateErrorCode } from '../../lib/api/translate';
 import type { PaymentMethodInvoiceMode } from '../../lib/db/localDb';
 
 /**
@@ -19,8 +20,15 @@ export function invoiceLetter(cbteTipo: number | null | undefined): string {
 
 export interface InvoiceNotice {
   readonly tone: 'success' | 'warning' | 'info';
+  /**
+   * Lo que va en la fila «Factura» del resumen del egreso. Si no salió, es el
+   * mensaje corto del `errorCode`: el detalle técnico de ARCA queda guardado
+   * en la factura, no se le muestra al operario.
+   */
   readonly text: string;
 }
+
+const FALLBACK_MESSAGE = 'No se pudo emitir la factura. Intentalo más tarde.';
 
 /**
  * Qué decirle al operario sobre la factura después de confirmar el egreso.
@@ -57,17 +65,22 @@ export function describeInvoiceResult(input: {
       return { tone: 'success', text: parts.filter(Boolean).join(' ') };
     }
     case 'error':
-    case 'issuing': {
-      // Los mensajes de ARCA suelen terminar en punto: sin sacarlo queda «..».
-      const reason = invoice.errorMessage?.trim().replace(/[.\s]+$/, '');
+    case 'issuing':
       return {
         tone: 'warning',
-        text: `No se pudo facturar${reason ? `: ${reason}` : ''}. Quedó pendiente.`,
+        text: translateErrorCode(invoice.errorCode) ?? FALLBACK_MESSAGE,
       };
-    }
+    case 'pending':
+      // Pendiente CON motivo (certificado vencido, falta el receptor): se
+      // quiso emitir y no se pudo. Sin motivo es un medio en Manual: nada.
+      return invoice.errorCode
+        ? {
+            tone: 'warning',
+            text: translateErrorCode(invoice.errorCode) ?? FALLBACK_MESSAGE,
+          }
+        : null;
     default:
-      // `pending` y `not_required`: nada nuevo que mostrar en el cobro; se ve
-      // en el historial.
+      // `not_required`: nada que mostrar en el cobro.
       return null;
   }
 }

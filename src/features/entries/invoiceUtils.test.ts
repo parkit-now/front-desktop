@@ -35,39 +35,53 @@ describe('invoiceUtils', () => {
     ).toBe('Factura C 0001-00000001 emitida');
   });
 
-  it('error → el motivo y que quedó pendiente', () => {
+  it('ARCA caída → mensaje corto en el resumen, sin el detalle técnico', () => {
     expect(
       describeInvoiceResult({
         invoice: {
           ...base,
           status: 'error',
-          errorCode: 'INVOICE_REJECTED',
-          errorMessage: '10016: número no correlativo',
+          errorCode: 'ARCA_UNAVAILABLE',
+          errorMessage: 'ARCA no respondió en 1 ms.',
         },
         offline: false,
         lineModes: [],
       }),
     ).toEqual({
       tone: 'warning',
-      text: 'No se pudo facturar: 10016: número no correlativo. Quedó pendiente.',
+      text: 'ARCA no responde. Intentalo más tarde.',
     });
   });
 
-  it('no duplica el punto final del motivo', () => {
+  it('un código sin traducción cae en un mensaje genérico, nunca en el detalle técnico', () => {
     expect(
       describeInvoiceResult({
         invoice: {
           ...base,
-          status: 'error',
-          errorMessage: 'ARCA no respondió en 1 ms.',
+          status: 'issuing',
+          errorCode: 'ALGO_NUEVO',
+          errorMessage: 'SOAP fault 500',
         },
         offline: false,
         lineModes: [],
       })?.text,
-    ).toBe('No se pudo facturar: ARCA no respondió en 1 ms. Quedó pendiente.');
+    ).toBe('No se pudo emitir la factura. Intentalo más tarde.');
   });
 
-  it('pendiente, "no requiere" o sin ARCA → no se muestra nada', () => {
+  it('pendiente con motivo (certificado vencido) → el motivo corto', () => {
+    expect(
+      describeInvoiceResult({
+        invoice: { ...base, status: 'pending', errorCode: 'ARCA_CERT_EXPIRED' },
+        offline: false,
+        lineModes: [],
+      }),
+    ).toEqual({
+      tone: 'warning',
+      text: 'Venció el certificado de ARCA. Avisale al dueño para que lo renueve.',
+    });
+  });
+
+  it('pendiente sin motivo (medio en Manual), "no requiere" o sin ARCA → nada', () => {
     for (const invoice of [
       { ...base, status: 'pending' as const },
       { ...base, status: 'not_required' as const },

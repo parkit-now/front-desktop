@@ -172,10 +172,9 @@ const CODE_MESSAGES: Record<string, string> = {
   // que el mensaje dice qué pasó con la factura, no con el egreso.
   ARCA_NOT_LINKED:
     'Esta playa no tiene la facturación electrónica vinculada. El dueño la vincula desde el panel web.',
-  ARCA_UNAVAILABLE:
-    'ARCA no está respondiendo. La factura quedó pendiente y se puede reintentar desde el historial.',
+  ARCA_UNAVAILABLE: 'ARCA no responde. Intentalo más tarde.',
   ARCA_CERT_EXPIRED:
-    'Venció el certificado de ARCA. La factura quedó pendiente: avisale al dueño para que lo renueve desde el panel.',
+    'Venció el certificado de ARCA. Avisale al dueño para que lo renueve.',
   INVOICE_ALREADY_ISSUED: 'Esta estadía ya tiene una factura emitida.',
   INVOICE_IN_PROGRESS:
     'La factura se está emitiendo en este momento. Esperá unos segundos.',
@@ -229,6 +228,16 @@ const STATUS_MESSAGES: Record<number, string> = {
 function readProblemCode(error: ApiError): string | undefined {
   const code = (error.problem as { code?: unknown } | null)?.code;
   return typeof code === 'string' && code.length > 0 ? code : undefined;
+}
+
+/**
+ * Mensaje para un `code` suelto, cuando no viene dentro de un error HTTP: por
+ * ejemplo el `errorCode` de una factura que el cierre devolvió con 200.
+ */
+export function translateErrorCode(
+  code: string | null | undefined,
+): string | undefined {
+  return code ? CODE_MESSAGES[code] : undefined;
 }
 
 export function translateApiError(
