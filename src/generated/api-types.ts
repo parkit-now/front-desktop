@@ -756,7 +756,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Close the current session and auto-open the next one. Active entries carry over. */
+        /** Close the current session. Optionally open the next one and carry active entries over. */
         patch: operations["CashSessionsController_close"];
         trace?: never;
     };
@@ -846,6 +846,26 @@ export interface paths {
         patch: operations["EntriesController_correct"];
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/{entryId}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emitir (o reintentar) la factura de una estadía cobrada
+         * @description Emite a consumidor final. Los problemas de ARCA (caído, rechazo, certificado vencido) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
+         */
+        post: operations["InvoicesController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries/changes": {
         parameters: {
             query?: never;
@@ -874,6 +894,23 @@ export interface paths {
         put?: never;
         /** Register a vehicle entry from an LPR detection event */
         post: operations["EntriesController_createFromLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoices/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental invoice changes for sync */
+        get: operations["InvoicesController_pullChanges"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2044,6 +2081,68 @@ export interface components {
             /** @description Payment breakdown per method. When provided, amountPaid is set to the sum. */
             payments?: components["schemas"]["PaymentLineDto"][];
         };
+        CloseEntryResponseDto: {
+            amountPaid?: number;
+            /** Format: uuid */
+            cashSessionId?: string;
+            /** @example Cochera 3 */
+            cochera?: string;
+            /** @example Rojo */
+            color?: string;
+            /** Format: date-time */
+            enteredAt: string;
+            entryCameraId?: string;
+            /** @description URL of the entry photo captured by the LPR camera */
+            entryImageUrl?: string;
+            exitCameraId?: string;
+            exitImageUrl?: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Factura de la estadía. `null` si la playa no factura con ARCA. Un problema al emitir NO hace fallar el cierre: viene en `status`/`errorCode`. */
+            invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
+            /** Format: date-time */
+            leftAt?: string;
+            /** @example Cliente frecuente */
+            notes?: string;
+            /** @example ABC123 */
+            plate: string;
+            /** Format: uuid */
+            rateId?: string;
+            rateSnapshotFractionPriceArs?: number;
+            rateSnapshotHourPriceArs?: number;
+            rateSnapshotMediaEstadiaPriceArs?: number;
+            rateSnapshotName?: string;
+            rateSnapshotStayPriceArs?: number;
+            /**
+             * @description auto = created by LPR; manual = operator-typed
+             * @example manual
+             */
+            source: string;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            ticketNumber?: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /**
+             * @description Vehicle brand snapshot.
+             * @example Volkswagen
+             */
+            vehicleBrand?: string;
+            /**
+             * @description Vehicle model snapshot.
+             * @example Bora
+             */
+            vehicleModel?: string;
+            /** @description Snapshot del nombre del tipo al momento del ingreso. Texto y no FK: un ingreso histórico no debe cambiar si el dueño renombra o borra el tipo. */
+            vehicleType?: string | null;
+            version: number;
+            /**
+             * Format: uuid
+             * @description Set when entry was authorized via whitelist
+             */
+            whitelistId?: string;
+        };
         CorrectEntryDto: {
             /** @example Cochera 3 */
             cochera?: string;
@@ -2402,6 +2501,52 @@ export interface components {
             /** @description Cuántos vehículos se movieron al tipo destino. Cada uno recibe su propio `syncSeq` y `version`, así que viajan por /vehicles/changes. */
             reassignedVehicles: number;
         };
+        DesktopCameraConfigDto: {
+            /**
+             * @description Stable camera identifier sent with LPR detections.
+             * @example entrada-rivadavia
+             */
+            cameraId: string;
+            /**
+             * @description OpenCV webcam index.
+             * @example 0
+             */
+            deviceIndex: number;
+            /**
+             * @description IP camera host. Empty for webcam mode.
+             * @example 192.168.1.26
+             */
+            host: string;
+            /**
+             * @description Camera location.
+             * @example entrada
+             * @enum {string}
+             */
+            location: "entrada" | "salida";
+            /**
+             * @description Video source mode.
+             * @example ip
+             * @enum {string}
+             */
+            mode: "webcam" | "ip";
+            /**
+             * @description IP camera RTSP port.
+             * @example 554
+             */
+            port: number;
+            /**
+             * @description IP camera stream path.
+             * @example /h264_stream
+             */
+            streamPath: string;
+            /** @description Camera detection tuning, including ROI. Passwords are never stored here. */
+            tuning: Record<string, never> | null;
+            /**
+             * @description IP camera username. Password is intentionally not persisted.
+             * @example admin
+             */
+            username: string;
+        };
         DocumentSignedUrlDto: {
             /**
              * @description Seconds the signed URL remains valid.
@@ -2498,6 +2643,8 @@ export interface components {
              * @example 30123456789
              */
             cuit: string | null;
+            /** @description Desktop camera configuration owned by the entity, excluding the camera password. */
+            desktopCameraConfig: components["schemas"]["DesktopCameraConfigDto"] | null;
             /**
              * Format: email
              * @description Contact email, or `null` if not provided.
@@ -2551,6 +2698,8 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "maintenance";
+            /** @description Ticket template owned by the entity. Null means clients should use their built-in default or a local fallback. */
+            ticketTemplate: components["schemas"]["TicketTemplateDto"] | null;
         };
         EntitySummaryDto: {
             /** @description Street address of the entity, or `null` if not provided. */
@@ -2695,6 +2844,69 @@ export interface components {
              */
             uptime: number;
         };
+        InvoiceChangesResponseDto: {
+            items: components["schemas"]["InvoiceDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        InvoiceDto: {
+            /** @example 86380920935994 */
+            cae?: string | null;
+            /**
+             * Format: date
+             * @description Vencimiento del CAE (AAAA-MM-DD).
+             */
+            caeVto?: string | null;
+            /** Format: date */
+            cbteFch?: string | null;
+            cbteNro?: number | null;
+            /** @description Código de ARCA: 1 = A, 6 = B, 11 = C. */
+            cbteTipo?: number | null;
+            /** Format: uuid */
+            entryId: string;
+            /** @description Código estable (`ARCA_*` / `INVOICE_*`) del último problema. */
+            errorCode?: string | null;
+            /** @description Detalle, por ejemplo las observaciones de ARCA al rechazar. */
+            errorMessage?: string | null;
+            /** Format: uuid */
+            id: string;
+            impIva?: number | null;
+            impNeto?: number | null;
+            impTotal: number;
+            /** Format: date-time */
+            issuedAt?: string | null;
+            ptoVta?: number | null;
+            receptorNombre?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
+        /** @enum {string} */
+        InvoiceStatus: "not_required" | "pending" | "issuing" | "issued" | "error";
+        InvoiceSummaryDto: {
+            /** @example 86380920935994 */
+            cae?: string | null;
+            /**
+             * Format: date
+             * @description Vencimiento del CAE (AAAA-MM-DD).
+             */
+            caeVto?: string | null;
+            cbteNro?: number | null;
+            /** @description Código de ARCA: 1 = A, 6 = B, 11 = C. */
+            cbteTipo?: number | null;
+            /** @description Código estable (`ARCA_*` / `INVOICE_*`) del último problema. */
+            errorCode?: string | null;
+            /** @description Detalle, por ejemplo las observaciones de ARCA al rechazar. */
+            errorMessage?: string | null;
+            /** Format: uuid */
+            id: string;
+            ptoVta?: number | null;
+            status: components["schemas"]["InvoiceStatus"];
+        };
         LoginDto: {
             /**
              * Format: email
@@ -2815,6 +3027,12 @@ export interface components {
              */
             role: "admin" | "user";
         };
+        MetricsProjectionsDto: {
+            monthHistoricalForecast: components["schemas"]["RevenueProjectionDto"];
+            monthWithOpenEntries: components["schemas"]["RevenueProjectionDto"];
+            todayHistoricalForecast: components["schemas"]["RevenueProjectionDto"];
+            todayWithOpenEntries: components["schemas"]["RevenueProjectionDto"];
+        };
         MetricsSummaryDto: {
             alerts: components["schemas"]["SummaryAlertsDto"];
             comparison: components["schemas"]["SummaryComparisonDto"];
@@ -2830,6 +3048,7 @@ export interface components {
             generatedAt: string;
             /** @description Live occupancy at `generatedAt`. */
             occupancy: components["schemas"]["OccupancyDto"];
+            projections: components["schemas"]["MetricsProjectionsDto"];
             /** @description Totals from the start of the current civil day up to `generatedAt`. */
             today: components["schemas"]["DayTotalsDto"];
             /**
@@ -3359,6 +3578,11 @@ export interface components {
             /** @description Highest syncSeq in the returned batch. Pass as afterSeq on the next poll. */
             maxSeq: number;
         };
+        /**
+         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+         * @enum {string}
+         */
+        PaymentMethodInvoiceMode: "none" | "auto" | "manual";
         PaymentMethodSliceDto: {
             /**
              * @description Total collected, in ARS.
@@ -3398,6 +3622,11 @@ export interface components {
              * @example 2a1b3c4d-5e6f-4a1b-8c9d-0e1f2a3b4c5d
              */
             id: string;
+            /**
+             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+             * @example none
+             */
+            invoiceMode: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this is the default payment method of the entity.
              * @example false
@@ -3597,6 +3826,29 @@ export interface components {
              * @example 19
              */
             vehiclesOut: number;
+        };
+        RevenueProjectionDto: {
+            /**
+             * @description Confidence level based on the amount of historical data.
+             * @example medium
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            /**
+             * @description Historical days used by the trend model.
+             * @example 6
+             */
+            historicalDays: number;
+            /**
+             * @description Open entries included in the projection.
+             * @example 8
+             */
+            openEntries: number;
+            /**
+             * @description Projected revenue in ARS. Orientative, not an accounting total.
+             * @example 245000
+             */
+            value: number;
         };
         RevenueResponseDto: {
             /** @description Chronological buckets covering the window with no gaps or overlaps. First and last are clipped to the requested instants. */
@@ -3815,12 +4067,63 @@ export interface components {
             /** @description Same weekday one week back, truncated to the same elapsed offset. Weekday-aligned because parking demand swings hard between weekdays and weekends. */
             previousWeek: components["schemas"]["DayComparisonDto"];
         };
+        TicketTemplateDto: {
+            /**
+             * @description Optional CUIT override printed on the ticket.
+             * @example 30-12345678-9
+             */
+            cuitOverride: string;
+            /** @description Ordered ticket fields. */
+            fields: components["schemas"]["TicketTemplateFieldDto"][];
+            /**
+             * @description Gross income registration text printed on the ticket.
+             * @example IIBB: 1027025-06
+             */
+            grossIncomeText: string;
+            /**
+             * @description Non-fiscal control legend printed on the ticket.
+             * @example Control no fiscal
+             */
+            nonFiscalControlText: string;
+            /**
+             * @description Template schema version.
+             * @example 1
+             * @enum {integer}
+             */
+            version: 1;
+        };
+        TicketTemplateFieldDto: {
+            /**
+             * @description Text emphasis.
+             * @example bold
+             * @enum {string}
+             */
+            emphasis: "normal" | "bold";
+            /**
+             * @description Font size in points.
+             * @example 13
+             */
+            fontSizePt: number;
+            /**
+             * @description Stable ticket field identifier.
+             * @example plate
+             * @enum {string}
+             */
+            id: "parkingName" | "parkingAddress" | "parkingCuit" | "grossIncome" | "nonFiscalControl" | "ticketNumber" | "plate" | "vehicleBrand" | "vehicleModel" | "color" | "rate" | "entryDate" | "entryTime" | "cochera" | "notes";
+            /**
+             * @description Whether the field is printed.
+             * @example true
+             */
+            visible: boolean;
+        };
         TogglePaymentMethodDto: {
             /**
              * @description Whether the payment method should be enabled (true) or disabled (false).
              * @example true
              */
             enabled?: boolean;
+            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial. */
+            invoiceMode?: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this method becomes the default for the entity.
              * @example true
@@ -3930,6 +4233,46 @@ export interface components {
             /** @description Shift notes. Send an empty string to clear them. Omitting the field leaves them untouched. */
             notes?: string;
         };
+        UpdateDesktopCameraConfigDto: {
+            /** @description Stable camera identifier sent with LPR detections. */
+            cameraId?: string;
+            /**
+             * @description OpenCV webcam index.
+             * @example 0
+             */
+            deviceIndex?: number;
+            /**
+             * @description IP camera host. Empty for webcam mode.
+             * @example 192.168.1.26
+             */
+            host?: string;
+            /**
+             * @description Camera location.
+             * @example entrada
+             * @enum {string}
+             */
+            location?: "entrada" | "salida";
+            /**
+             * @description Video source mode.
+             * @example ip
+             * @enum {string}
+             */
+            mode?: "webcam" | "ip";
+            /**
+             * @description IP camera RTSP port.
+             * @example 554
+             */
+            port?: number;
+            /**
+             * @description IP camera stream path.
+             * @example /h264_stream
+             */
+            streamPath?: string;
+            /** @description Camera detection tuning, including ROI. Passwords are never stored here. */
+            tuning?: Record<string, never> | null;
+            /** @description IP camera username. Password is intentionally not persisted. */
+            username?: string;
+        };
         UpdateEntityAddressDto: {
             /**
              * @description Localidad.
@@ -4009,6 +4352,8 @@ export interface components {
              * @example 30123456789
              */
             cuit?: string;
+            /** @description Desktop camera configuration owned by this entity, excluding the password. */
+            desktopCameraConfig?: components["schemas"]["UpdateDesktopCameraConfigDto"];
             /**
              * Format: email
              * @description New contact email of the entity.
@@ -4054,6 +4399,8 @@ export interface components {
              * @enum {string}
              */
             status?: "active" | "maintenance";
+            /** @description Ticket template owned by this entity. Owner-only; local printer/device settings remain client-side. */
+            ticketTemplate?: components["schemas"]["UpdateTicketTemplateDto"];
         };
         UpdateLprDetectionEventDto: {
             /**
@@ -4175,6 +4522,46 @@ export interface components {
              *     El caller tiene que ser owner de los dos. Mandar el mismo id que el de la URL no es una mudanza — se trata como un cambio de rol común.
              */
             tenantId?: string;
+        };
+        UpdateTicketTemplateDto: {
+            /** @description Optional CUIT override printed on the ticket. */
+            cuitOverride?: string;
+            /** @description Ordered ticket fields. */
+            fields?: components["schemas"]["UpdateTicketTemplateFieldDto"][];
+            /** @description Gross income registration text printed on the ticket. */
+            grossIncomeText?: string;
+            /** @description Non-fiscal control legend printed on the ticket. */
+            nonFiscalControlText?: string;
+            /**
+             * @description Template schema version.
+             * @example 1
+             * @enum {integer}
+             */
+            version?: 1;
+        };
+        UpdateTicketTemplateFieldDto: {
+            /**
+             * @description Text emphasis.
+             * @example bold
+             * @enum {string}
+             */
+            emphasis?: "normal" | "bold";
+            /**
+             * @description Font size in points.
+             * @example 13
+             */
+            fontSizePt?: number;
+            /**
+             * @description Stable ticket field identifier.
+             * @example plate
+             * @enum {string}
+             */
+            id?: "parkingName" | "parkingAddress" | "parkingCuit" | "grossIncome" | "nonFiscalControl" | "ticketNumber" | "plate" | "vehicleBrand" | "vehicleModel" | "color" | "rate" | "entryDate" | "entryTime" | "cochera" | "notes";
+            /**
+             * @description Whether the field is printed.
+             * @example true
+             */
+            visible?: boolean;
         };
         UpdateVehicleDto: {
             /** @example Toyota */
@@ -6499,7 +6886,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EntryDto"];
+                    "application/json": components["schemas"]["CloseEntryResponseDto"];
                 };
             };
         };
@@ -6530,6 +6917,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceSummaryDto"];
                 };
             };
         };
@@ -6583,6 +6993,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceChangesResponseDto"];
                 };
             };
         };

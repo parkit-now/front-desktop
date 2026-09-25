@@ -204,6 +204,7 @@ function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
     enabled: pm.enabled,
     isDefault: pm.isDefault,
     isSystem: pm.isSystem,
+    invoiceMode: pm.invoiceMode,
     syncSeq: pm.syncSeq,
     version: pm.version,
     updatedAt: pm.updatedAt,

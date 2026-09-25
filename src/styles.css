@@ -5363,6 +5363,25 @@ h2 {
   color: var(--color-success-text);
 }
 
+/* Resultado de la factura en el comprobante del egreso. Un problema de factura
+   no frena el cobro: por eso es un texto en la fila, no un bloque de error. */
+.exit-invoice-notice {
+  font-weight: 600;
+  text-align: right;
+}
+
+.exit-invoice-notice--success {
+  color: var(--color-success-text);
+}
+
+.exit-invoice-notice--warning {
+  color: var(--color-warning-text);
+}
+
+.exit-invoice-notice--info {
+  color: var(--color-muted);
+}
+
 /* Compact exit modal — tighten vertical rhythm so it isn't so tall. */
 .exit-modal {
   padding: 16px 18px;

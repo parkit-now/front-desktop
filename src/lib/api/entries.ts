@@ -4,6 +4,10 @@ import { apiRequest } from './client';
 export type EntryDto = components['schemas']['EntryDto'];
 export type CreateEntryDto = components['schemas']['CreateEntryDto'];
 export type CloseEntryDto = components['schemas']['CloseEntryDto'];
+/** El cierre devuelve la estadía más cómo salió su factura (`null` sin ARCA). */
+export type CloseEntryResponseDto =
+  components['schemas']['CloseEntryResponseDto'];
+export type InvoiceSummaryDto = components['schemas']['InvoiceSummaryDto'];
 export type EntryChangesResponseDto =
   components['schemas']['EntryChangesResponseDto'];
 
@@ -71,10 +75,10 @@ export function closeEntry(input: {
   expectedVersion: number;
   bearer: string;
   body: CloseEntryDto;
-}): Promise<EntryDto> {
+}): Promise<CloseEntryResponseDto> {
   const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}`;
   const path = withQuery(basePath, { expectedVersion: input.expectedVersion });
-  return apiRequest<EntryDto>({
+  return apiRequest<CloseEntryResponseDto>({
     method: 'PATCH',
     path,
     body: input.body,

@@ -167,6 +167,23 @@ const CODE_MESSAGES: Record<string, string> = {
   UNAUTHORIZED: 'No tenés autorización para esta acción.',
   FORBIDDEN: 'No tenés permiso para esta acción.',
   NOT_FOUND: 'No encontramos lo que buscabas.',
+  // Facturación electrónica (ARCA). Mismo tono que Mercado Pago: el operario
+  // está despachando un auto. Un problema de factura NUNCA frena el cobro, así
+  // que el mensaje dice qué pasó con la factura, no con el egreso.
+  ARCA_NOT_LINKED:
+    'Esta playa no tiene la facturación electrónica vinculada. El dueño la vincula desde el panel web.',
+  ARCA_UNAVAILABLE: 'ARCA no responde. Intentalo más tarde.',
+  ARCA_CERT_EXPIRED:
+    'Venció el certificado de ARCA. Avisale al dueño para que lo renueve.',
+  INVOICE_ALREADY_ISSUED: 'Esta estadía ya tiene una factura emitida.',
+  INVOICE_IN_PROGRESS:
+    'La factura se está emitiendo en este momento. Esperá unos segundos.',
+  INVOICE_REJECTED: 'ARCA rechazó la factura.',
+  INVOICE_RECEIVER_REQUIRED:
+    'Por el monto, la factura necesita identificar al cliente (CUIT o DNI).',
+  INVOICE_NOT_INVOICEABLE:
+    'Esta estadía no se puede facturar: sigue abierta o se cobró $0.',
+
   ENTRY_DUPLICATE_ACTIVE_STAY: 'El vehículo ya tiene un ingreso activo.',
   CONFLICT: 'Conflicto con el estado actual.',
   UNPROCESSABLE_ENTITY: 'Algunos datos no son válidos.',
@@ -211,6 +228,16 @@ const STATUS_MESSAGES: Record<number, string> = {
 function readProblemCode(error: ApiError): string | undefined {
   const code = (error.problem as { code?: unknown } | null)?.code;
   return typeof code === 'string' && code.length > 0 ? code : undefined;
+}
+
+/**
+ * Mensaje para un `code` suelto, cuando no viene dentro de un error HTTP: por
+ * ejemplo el `errorCode` de una factura que el cierre devolvió con 200.
+ */
+export function translateErrorCode(
+  code: string | null | undefined,
+): string | undefined {
+  return code ? CODE_MESSAGES[code] : undefined;
 }
 
 export function translateApiError(
