@@ -175,6 +175,8 @@ const CODE_MESSAGES: Record<string, string> = {
   ARCA_UNAVAILABLE: 'ARCA no responde. Intentalo más tarde.',
   ARCA_CERT_EXPIRED:
     'Venció el certificado de ARCA. Avisale al dueño para que lo renueve.',
+  ARCA_CERT_NOT_AUTHORIZED:
+    'El certificado de ARCA no tiene habilitada la facturación. Avisale al dueño.',
   INVOICE_ALREADY_ISSUED: 'Esta estadía ya tiene una factura emitida.',
   INVOICE_IN_PROGRESS:
     'La factura se está emitiendo en este momento. Esperá unos segundos.',
