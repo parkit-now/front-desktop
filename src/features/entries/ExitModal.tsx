@@ -16,6 +16,7 @@ import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
 import { PaymentMethodSelect } from './PaymentMethodSelect';
 import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
 import { useMercadoPagoIntent } from './useMercadoPagoIntent';
+import { describeInvoiceResult, type InvoiceNotice } from './invoiceUtils';
 import {
   calcSuggestedAmount,
   computeChange,
@@ -90,6 +91,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [invoiceNotice, setInvoiceNotice] = useState<InvoiceNotice | null>(
+    null,
+  );
 
   const enabledPms = useLiveQuery(
     () =>
@@ -293,6 +297,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
       }
     }
 
+    const lineModes = (payments ?? []).map(
+      (p) => pms.find((pm) => pm.id === p.paymentMethodId)?.invoiceMode,
+    );
+
     try {
       if (isOnline) {
         const result = await closeEntry({
@@ -334,6 +342,15 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               await localDb.paymentTransactions.bulkPut(txs);
             }
           },
+        );
+        // La factura se emite en el mismo request del cierre; si ARCA falló,
+        // el egreso igual quedó registrado y acá sólo se avisa.
+        setInvoiceNotice(
+          describeInvoiceResult({
+            invoice: result.invoice,
+            offline: false,
+            lineModes,
+          }),
         );
       } else {
         const txs: LocalPaymentTransaction[] = (payments ?? []).map((p) => ({
@@ -378,6 +395,13 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               status: 'pending',
             });
           },
+        );
+        setInvoiceNotice(
+          describeInvoiceResult({
+            invoice: undefined,
+            offline: true,
+            lineModes,
+          }),
         );
       }
 
@@ -474,6 +498,17 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                     </span>
                   </div>
                 </>
+              ) : null}
+              {invoiceNotice ? (
+                <div className="exit-info-row">
+                  <span className="muted">Factura</span>
+                  <span
+                    className={`exit-invoice-notice exit-invoice-notice--${invoiceNotice.tone}`}
+                    role={invoiceNotice.tone === 'warning' ? 'alert' : 'status'}
+                  >
+                    {invoiceNotice.text}
+                  </span>
+                </div>
               ) : null}
             </div>
             <div className="rate-dialog-actions">
