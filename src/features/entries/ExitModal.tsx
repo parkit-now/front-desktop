@@ -776,30 +776,54 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               ) : null}
             </div>
 
-            <div className="form-field exit-money-field">
-              <label className="form-label" htmlFor="exit-amount">
-                Monto a cobrar
-              </label>
-              <div className="exit-money-input">
-                <span className="exit-money-prefix" aria-hidden="true">
-                  $
-                </span>
-                <input
-                  id="exit-amount"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  className="exit-money-control"
-                  value={amount}
-                  onChange={(e) => {
-                    setAmountEdited(true);
-                    setAmount(e.target.value);
-                  }}
-                  autoFocus
-                />
+            {/* Fila 1: cuánto y con qué. El medio se oculta al dividir el
+                pago, porque cada línea del split ya dice el suyo. */}
+            <div className="exit-pay-grid">
+              <div className="form-field">
+                <label className="form-label" htmlFor="exit-amount">
+                  Monto a cobrar
+                </label>
+                <div className="exit-money-input">
+                  <span className="exit-money-prefix" aria-hidden="true">
+                    $
+                  </span>
+                  <input
+                    id="exit-amount"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    className="exit-money-control"
+                    value={amount}
+                    onChange={(e) => {
+                      setAmountEdited(true);
+                      setAmount(e.target.value);
+                    }}
+                    autoFocus
+                  />
+                </div>
+                {suggested > 0 ? (
+                  <p className="exit-field-hint">
+                    Sugerido: {formatArs(suggested)}
+                  </p>
+                ) : null}
               </div>
-              {suggested > 0 ? (
-                <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
+
+              {!splitEnabled && pms.length > 0 ? (
+                <div className="form-field">
+                  <span className="form-label">Medio de pago</span>
+                  <PaymentMethodSelect
+                    options={pms}
+                    value={effectivePmId}
+                    onChange={handlePaymentMethodChange}
+                    ariaLabel="Medio de pago"
+                  />
+                  {isMpQr ? (
+                    <p className="exit-field-hint">
+                      El cliente escanea el QR del mostrador: el importe le
+                      aparece solo.
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
 
@@ -867,80 +891,52 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                     </div>
                   ) : null}
                 </div>
-                {showInvoiceChooser ? (
-                  <InvoiceTypeChooser
-                    {...invoiceChooserProps}
-                    disabled={saving}
-                  />
-                ) : null}
               </div>
-            ) : (
-              <>
-                {pms.length > 0 ? (
-                  <div className="form-field">
-                    <span className="form-label">Medio de pago</span>
-                    <PaymentMethodSelect
-                      options={pms}
-                      value={effectivePmId}
-                      onChange={handlePaymentMethodChange}
-                      ariaLabel="Medio de pago"
+            ) : null}
+
+            {/* Fila 2: la factura, debajo del medio porque depende de él. */}
+            {showInvoiceChooser ? (
+              <InvoiceTypeChooser {...invoiceChooserProps} disabled={saving} />
+            ) : null}
+
+            {/* Fila 3 (efectivo): lo que entregó el cliente y el vuelto, lado
+                a lado y a la misma altura. */}
+            {isCash ? (
+              <div className="exit-pay-grid">
+                <div className="form-field">
+                  <label className="form-label" htmlFor="exit-received">
+                    Recibido
+                  </label>
+                  <div className="exit-money-input">
+                    <span className="exit-money-prefix" aria-hidden="true">
+                      $
+                    </span>
+                    <input
+                      id="exit-received"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      className="exit-money-control"
+                      value={received}
+                      onChange={(e) => setReceived(e.target.value)}
+                      autoFocus
                     />
-                    {isMpQr ? (
-                      <p className="form-helper">
-                        El cliente escanea el QR del mostrador: el importe le
-                        aparece solo.
-                      </p>
-                    ) : null}
                   </div>
-                ) : null}
-
-                {/* Debajo del medio de pago: la letra depende de él. */}
-                {showInvoiceChooser ? (
-                  <InvoiceTypeChooser
-                    {...invoiceChooserProps}
-                    disabled={saving}
-                  />
-                ) : null}
-
-                {isCash ? (
-                  <>
-                    <div className="form-field exit-money-field">
-                      <label className="form-label" htmlFor="exit-received">
-                        Monto recibido
-                      </label>
-                      <div className="exit-money-input exit-money-input--received">
-                        <span className="exit-money-prefix" aria-hidden="true">
-                          $
-                        </span>
-                        <input
-                          id="exit-received"
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0,00"
-                          className="exit-money-control"
-                          value={received}
-                          onChange={(e) => setReceived(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-
-                    <div
-                      className={`exit-result exit-result--${cashState}`}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      <span className="exit-result-label">
-                        {cashState === 'short' ? 'Faltan' : 'Vuelto'}
-                      </span>
-                      <span className="exit-result-amount">
-                        {formatArs(cashState === 'short' ? shortfall : change)}
-                      </span>
-                    </div>
-                  </>
-                ) : null}
-              </>
-            )}
+                </div>
+                <div className="form-field">
+                  <span className="form-label">
+                    {cashState === 'short' ? 'Faltan' : 'Vuelto'}
+                  </span>
+                  <div
+                    className={`exit-change exit-change--${cashState}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {formatArs(cashState === 'short' ? shortfall : change)}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="rate-dialog-actions">
               <button

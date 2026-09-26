@@ -29,6 +29,8 @@ export function InvoiceTypeChooser({
   showLabel = true,
 }: Props) {
   return (
+    // El selector a todo el ancho y, sólo si es A, el CUIT abajo: con B no
+    // queda ningún hueco y el modal crece únicamente cuando hace falta.
     <div className="form-field exit-invoice-choice">
       {showLabel ? (
         <span className="form-label" id="exit-invoice-type-label">
@@ -56,15 +58,13 @@ export function InvoiceTypeChooser({
         ))}
       </div>
       {letter === 'A' ? (
-        <div className="exit-invoice-cuit">
-          <label className="form-label" htmlFor="exit-invoice-cuit">
-            CUIT del cliente
-          </label>
+        <>
           <input
             id="exit-invoice-cuit"
             type="text"
             inputMode="numeric"
-            placeholder="30-71234567-1"
+            placeholder="CUIT del cliente (con o sin guiones)"
+            aria-label="CUIT del cliente"
             value={cuit}
             maxLength={13}
             onChange={(e) => onCuitChange(e.target.value)}
@@ -72,16 +72,20 @@ export function InvoiceTypeChooser({
             disabled={disabled}
             autoFocus
             aria-invalid={cuitError ? true : undefined}
-            className={cuitError ? 'input-error' : undefined}
+            aria-describedby={cuitError ? 'exit-invoice-cuit-error' : undefined}
+            className={
+              cuitError ? 'exit-invoice-cuit input-error' : 'exit-invoice-cuit'
+            }
           />
           {cuitError ? (
-            <p className="field-error">{cuitError}</p>
-          ) : (
-            <p className="form-helper">
-              Pedile el CUIT al cliente. Con o sin guiones.
+            <p
+              id="exit-invoice-cuit-error"
+              className="exit-field-hint is-error"
+            >
+              {cuitError}
             </p>
-          )}
-        </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

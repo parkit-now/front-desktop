@@ -5172,15 +5172,9 @@ h2 {
 /* Compact money input for split rows */
 .exit-money-input--compact {
   width: 180px;
-  padding: 8px 14px;
-}
-
-.exit-money-input--compact .exit-money-prefix {
-  font-size: 18px;
 }
 
 .exit-money-input--compact .exit-money-control {
-  font-size: 18px;
   text-align: right;
 }
 
@@ -5222,22 +5216,40 @@ h2 {
   color: var(--color-success-text);
 }
 
-/* Exit modal — payment confirmation (POS) layout */
-.exit-money-field {
-  margin-top: var(--space-3);
+/* Exit modal — formulario de cobro en filas de dos columnas: monto | medio,
+   factura | CUIT, recibido | vuelto. Todos los controles miden lo mismo
+   (44px, como el resto de los inputs) para que las filas queden alineadas. */
+.exit-pay-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
 }
 
-.exit-money-field .form-label {
-  font-size: 13px;
+@media (max-width: 520px) {
+  .exit-pay-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-/* Large money input with a leading currency prefix */
+.exit-field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.exit-field-hint.is-error {
+  color: var(--color-danger-text);
+}
+
+/* Monto con el signo $ adelante: UN solo borde (el del contenedor). */
 .exit-money-input {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
-  border: 1.5px solid var(--color-border);
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: #fff;
   transition:
@@ -5251,98 +5263,57 @@ h2 {
 }
 
 .exit-money-prefix {
-  font-size: 26px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--color-muted);
   line-height: 1;
 }
 
-.exit-money-control {
+/* Más específico que `.form-field input`: si no, el input hereda borde,
+   padding y alto propios y queda una caja dentro de otra. */
+.exit-money-input .exit-money-control {
   flex: 1;
   width: 100%;
+  min-height: 0;
   border: none;
   outline: none;
   background: transparent;
   padding: 0;
-  font-size: 30px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--color-text);
-  letter-spacing: 0.01em;
 }
 
-/* "Monto recibido" carries a green accent (cash handed by the driver) */
-.exit-money-input--received {
-  border-color: var(--color-success-border);
+.exit-money-input .exit-money-control:focus {
+  outline: none;
 }
 
-.exit-money-input--received .exit-money-prefix,
-.exit-money-input--received .exit-money-control {
-  color: var(--color-success-text);
-}
-
-.exit-money-input--received:focus-within {
-  border-color: var(--color-success-text);
-  box-shadow: 0 0 0 3px rgba(6, 118, 71, 0.16);
-}
-
-/* Result block: traffic-light feedback for the change due */
-.exit-result {
-  margin-top: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-control);
-  border: 1.5px solid var(--color-border);
+/* Vuelto / Faltan: misma altura que el input de al lado, con el semáforo
+   de color (neutro, verde si hay vuelto, rojo si falta plata). */
+.exit-change {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  text-align: center;
-}
-
-.exit-result-label {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.exit-result-amount {
-  font-size: 44px;
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
-}
-
-/* Neutral — exact amount or nothing entered yet */
-.exit-result--exact {
+  justify-content: flex-end;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   background: #f4f7fb;
-  border-color: var(--color-border);
+  font-size: 18px;
+  font-weight: 800;
   color: var(--color-text);
 }
 
-.exit-result--exact .exit-result-label {
-  color: var(--color-muted);
-}
-
-/* Alert — received is below the amount due */
-.exit-result--short {
-  background: var(--color-danger-bg);
-  border-color: var(--color-danger-border);
-  color: var(--color-danger-text);
-}
-
-.exit-result--short .exit-result-label {
-  color: var(--color-danger-text);
-}
-
-/* Success — change to give back */
-.exit-result--over {
+.exit-change--over {
   background: var(--color-success-bg);
   border-color: var(--color-success-border);
   color: var(--color-success-text);
 }
 
-.exit-result--over .exit-result-label {
-  color: var(--color-success-text);
+.exit-change--short {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
 }
 
 .exit-receipt {
@@ -5391,8 +5362,8 @@ h2 {
 }
 
 /* Factura B / A en el cobro (sólo emisor Responsable Inscripto). */
-.exit-invoice-choice {
-  margin-top: var(--space-2);
+.exit-invoice-choice .exit-invoice-cuit {
+  margin-top: 2px;
 }
 
 .exit-invoice-segments {
@@ -5406,7 +5377,7 @@ h2 {
 }
 
 .exit-invoice-segments button {
-  min-height: 34px;
+  min-height: 36px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -5425,19 +5396,6 @@ h2 {
 
 .exit-invoice-segments button:disabled {
   cursor: not-allowed;
-}
-
-.exit-invoice-cuit {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: var(--space-2);
-}
-
-.exit-invoice-cuit .form-helper,
-.exit-invoice-cuit .field-error {
-  margin-top: 0;
-  font-size: 13px;
 }
 
 /* «Emitir factura» después del cobro: ocupa el lugar de los botones. */
@@ -5496,36 +5454,21 @@ h2 {
 
 .exit-modal .form-field {
   margin-top: var(--space-2);
+  gap: 4px;
 }
 
-.exit-modal .exit-money-field {
+/* Dentro de una fila de la grilla, el espacio lo da la fila, no el campo. */
+.exit-modal .exit-pay-grid {
   margin-top: var(--space-2);
 }
 
-.exit-modal .exit-money-input {
-  padding: 7px 14px;
-}
-
-.exit-modal .exit-money-prefix {
-  font-size: 22px;
-}
-
-.exit-modal .exit-money-control {
-  font-size: 24px;
+.exit-modal .exit-pay-grid > .form-field {
+  margin-top: 0;
 }
 
 .exit-modal .exit-split-toggle {
   margin-top: var(--space-2);
   margin-bottom: 0;
-}
-
-.exit-modal .exit-result {
-  margin-top: var(--space-2);
-  padding: 10px var(--space-4);
-}
-
-.exit-modal .exit-result-amount {
-  font-size: 32px;
 }
 
 .exit-modal .rate-dialog-actions {
