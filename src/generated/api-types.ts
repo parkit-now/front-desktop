@@ -743,6 +743,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/arca/account/renewal/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the renewed certificate and switch to it
+         * @description Checks it like the wizard does, but against the renewal key, and logs in to ARCA with it. Switches the certificate in every entity that shares it; an entity in `cert_expired` goes back to `linked`.
+         */
+        post: operations["arcaUploadRenewalCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/renewal/csr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the request (CSR) to renew the certificate
+         * @description Same alias as the current certificate: in ARCA it goes to «Agregar certificado» on that alias, which keeps the associated services. Prepared by the daily job 30 days before expiry, or generated on the spot. The current certificate keeps working until the renewed one is uploaded.
+         */
+        get: operations["arcaGetRenewalCsr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/arca/account/reusable-certificates": {
         parameters: {
             query?: never;
@@ -2157,11 +2197,16 @@ export interface components {
             ptoVta?: number | null;
             razonSocial?: string | null;
             /**
+             * Format: date-time
+             * @description Cuándo se preparó la solicitud de renovación del certificado (null si no hay una en curso).
+             */
+            renewalPreparedAt?: string | null;
+            /**
              * @description Paso de la vinculación en el que está la playa:
              *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
              *     - `pending_sales_point`: certificado verificado, falta el punto de venta (y, en homologación, puede faltar cargar los datos fiscales: `condicionIva` en null).
              *     - `linked`: vinculada, emite.
-             *     - `cert_expired`: venció el certificado.
+             *     - `cert_expired`: venció el certificado; no emite hasta renovarlo (`account/renewal/*`).
              *     Una cuenta desvinculada responde 404 ARCA_NOT_LINKED.
              */
             status: components["schemas"]["ArcaAccountStatus"];
@@ -2171,7 +2216,7 @@ export interface components {
          *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
          *     - `pending_sales_point`: certificado verificado, falta el punto de venta (y, en homologación, puede faltar cargar los datos fiscales: `condicionIva` en null).
          *     - `linked`: vinculada, emite.
-         *     - `cert_expired`: venció el certificado.
+         *     - `cert_expired`: venció el certificado; no emite hasta renovarlo (`account/renewal/*`).
          *     Una cuenta desvinculada responde 404 ARCA_NOT_LINKED.
          * @enum {string}
          */
@@ -7195,6 +7240,132 @@ export interface operations {
             };
         };
     };
+    arcaUploadRenewalCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_CERT_INVALID, ARCA_CERT_CUIT_MISMATCH, ARCA_CERT_KEY_MISMATCH, ARCA_CERT_EXPIRED, ARCA_CERT_NOT_AUTHORIZED. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaGetRenewalCsr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCsrDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID: the account is not linked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     arcaListReusableCertificates: {
         parameters: {
             query?: never;
@@ -7368,7 +7539,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
