@@ -5370,6 +5370,71 @@ h2 {
   text-align: right;
 }
 
+/* Factura B / A en el cobro (sólo emisor Responsable Inscripto). */
+.exit-invoice-choice {
+  margin-top: var(--space-2);
+}
+
+.exit-invoice-segments {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(280px, 100%);
+  padding: 3px;
+  border: 1px solid #cbd8ea;
+  border-radius: var(--radius-control);
+  background: #eef4fb;
+}
+
+.exit-invoice-segments button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #37516f;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.exit-invoice-segments button.active {
+  background: #fff;
+  color: var(--color-brand-strong);
+  box-shadow: 0 6px 14px rgba(19, 47, 93, 0.1);
+}
+
+.exit-invoice-segments button:disabled {
+  cursor: not-allowed;
+}
+
+.exit-invoice-cuit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--space-2);
+}
+
+.exit-invoice-cuit .form-helper,
+.exit-invoice-cuit .field-error {
+  margin-top: 0;
+  font-size: 13px;
+}
+
+/* «Emitir factura» después del cobro. */
+.exit-issue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.exit-issue-panel .rate-dialog-actions {
+  margin-top: 0;
+}
+
 .exit-invoice-notice--success {
   color: var(--color-success-text);
 }

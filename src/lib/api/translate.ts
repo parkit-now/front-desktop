@@ -185,6 +185,11 @@ const CODE_MESSAGES: Record<string, string> = {
     'Por el monto, la factura necesita identificar al cliente (CUIT o DNI).',
   INVOICE_NOT_INVOICEABLE:
     'Esta estadía no se puede facturar: sigue abierta o se cobró $0.',
+  INVOICE_RECEIVER_NOT_FOUND:
+    'ARCA no tiene datos de ese CUIT. Revisalo o emití la factura como B.',
+  INVOICE_RECEIVER_NOT_A:
+    'Ese CUIT no puede recibir Factura A (no es Responsable Inscripto ni Monotributista). Emitila como B.',
+  ARCA_CUIT_INVALID: 'El CUIT del cliente no es válido.',
 
   ENTRY_DUPLICATE_ACTIVE_STAY: 'El vehículo ya tiene un ingreso activo.',
   CONFLICT: 'Conflicto con el estado actual.',

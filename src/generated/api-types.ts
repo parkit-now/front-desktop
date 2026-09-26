@@ -674,6 +674,132 @@ export interface paths {
         patch: operations["entitiesUpdateProfile"];
         trace?: never;
     };
+    "/tenants/{tenantId}/arca/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the ARCA account of the entity
+         * @description The 404 ARCA_NOT_LINKED is the happy path of "not linked yet" (an unlinked account also answers 404). A `pending_*` status means the linking wizard is half way: resume it from that step.
+         */
+        get: operations["arcaGetAccount"];
+        put?: never;
+        /**
+         * Wizard step 1: CUIT and IIBB, generates the certificate request
+         * @description Validates the CUIT check digit, generates the RSA key (kept encrypted, never returned) and the CSR, and leaves the account in `pending_certificate`. Calling it again while the wizard is in progress starts over, discarding the previous key and certificate.
+         */
+        post: operations["arcaCreateAccount"];
+        /**
+         * Unlink ARCA (or cancel a half-done wizard)
+         * @description Deletes the key and the certificate, keeps every invoice already issued, and sets every payment method of the entity to `invoiceMode = none`.
+         */
+        delete: operations["arcaUnlinkAccount"];
+        options?: never;
+        head?: never;
+        /**
+         * Update the IVA rate and, in homologación, the fiscal data
+         * @description In production the fiscal data comes from ARCA’s registry: sending it answers 409 ARCA_LINK_STEP_INVALID (`fiscalDataEditable` tells the UI).
+         */
+        patch: operations["arcaUpdateAccount"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wizard step 2: verify the certificate ARCA issued
+         * @description Checks the certificate (CUIT, expiry, that it was issued for Parkit’s CSR), logs in to ARCA for both services and reads the taxpayer registry. Leaves the account in `pending_sales_point`. In homologación the registry usually has no data (`padronFound: false`): load it with PATCH.
+         */
+        post: operations["arcaUploadCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/csr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the certificate request (CSR) to upload to ARCA */
+        get: operations["arcaGetCsr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/reusable-certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Other entities of the caller linked with the same CUIT */
+        get: operations["arcaListReusableCertificates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/reuse-certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wizard step 2 shortcut: use the certificate of another entity
+         * @description Copies the certificate and fiscal data of another entity the caller owns, linked with the same CUIT. The sales point is not copied: each entity has its own.
+         */
+        post: operations["arcaReuseCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/sales-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wizard step 3: verify the sales point and finish linking
+         * @description The sales point must be a web services one (listed by FEParamGetPtosVenta, not blocked) and `getLastVoucher` must answer for the entity’s letter. Leaves the account `linked`.
+         */
+        post: operations["arcaSetSalesPoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/audit": {
         parameters: {
             query?: never;
@@ -857,7 +983,7 @@ export interface paths {
         put?: never;
         /**
          * Emitir (o reintentar) la factura de una estadía cobrada
-         * @description Emite a consumidor final. Los problemas de ARCA (caído, rechazo, certificado vencido) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
+         * @description Emite a consumidor final, o Factura A con `receiverCuit` si el emisor es Responsable Inscripto. Los problemas de ARCA (caído, rechazo, certificado vencido, receptor que no puede recibir A) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
          */
         post: operations["InvoicesController_issue"];
         delete?: never;
@@ -1994,6 +2120,91 @@ export interface components {
              */
             submittedAt: string | null;
         };
+        ArcaAccountDto: {
+            /**
+             * @description Alias del certificado: el «Nombre simbólico del DN» a usar en WSASS o en Certificados Digitales.
+             * @example parkit1a2b3c4d
+             */
+            certAlias: string;
+            /** Format: date-time */
+            certExpiresAt?: string | null;
+            /** @description Decide la letra: monotributo y exento emiten C; responsable inscripto, A o B. */
+            condicionIva?: components["schemas"]["ArcaTaxCondition"] | null;
+            /**
+             * @description 11 dígitos, sin guiones.
+             * @example 20123456783
+             */
+            cuit: string;
+            domicilioFiscal?: string | null;
+            environment: components["schemas"]["ArcaEnvironment"];
+            /** @description Si los datos fiscales se pueden cargar a mano (sólo homologación, donde el padrón no tiene los CUIT reales). */
+            fiscalDataEditable: boolean;
+            /** Format: uuid */
+            id: string;
+            iibb?: string | null;
+            /**
+             * Format: date
+             * @description AAAA-MM-DD.
+             */
+            inicioActividad?: string | null;
+            /**
+             * @description Alícuota de IVA (%). Sólo aplica a responsables inscriptos.
+             * @example 21
+             */
+            ivaRate: number;
+            /** Format: date-time */
+            linkedAt?: string | null;
+            ptoVta?: number | null;
+            razonSocial?: string | null;
+            /**
+             * @description Paso de la vinculación en el que está la playa:
+             *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
+             *     - `pending_sales_point`: certificado verificado, falta el punto de venta (y, en homologación, puede faltar cargar los datos fiscales: `condicionIva` en null).
+             *     - `linked`: vinculada, emite.
+             *     - `cert_expired`: venció el certificado.
+             *     Una cuenta desvinculada responde 404 ARCA_NOT_LINKED.
+             */
+            status: components["schemas"]["ArcaAccountStatus"];
+        };
+        /**
+         * @description Paso de la vinculación en el que está la playa:
+         *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
+         *     - `pending_sales_point`: certificado verificado, falta el punto de venta (y, en homologación, puede faltar cargar los datos fiscales: `condicionIva` en null).
+         *     - `linked`: vinculada, emite.
+         *     - `cert_expired`: venció el certificado.
+         *     Una cuenta desvinculada responde 404 ARCA_NOT_LINKED.
+         * @enum {string}
+         */
+        ArcaAccountStatus: "pending_certificate" | "pending_sales_point" | "linked" | "cert_expired" | "unlinked";
+        ArcaCertificateResultDto: {
+            account: components["schemas"]["ArcaAccountDto"];
+            /** @description Si el padrón devolvió los datos fiscales. En homologación suele ser false: hay que cargarlos con PATCH. */
+            padronFound: boolean;
+        };
+        ArcaCsrDto: {
+            /** @example parkit1a2b3c4d */
+            alias: string;
+            /** @description PEM completo, con las líneas BEGIN/END CERTIFICATE REQUEST. */
+            csrPem: string;
+            /** @example parkit1a2b3c4d.csr */
+            fileName: string;
+        };
+        /** @enum {string} */
+        ArcaEnvironment: "homologacion" | "produccion";
+        ArcaReusableCertificateDto: {
+            /** Format: date-time */
+            certExpiresAt?: string | null;
+            cuit: string;
+            razonSocial?: string | null;
+            /** Format: uuid */
+            tenantId: string;
+            tenantName: string;
+        };
+        /**
+         * @description Decide la letra: monotributo y exento emiten C; responsable inscripto, A o B.
+         * @enum {string}
+         */
+        ArcaTaxCondition: "responsable_inscripto" | "monotributo" | "exento";
         AuditEventDto: {
             /** @description Recorded action, e.g. "entity.approved" */
             action: string;
@@ -2071,6 +2282,11 @@ export interface components {
             cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
+            /**
+             * @description CUIT del cliente para emitir Factura A (emisor Responsable Inscripto). Con o sin guiones. Un CUIT inválido no hace fallar el cierre: la factura queda pendiente con ARCA_CUIT_INVALID.
+             * @example 30-71234567-1
+             */
+            invoiceReceiverCuit?: string;
             /**
              * Format: date-time
              * @description Exit timestamp (ISO 8601). Defaults to now on the server if omitted.
@@ -2212,6 +2428,15 @@ export interface components {
              * @example 110
              */
             totalSpots?: number;
+        };
+        CreateArcaAccountDto: {
+            /**
+             * @description Con o sin guiones. Se valida el dígito verificador.
+             * @example 20-12345678-3
+             */
+            cuit: string;
+            /** @example 901-123456-7 */
+            iibb?: string;
         };
         CreateCashSessionDto: {
             /**
@@ -2876,6 +3101,7 @@ export interface components {
             /** Format: date-time */
             issuedAt?: string | null;
             ptoVta?: number | null;
+            /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
             status: components["schemas"]["InvoiceStatus"];
             syncSeq: number;
@@ -2905,7 +3131,16 @@ export interface components {
             /** Format: uuid */
             id: string;
             ptoVta?: number | null;
+            /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
+            receptorNombre?: string | null;
             status: components["schemas"]["InvoiceStatus"];
+        };
+        IssueInvoiceDto: {
+            /**
+             * @description CUIT del cliente para emitir Factura A (emisor Responsable Inscripto), con o sin guiones. Sin él se emite a consumidor final.
+             * @example 30-71234567-1
+             */
+            receiverCuit?: string;
         };
         LoginDto: {
             /**
@@ -3795,6 +4030,13 @@ export interface components {
              */
             token: string;
         };
+        ReuseArcaCertificateDto: {
+            /**
+             * Format: uuid
+             * @description La otra playa del mismo dueño, ya vinculada con este CUIT.
+             */
+            fromTenantId: string;
+        };
         RevenueBucketDto: {
             /**
              * Format: date-time
@@ -3960,6 +4202,10 @@ export interface components {
              * @example bearer
              */
             tokenType: string;
+        };
+        SetArcaSalesPointDto: {
+            /** @example 3 */
+            ptoVta: number;
         };
         StaffMemberDto: {
             /**
@@ -4228,6 +4474,22 @@ export interface components {
              * @example 110
              */
             totalSpots?: number;
+        };
+        UpdateArcaAccountDto: {
+            /** @description Sólo homologación (`fiscalDataEditable`). */
+            condicionIva?: components["schemas"]["ArcaTaxCondition"];
+            /** @description Sólo homologación (`fiscalDataEditable`). */
+            domicilioFiscal?: string;
+            /**
+             * Format: date
+             * @description Va impresa en la factura. Editable en cualquier entorno.
+             * @example 2020-01-01
+             */
+            inicioActividad?: string;
+            /** @example 21 */
+            ivaRate?: number;
+            /** @description Sólo homologación (`fiscalDataEditable`). */
+            razonSocial?: string;
         };
         UpdateCashSessionDto: {
             /** @description Shift notes. Send an empty string to clear them. Omitting the field leaves them untouched. */
@@ -4578,6 +4840,10 @@ export interface components {
             accepted?: boolean;
             /** @example Utilitario */
             name?: string;
+        };
+        UploadArcaCertificateDto: {
+            /** @description Contenido del `.crt` que devolvió ARCA (PEM, con las líneas BEGIN/END CERTIFICATE). */
+            certificate: string;
         };
         UpsertLprDetectionEventDto: {
             bestCaptureId?: string;
@@ -6581,11 +6847,528 @@ export interface operations {
             };
         };
     };
+    arcaGetAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaCreateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateArcaAccountDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_ALREADY_LINKED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_CUIT_INVALID. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE: invoicing is off in this environment. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUnlinkAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUpdateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateArcaAccountDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUploadCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCertificateResultDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_CERT_INVALID, ARCA_CERT_CUIT_MISMATCH, ARCA_CERT_KEY_MISMATCH, ARCA_CERT_EXPIRED, ARCA_CERT_NOT_AUTHORIZED, ARCA_PADRON_NOT_FOUND. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaGetCsr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCsrDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaListReusableCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaReusableCertificateDto"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaReuseCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReuseArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaSetSalesPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetArcaSalesPointDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_POS_NOT_FOUND, ARCA_POS_DISABLED, ARCA_PADRON_NOT_FOUND. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     entitiesListAudit: {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
@@ -6932,7 +7715,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueInvoiceDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {

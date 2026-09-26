@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { InvoiceSummaryDto } from '../../lib/api/entries';
-import { describeInvoiceResult, formatVoucherNumber } from './invoiceUtils';
+import {
+  canChooseInvoiceA,
+  canIssueAfterCharge,
+  describeInvoiceResult,
+  formatVoucherNumber,
+  isValidCuit,
+  receiverCuitError,
+} from './invoiceUtils';
 
 const base: InvoiceSummaryDto = {
   id: 'inv-1',
@@ -111,5 +118,42 @@ describe('invoiceUtils', () => {
         lineModes: ['auto', undefined],
       }),
     ).toBeNull();
+  });
+
+  it('Factura A emitida dice a quién', () => {
+    expect(
+      describeInvoiceResult({
+        invoice: { ...base, cbteTipo: 1, receptorNombre: 'EMPRESA SA' },
+        offline: false,
+        lineModes: [],
+      }),
+    ).toEqual({
+      tone: 'success',
+      text: 'Factura A 0001-00000001 emitida a EMPRESA SA',
+    });
+  });
+
+  it('valida el CUIT con dígito verificador, con o sin guiones', () => {
+    expect(isValidCuit('30712345671')).toBe(true);
+    expect(isValidCuit('30712345670')).toBe(false);
+    expect(receiverCuitError('30-71234567-1')).toBeNull();
+    expect(receiverCuitError('')).toBe('Ingresá el CUIT del cliente.');
+    expect(receiverCuitError('30-71234567-0')).toBe('El CUIT no es válido.');
+  });
+
+  it('sólo un Responsable Inscripto elige entre A y B', () => {
+    expect(canChooseInvoiceA('responsable_inscripto')).toBe(true);
+    expect(canChooseInvoiceA('monotributo')).toBe(false);
+    expect(canChooseInvoiceA(null)).toBe(false);
+  });
+
+  it('«Emitir factura» después del cobro: pendiente o con error, no emitida ni sin factura', () => {
+    expect(canIssueAfterCharge({ ...base, status: 'pending' })).toBe(true);
+    expect(canIssueAfterCharge({ ...base, status: 'error' })).toBe(true);
+    expect(canIssueAfterCharge(base)).toBe(false);
+    expect(canIssueAfterCharge({ ...base, status: 'not_required' })).toBe(
+      false,
+    );
+    expect(canIssueAfterCharge(null)).toBe(false);
   });
 });
