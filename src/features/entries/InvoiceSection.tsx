@@ -10,8 +10,10 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { syncService } from '../../lib/sync/SyncService';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { Switch } from '../../lib/ui/Switch';
+import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import {
   describeIssueConfirmation,
+  expectedLetter,
   formatIsoDay,
   INVOICE_STATE_BADGE,
   INVOICE_STATE_LABEL,
@@ -22,6 +24,7 @@ import {
   voucherLabel,
 } from './invoiceUtils';
 import type { ArcaEmitter } from './useArcaEmitter';
+import { useInvoiceReceiver } from './useInvoiceReceiver';
 
 /** Guarda los bytes: con «Guardar como…» en Electron, descarga en el navegador. */
 async function saveFile(fileName: string, data: Uint8Array): Promise<boolean> {
@@ -72,6 +75,9 @@ export function InvoiceSection({
   const { showToast } = useToast();
   const [busy, setBusy] = useState<'issue' | 'pdf' | 'manual' | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // «Emitir factura» abre primero el receptor (consumidor final o CUIT).
+  const [issueOpen, setIssueOpen] = useState(false);
+  const receiver = useInvoiceReceiver({ tenantId, accessToken, isOnline });
   const invoice = useLiveQuery(
     () => localDb.invoices.where('entryId').equals(entry.id).first(),
     [entry.id],
@@ -104,7 +110,11 @@ export function InvoiceSection({
   const canIssue = emitter !== null && isUnbilled(state);
   const showManual =
     emitter === null && (state === 'none' || state === 'manual');
-  const letter = emitter?.condicionIva === 'responsable_inscripto' ? 'B' : 'C';
+  const letter = expectedLetter({
+    emitter: emitter?.condicionIva,
+    choice: receiver.choice,
+    lookup: receiver.lookup,
+  });
 
   async function issue() {
     setBusy('issue');
@@ -113,7 +123,9 @@ export function InvoiceSection({
         tenantId,
         entryId: entry.id,
         bearer: accessToken,
+        receiverCuit: receiver.cuitToSend,
       });
+      if (result.status === 'issued') setIssueOpen(false);
       showToast(
         result.status === 'issued'
           ? {
@@ -251,6 +263,36 @@ export function InvoiceSection({
         </div>
       ) : null}
 
+      {canIssue && issueOpen ? (
+        <div className="entry-invoice-issue">
+          <InvoiceReceiverChooser
+            receiver={receiver}
+            emitter={emitter?.condicionIva}
+            isOnline={isOnline}
+            disabled={busy !== null}
+            showLabel={false}
+          />
+          <div className="entry-invoice-actions">
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={busy !== null}
+              onClick={() => setIssueOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={busy !== null || !isOnline || !receiver.ready}
+              onClick={() => setConfirmOpen(true)}
+            >
+              {letter ? `Emitir Factura ${letter}` : 'Emitir factura'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="entry-invoice-actions">
         {state === 'issued' ? (
           <button
@@ -262,12 +304,12 @@ export function InvoiceSection({
             {busy === 'pdf' ? 'Descargando…' : 'Descargar PDF'}
           </button>
         ) : null}
-        {canIssue ? (
+        {canIssue && !issueOpen ? (
           <button
             type="button"
             className="primary-button"
             disabled={busy !== null || !isOnline}
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => setIssueOpen(true)}
           >
             {state === 'error' ? 'Reintentar' : 'Emitir factura'}
           </button>
@@ -289,7 +331,8 @@ export function InvoiceSection({
         open={confirmOpen}
         {...describeIssueConfirmation({
           letter,
-          cuit: null,
+          cuit: receiver.cuitToSend,
+          receiverName: receiver.receiverName,
           amount: formatArs(paidTotal ?? 0),
         })}
         isPending={busy === 'issue'}

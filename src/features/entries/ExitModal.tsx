@@ -23,16 +23,15 @@ import { PaymentMethodSelect } from './PaymentMethodSelect';
 import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
 import { useMercadoPagoIntent } from './useMercadoPagoIntent';
 import {
-  canChooseInvoiceA,
   canIssueAfterCharge,
   describeInvoiceResult,
   describeIssueConfirmation,
-  normalizeCuit,
-  receiverCuitError,
+  expectedLetter,
   type InvoiceNotice,
 } from './invoiceUtils';
-import { InvoiceTypeChooser, type InvoiceChoice } from './InvoiceTypeChooser';
+import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import { useArcaEmitter } from './useArcaEmitter';
+import { useInvoiceReceiver } from './useInvoiceReceiver';
 import {
   calcSuggestedAmount,
   computeChange,
@@ -112,17 +111,19 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [invoiceNotice, setInvoiceNotice] = useState<InvoiceNotice | null>(
     null,
   );
-  // Factura A: el operario elige la letra y carga el CUIT que le dicta el
-  // cliente. Lo mismo sirve para el cobro y para «Emitir factura» después.
+  // El receptor: consumidor final o el CUIT que dicta el cliente (la letra la
+  // decide el padrón). Lo mismo sirve para el cobro y para «Emitir factura».
   const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
   // Certificado vencido: el cobro sigue igual, pero no se factura (la
   // factura queda pendiente hasta que el dueño lo renueve).
   const invoicingPaused = emitter?.certExpired ?? false;
-  const offersInvoiceA =
-    !invoicingPaused && canChooseInvoiceA(emitter?.condicionIva ?? null);
-  const [invoiceChoice, setInvoiceChoice] = useState<InvoiceChoice>('B');
-  const [receiverCuit, setReceiverCuit] = useState('');
-  const [cuitTouched, setCuitTouched] = useState(false);
+  const offersReceiver = emitter !== null && !invoicingPaused;
+  const receiver = useInvoiceReceiver({ tenantId, accessToken, isOnline });
+  const letter = expectedLetter({
+    emitter: emitter?.condicionIva,
+    choice: receiver.choice,
+    lookup: receiver.lookup,
+  });
   const [lastInvoice, setLastInvoice] = useState<InvoiceSummaryDto | null>(
     null,
   );
@@ -192,8 +193,8 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         ? 'over'
         : 'exact';
 
-  // El selector B/A va sólo si el cobro factura solo (todos los medios en
-  // Automática): con un medio Manual la letra se elige al emitir después.
+  // El receptor se elige sólo si el cobro factura solo (todos los medios en
+  // Automática): con un medio Manual se elige al emitir después.
   const selectedModes = splitEnabled
     ? pms
         .filter(
@@ -205,28 +206,18 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
       : [];
   const invoicesOnCharge =
     selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
-  const showInvoiceChooser = offersInvoiceA && invoicesOnCharge;
+  const showInvoiceChooser = offersReceiver && invoicesOnCharge;
   const showPausedNotice =
     invoicingPaused && selectedModes.some((mode) => mode !== 'none');
-  const wantsInvoiceA = offersInvoiceA && invoiceChoice === 'A';
-  // Letra de «Emitir factura»: la elegida si es RI; si no, siempre C.
-  const issueLetter: 'A' | 'B' | 'C' = offersInvoiceA ? invoiceChoice : 'C';
-  const cuitError = wantsInvoiceA ? receiverCuitError(receiverCuit) : null;
-  // El error aparece al salir del campo o con los 11 dígitos, y nunca con el
-  // campo vacío: ahí alcanza con la ayuda y el botón deshabilitado.
-  const cuitDigits = normalizeCuit(receiverCuit).length;
-  const visibleCuitError =
-    cuitDigits > 0 && (cuitTouched || cuitDigits >= 11) ? cuitError : null;
 
   // En efectivo hay que cargar lo que entregó el cliente, y tiene que cubrir
-  // el total (justo o con vuelto). Una A sin CUIT válido tampoco se confirma.
+  // el total (justo o con vuelto). Con CUIT, hay que esperar al padrón.
   const cashCovered = isCashCovered(amountToCharge, receivedAmount);
   const canConfirm =
-    (!isCash || cashCovered) && !(showInvoiceChooser && cuitError);
-  const invoiceReceiverCuit =
-    showInvoiceChooser && wantsInvoiceA
-      ? normalizeCuit(receiverCuit)
-      : undefined;
+    (!isCash || cashCovered) && !(showInvoiceChooser && !receiver.ready);
+  const invoiceReceiverCuit = showInvoiceChooser
+    ? receiver.cuitToSend
+    : undefined;
 
   // ── Cobro con QR de Mercado Pago ──────────────────────────────────────────
   // Sólo en cobro de un solo medio: repartir una estadía entre QR y efectivo
@@ -512,8 +503,8 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
 
   /**
    * «Emitir factura» después del cobro: medio en Manual, o un intento que no
-   * salió (por ejemplo, una A con un CUIT que no puede recibirla). La estadía
-   * tiene que existir en el servidor, así que sólo con red.
+   * salió (por ejemplo, un CUIT que ARCA no tiene). La estadía tiene que
+   * existir en el servidor, así que sólo con red.
    */
   async function handleIssue(): Promise<void> {
     if (!isOnline) {
@@ -523,8 +514,8 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
       });
       return;
     }
-    if (wantsInvoiceA && cuitError) {
-      setCuitTouched(true);
+    if (!receiver.ready) {
+      receiver.markTouched();
       return;
     }
     setIssuing(true);
@@ -533,7 +524,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         tenantId,
         entryId: entry.id,
         bearer: accessToken,
-        receiverCuit: wantsInvoiceA ? normalizeCuit(receiverCuit) : undefined,
+        receiverCuit: receiver.cuitToSend,
       });
       setLastInvoice(invoice);
       setInvoiceNotice(
@@ -546,18 +537,6 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
       setIssuing(false);
     }
   }
-
-  const invoiceChooserProps = {
-    letter: invoiceChoice,
-    onLetterChange: (letter: InvoiceChoice) => {
-      setInvoiceChoice(letter);
-      setCuitTouched(false);
-    },
-    cuit: receiverCuit,
-    onCuitChange: (value: string) => setReceiverCuit(value),
-    onCuitBlur: () => setCuitTouched(true),
-    cuitError: visibleCuitError,
-  };
 
   return (
     <div
@@ -643,8 +622,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               // elige la factura, la única salida es emitir o volver.
               <div className="exit-issue-panel">
                 <p className="exit-issue-title">Emitir factura</p>
-                <InvoiceTypeChooser
-                  {...invoiceChooserProps}
+                <InvoiceReceiverChooser
+                  receiver={receiver}
+                  emitter={emitter?.condicionIva}
+                  isOnline={isOnline}
                   disabled={issuing}
                   showLabel={false}
                 />
@@ -661,9 +642,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                     type="button"
                     className="primary-button compact"
                     onClick={() => setConfirmIssueOpen(true)}
-                    disabled={issuing || (wantsInvoiceA && !!cuitError)}
+                    disabled={issuing || !receiver.ready}
                   >
-                    Emitir Factura {invoiceChoice}
+                    {letter ? `Emitir Factura ${letter}` : 'Emitir factura'}
                   </button>
                 </div>
               </div>
@@ -681,12 +662,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                     type="button"
                     className="ghost-button"
                     disabled={issuing}
-                    onClick={() => {
-                      // Con una sola letra posible (monotributo: C) no hay
-                      // nada que elegir: se pasa directo a confirmar.
-                      if (offersInvoiceA) setIssuePanelOpen(true);
-                      else setConfirmIssueOpen(true);
-                    }}
+                    onClick={() => setIssuePanelOpen(true)}
                   >
                     {issuing ? 'Emitiendo...' : 'Emitir factura'}
                   </button>
@@ -704,8 +680,9 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             <ConfirmDialog
               open={confirmIssueOpen}
               {...describeIssueConfirmation({
-                letter: issueLetter,
-                cuit: issueLetter === 'A' ? normalizeCuit(receiverCuit) : null,
+                letter,
+                cuit: receiver.cuitToSend,
+                receiverName: receiver.receiverName,
                 amount: formatArs(receipt.amountDue),
               })}
               isPending={issuing}
@@ -899,7 +876,12 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
 
             {/* Fila 2: la factura, debajo del medio porque depende de él. */}
             {showInvoiceChooser ? (
-              <InvoiceTypeChooser {...invoiceChooserProps} disabled={saving} />
+              <InvoiceReceiverChooser
+                receiver={receiver}
+                emitter={emitter?.condicionIva}
+                isOnline={isOnline}
+                disabled={saving}
+              />
             ) : null}
             {showPausedNotice ? (
               <p className="exit-invoice-paused" role="status">

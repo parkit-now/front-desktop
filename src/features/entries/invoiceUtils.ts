@@ -1,3 +1,4 @@
+import type { ArcaTaxCondition, TaxpayerDto } from '../../lib/api/arca';
 import type { InvoiceSummaryDto } from '../../lib/api/entries';
 import { translateErrorCode } from '../../lib/api/translate';
 import type { PaymentMethodInvoiceMode } from '../../lib/db/localDb';
@@ -27,11 +28,14 @@ export interface InvoiceNotice {
    * en la factura, no se le muestra al operario.
    */
   readonly text: string;
-  /** Segunda línea, más chica: a quién se emitió la A. */
+  /** Segunda línea, más chica: a quién se emitió (si fue con CUIT). */
   readonly detail?: string;
 }
 
 const FALLBACK_MESSAGE = 'No se pudo emitir la factura. Intentalo más tarde.';
+
+/** `receptorNombre` que guarda el backend en una factura sin CUIT. */
+const CONSUMIDOR_FINAL = 'Consumidor Final';
 
 /**
  * Qué decirle al operario sobre la factura después de confirmar el egreso.
@@ -66,9 +70,10 @@ export function describeInvoiceResult(input: {
       }
       parts.push('emitida');
       const text = parts.filter(Boolean).join(' ');
-      // La A dice a quién: el operario confirma que salió con el CUIT que dio
-      // el cliente. La B y la C son siempre a consumidor final.
-      return invoice.cbteTipo === 1 && invoice.receptorNombre
+      // Con CUIT dice a quién: el operario confirma que salió con el que dio
+      // el cliente. A consumidor final no hace falta.
+      return invoice.receptorNombre &&
+        invoice.receptorNombre !== CONSUMIDOR_FINAL
         ? { tone: 'success', text, detail: `a ${invoice.receptorNombre}` }
         : { tone: 'success', text };
     }
@@ -93,7 +98,7 @@ export function describeInvoiceResult(input: {
   }
 }
 
-// ── Factura A: CUIT del cliente ─────────────────────────────────────────────
+// ── Receptor: consumidor final o con CUIT ──────────────────────────────────
 
 /** Pesos del dígito verificador del CUIT/CUIL (módulo 11). */
 const CUIT_WEIGHTS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2] as const;
@@ -125,17 +130,137 @@ export function receiverCuitError(raw: string): string | null {
   return null;
 }
 
-/** Sólo un Responsable Inscripto emite A; el resto factura siempre igual. */
-export function canChooseInvoiceA(
-  emitter: 'responsable_inscripto' | 'monotributo' | 'exento' | null,
-): boolean {
-  return emitter === 'responsable_inscripto';
+export type InvoiceLetter = 'A' | 'B' | 'C';
+
+/** A quién se factura: consumidor final (la de siempre) o el CUIT del cliente. */
+export type ReceiverChoice = 'final' | 'cuit';
+
+/** La letra a consumidor final: B si la playa es RI; C si no. */
+export function consumerFinalLetter(
+  emitter: ArcaTaxCondition | null | undefined,
+): InvoiceLetter {
+  return emitter === 'responsable_inscripto' ? 'B' : 'C';
+}
+
+/** Cómo va la consulta al padrón del CUIT tipeado. */
+export type TaxpayerLookup =
+  | { readonly status: 'idle' }
+  | { readonly status: 'loading' }
+  | { readonly status: 'done'; readonly taxpayer: TaxpayerDto }
+  | { readonly status: 'error'; readonly message: string };
+
+/**
+ * El receptor que se manda al backend, o `undefined` = consumidor final.
+ *
+ * - Un CUIT que ARCA no tiene (producción) no se manda: la factura va a
+ *   consumidor final, como ya se le avisó al operario.
+ * - Si la consulta falló (ARCA caída) se manda igual: el backend vuelve a
+ *   consultar al emitir y, si sigue caída, la factura queda para reintentar.
+ */
+export function receiverCuitToSend(input: {
+  readonly choice: ReceiverChoice;
+  readonly cuit: string;
+  readonly lookup: TaxpayerLookup;
+}): string | undefined {
+  if (input.choice !== 'cuit') return undefined;
+  const cuit = normalizeCuit(input.cuit);
+  if (!isValidCuit(cuit)) return undefined;
+  if (input.lookup.status === 'done' && !input.lookup.taxpayer.identified) {
+    return undefined;
+  }
+  return cuit;
+}
+
+/**
+ * Si ya se puede confirmar: a consumidor final siempre; con CUIT, cuando es
+ * válido y la consulta al padrón terminó (bien o mal).
+ */
+export function isReceiverReady(input: {
+  readonly choice: ReceiverChoice;
+  readonly cuit: string;
+  readonly lookup: TaxpayerLookup;
+}): boolean {
+  if (input.choice === 'final') return true;
+  return (
+    isValidCuit(normalizeCuit(input.cuit)) &&
+    (input.lookup.status === 'done' || input.lookup.status === 'error')
+  );
+}
+
+/**
+ * La letra que va a salir, para el botón y la confirmación. `null` si no se
+ * sabe todavía: con CUIT y sin respuesta del padrón (un RI puede emitir A o B).
+ */
+export function expectedLetter(input: {
+  readonly emitter: ArcaTaxCondition | null | undefined;
+  readonly choice: ReceiverChoice;
+  readonly lookup: TaxpayerLookup;
+}): InvoiceLetter | null {
+  const consumer = consumerFinalLetter(input.emitter);
+  if (input.choice === 'final' || consumer === 'C') return consumer;
+  return input.lookup.status === 'done' ? input.lookup.taxpayer.letter : null;
+}
+
+export interface TaxpayerNotice {
+  readonly tone: 'success' | 'info' | 'warning';
+  readonly text: string;
+  readonly detail?: string;
+}
+
+/**
+ * La línea debajo del CUIT con lo que dijo el padrón: qué letra sale y a
+ * quién. `null` mientras no hay nada que decir.
+ */
+export function describeTaxpayerLookup(
+  lookup: TaxpayerLookup,
+): TaxpayerNotice | null {
+  switch (lookup.status) {
+    case 'idle':
+      return null;
+    case 'loading':
+      return { tone: 'info', text: 'Consultando ARCA…' };
+    case 'error':
+      return {
+        tone: 'warning',
+        text: lookup.message,
+        detail: 'Se vuelve a consultar al emitir.',
+      };
+    case 'done': {
+      const t = lookup.taxpayer;
+      if (!t.identified) {
+        return {
+          tone: 'warning',
+          text: 'ARCA no tiene datos de ese CUIT.',
+          detail: `Se emite Factura ${t.letter} a consumidor final.`,
+        };
+      }
+      const who = t.razonSocial ?? `CUIT ${formatCuit(t.cuit)}`;
+      if (t.assumed) {
+        return {
+          tone: 'info',
+          text: `Factura ${t.letter} · ${who}`,
+          detail:
+            'Homologación: ARCA no tiene datos de prueba de este CUIT, se toma como Responsable Inscripto.',
+        };
+      }
+      // Un RI que no puede emitir A (receptor exento, consumidor final):
+      // se aclara por qué sale B, que es lo que el cliente no espera.
+      return {
+        tone: t.letter === 'B' ? 'info' : 'success',
+        text: `Factura ${t.letter} · ${who}`,
+        detail:
+          t.letter === 'B' && t.condicionIva
+            ? `${t.condicionIva}: no recibe Factura A.`
+            : (t.condicionIva ?? undefined),
+      };
+    }
+  }
 }
 
 /**
  * Si al terminar el cobro se ofrece «Emitir factura»: la playa factura, hay
  * red y la factura quedó sin emitir (medio en Manual, o un intento que falló
- * y se puede reintentar, por ejemplo una A con un CUIT que no la recibe).
+ * y se puede reintentar, por ejemplo un CUIT que ARCA no tiene).
  */
 export function canIssueAfterCharge(
   invoice: InvoiceSummaryDto | null | undefined,
@@ -149,18 +274,21 @@ export function canIssueAfterCharge(
  * quién. `amount` ya formateado (`$ 5.200,00`).
  */
 export function describeIssueConfirmation(input: {
-  readonly letter: 'A' | 'B' | 'C';
-  readonly cuit: string | null;
+  readonly letter: InvoiceLetter | null;
+  readonly cuit: string | null | undefined;
+  readonly receiverName?: string | null;
   readonly amount: string;
 }): { title: string; message: string; confirmLabel: string } {
-  const to =
-    input.letter === 'A' && input.cuit
-      ? `al CUIT ${formatCuit(input.cuit)}`
-      : 'a consumidor final';
+  const to = input.cuit
+    ? input.receiverName
+      ? `a ${input.receiverName} (CUIT ${formatCuit(input.cuit)})`
+      : `al CUIT ${formatCuit(input.cuit)}`
+    : 'a consumidor final';
+  const name = input.letter ? `la Factura ${input.letter}` : 'la factura';
   return {
-    title: `¿Emitir la Factura ${input.letter}?`,
+    title: `¿Emitir ${name}?`,
     message: `Se emite ${to} por ${input.amount}. Una factura emitida no se puede anular desde Parkit.`,
-    confirmLabel: `Emitir Factura ${input.letter}`,
+    confirmLabel: input.letter ? `Emitir Factura ${input.letter}` : 'Emitir',
   };
 }
 
