@@ -9,6 +9,8 @@ interface Props {
   /** Mensaje del campo CUIT; se muestra sólo si el operario ya lo tocó. */
   cuitError: string | null;
   disabled?: boolean;
+  /** `false` cuando ya hay un título arriba (el panel «Emitir factura»). */
+  showLabel?: boolean;
 }
 
 /**
@@ -24,16 +26,20 @@ export function InvoiceTypeChooser({
   onCuitBlur,
   cuitError,
   disabled,
+  showLabel = true,
 }: Props) {
   return (
     <div className="form-field exit-invoice-choice">
-      <span className="form-label" id="exit-invoice-type-label">
-        Factura
-      </span>
+      {showLabel ? (
+        <span className="form-label" id="exit-invoice-type-label">
+          Factura
+        </span>
+      ) : null}
       <div
         className="exit-invoice-segments"
         role="radiogroup"
-        aria-labelledby="exit-invoice-type-label"
+        aria-labelledby={showLabel ? 'exit-invoice-type-label' : undefined}
+        aria-label={showLabel ? undefined : 'Tipo de factura'}
       >
         {(['B', 'A'] as const).map((option) => (
           <button

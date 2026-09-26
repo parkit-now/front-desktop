@@ -18,6 +18,7 @@ import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
+import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { PaymentMethodSelect } from './PaymentMethodSelect';
 import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
 import { useMercadoPagoIntent } from './useMercadoPagoIntent';
@@ -25,6 +26,7 @@ import {
   canChooseInvoiceA,
   canIssueAfterCharge,
   describeInvoiceResult,
+  describeIssueConfirmation,
   normalizeCuit,
   receiverCuitError,
   type InvoiceNotice,
@@ -119,6 +121,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
     null,
   );
   const [issuePanelOpen, setIssuePanelOpen] = useState(false);
+  const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
   const [issuing, setIssuing] = useState(false);
 
   const enabledPms = useLiveQuery(
@@ -197,11 +200,14 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
     selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
   const showInvoiceChooser = offersInvoiceA && invoicesOnCharge;
   const wantsInvoiceA = offersInvoiceA && invoiceChoice === 'A';
+  // Letra de «Emitir factura»: la elegida si es RI; si no, siempre C.
+  const issueLetter: 'A' | 'B' | 'C' = offersInvoiceA ? invoiceChoice : 'C';
   const cuitError = wantsInvoiceA ? receiverCuitError(receiverCuit) : null;
-  // El error aparece al salir del campo o con los 11 dígitos: no mientras
-  // el operario todavía está tipeando.
+  // El error aparece al salir del campo o con los 11 dígitos, y nunca con el
+  // campo vacío: ahí alcanza con la ayuda y el botón deshabilitado.
+  const cuitDigits = normalizeCuit(receiverCuit).length;
   const visibleCuitError =
-    cuitTouched || normalizeCuit(receiverCuit).length >= 11 ? cuitError : null;
+    cuitDigits > 0 && (cuitTouched || cuitDigits >= 11) ? cuitError : null;
 
   // Received is optional (charges the exact amount); only an entered amount
   // below the charge blocks confirmation. Una A sin CUIT válido, también.
@@ -586,10 +592,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
 
         {receipt ? (
           <div className="exit-receipt">
-            <div className="exit-modal-info">
+            <div className="exit-modal-info exit-receipt-summary">
               <div className="exit-info-row">
                 <span className="muted">Cobrado</span>
-                <span className="exit-duration">
+                <span className="exit-receipt-total">
                   {formatArs(receipt.amountDue)}
                 </span>
               </div>
@@ -601,9 +607,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 <>
                   <div className="exit-info-row">
                     <span className="muted">Recibido</span>
-                    <span className="exit-received-amount">
-                      {formatArs(receipt.received)}
-                    </span>
+                    <span>{formatArs(receipt.received)}</span>
                   </div>
                   <div className="exit-info-row">
                     <span className="muted">Vuelto</span>
@@ -614,22 +618,32 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 </>
               ) : null}
               {invoiceNotice ? (
-                <div className="exit-info-row">
+                <div className="exit-info-row exit-info-row--invoice">
                   <span className="muted">Factura</span>
                   <span
                     className={`exit-invoice-notice exit-invoice-notice--${invoiceNotice.tone}`}
                     role={invoiceNotice.tone === 'warning' ? 'alert' : 'status'}
                   >
                     {invoiceNotice.text}
+                    {invoiceNotice.detail ? (
+                      <span className="exit-invoice-detail">
+                        {invoiceNotice.detail}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
               ) : null}
             </div>
+
             {issuePanelOpen ? (
+              // El panel reemplaza a los botones del comprobante: mientras se
+              // elige la factura, la única salida es emitir o volver.
               <div className="exit-issue-panel">
+                <p className="exit-issue-title">Emitir factura</p>
                 <InvoiceTypeChooser
                   {...invoiceChooserProps}
                   disabled={issuing}
+                  showLabel={false}
                 />
                 <div className="rate-dialog-actions">
                   <button
@@ -638,52 +652,66 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                     onClick={() => setIssuePanelOpen(false)}
                     disabled={issuing}
                   >
-                    Cancelar
+                    Volver
                   </button>
                   <button
                     type="button"
                     className="primary-button compact"
-                    onClick={() => void handleIssue()}
+                    onClick={() => setConfirmIssueOpen(true)}
                     disabled={issuing || (wantsInvoiceA && !!cuitError)}
                   >
-                    {issuing
-                      ? 'Emitiendo...'
-                      : `Emitir Factura ${invoiceChoice}`}
+                    Emitir Factura {invoiceChoice}
                   </button>
                 </div>
               </div>
-            ) : null}
-            <div className="rate-dialog-actions">
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => printReceipt(receipt)}
-              >
-                Imprimir comprobante
-              </button>
-              {canIssueAfterCharge(lastInvoice) && !issuePanelOpen ? (
+            ) : (
+              <div className="rate-dialog-actions">
                 <button
                   type="button"
                   className="ghost-button"
-                  disabled={issuing}
-                  onClick={() => {
-                    // Con una sola letra posible (monotributo: C) no hay nada
-                    // que elegir: se emite directo.
-                    if (offersInvoiceA) setIssuePanelOpen(true);
-                    else void handleIssue();
-                  }}
+                  onClick={() => printReceipt(receipt)}
                 >
-                  {issuing ? 'Emitiendo...' : 'Emitir factura'}
+                  Imprimir comprobante
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="primary-button compact"
-                onClick={onClose}
-              >
-                Cerrar
-              </button>
-            </div>
+                {canIssueAfterCharge(lastInvoice) ? (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={issuing}
+                    onClick={() => {
+                      // Con una sola letra posible (monotributo: C) no hay
+                      // nada que elegir: se pasa directo a confirmar.
+                      if (offersInvoiceA) setIssuePanelOpen(true);
+                      else setConfirmIssueOpen(true);
+                    }}
+                  >
+                    {issuing ? 'Emitiendo...' : 'Emitir factura'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={onClose}
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+
+            <ConfirmDialog
+              open={confirmIssueOpen}
+              {...describeIssueConfirmation({
+                letter: issueLetter,
+                cuit: issueLetter === 'A' ? normalizeCuit(receiverCuit) : null,
+                amount: formatArs(receipt.amountDue),
+              })}
+              isPending={issuing}
+              onCancel={() => setConfirmIssueOpen(false)}
+              onConfirm={async () => {
+                await handleIssue();
+                setConfirmIssueOpen(false);
+              }}
+            />
           </div>
         ) : mpIntent.intent && mpIntent.view ? (
           <MercadoPagoQrPanel

@@ -4,6 +4,7 @@ import {
   canChooseInvoiceA,
   canIssueAfterCharge,
   describeInvoiceResult,
+  describeIssueConfirmation,
   formatVoucherNumber,
   isValidCuit,
   receiverCuitError,
@@ -129,7 +130,8 @@ describe('invoiceUtils', () => {
       }),
     ).toEqual({
       tone: 'success',
-      text: 'Factura A 0001-00000001 emitida a EMPRESA SA',
+      text: 'Factura A 0001-00000001 emitida',
+      detail: 'a EMPRESA SA',
     });
   });
 
@@ -155,5 +157,24 @@ describe('invoiceUtils', () => {
       false,
     );
     expect(canIssueAfterCharge(null)).toBe(false);
+  });
+
+  it('confirmación de emisión: dice letra, a quién y el monto', () => {
+    expect(
+      describeIssueConfirmation({
+        letter: 'A',
+        cuit: '30712345671',
+        amount: '$ 5.200,00',
+      }),
+    ).toEqual({
+      title: '¿Emitir la Factura A?',
+      message:
+        'Se emite al CUIT 30-71234567-1 por $ 5.200,00. Una factura emitida no se puede anular desde Parkit.',
+      confirmLabel: 'Emitir Factura A',
+    });
+    expect(
+      describeIssueConfirmation({ letter: 'B', cuit: null, amount: '$ 10,00' })
+        .message,
+    ).toMatch(/^Se emite a consumidor final por \$ 10,00\./);
   });
 });

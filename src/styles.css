@@ -5351,14 +5351,18 @@ h2 {
   gap: var(--space-3);
 }
 
-/* Receipt summary keeps the same green for the change line */
-.exit-change-amount {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--color-success-text);
+/* Resumen del egreso: todas las filas del mismo tamaño. Sólo el total y el
+   vuelto van en negrita, y el vuelto en verde (es lo que se le da al cliente). */
+.exit-receipt-summary .exit-info-row {
+  align-items: baseline;
+  gap: var(--space-3);
 }
 
-.exit-received-amount {
+.exit-receipt-total {
+  font-weight: 700;
+}
+
+.exit-change-amount {
   font-weight: 700;
   color: var(--color-success-text);
 }
@@ -5370,15 +5374,31 @@ h2 {
   text-align: right;
 }
 
+/* La factura cierra el resumen, separada por una línea: el detalle (a quién
+   se emitió la A) va abajo en chico, no estirando la fila. */
+.exit-info-row--invoice {
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--color-border);
+}
+
+.exit-invoice-detail {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
 /* Factura B / A en el cobro (sólo emisor Responsable Inscripto). */
 .exit-invoice-choice {
   margin-top: var(--space-2);
 }
 
 .exit-invoice-segments {
-  display: inline-grid;
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(280px, 100%);
+  width: 100%;
   padding: 3px;
   border: 1px solid #cbd8ea;
   border-radius: var(--radius-control);
@@ -5420,19 +5440,27 @@ h2 {
   font-size: 13px;
 }
 
-/* «Emitir factura» después del cobro. */
+/* «Emitir factura» después del cobro: ocupa el lugar de los botones. */
 .exit-issue-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+}
+
+.exit-issue-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Más específico que `.exit-modal .form-field`, que viene después. */
+.exit-modal .exit-issue-panel .exit-invoice-choice {
+  margin-top: 0;
 }
 
 .exit-issue-panel .rate-dialog-actions {
-  margin-top: 0;
+  margin-top: var(--space-1);
 }
 
 .exit-invoice-notice--success {

@@ -26,6 +26,8 @@ export interface InvoiceNotice {
    * en la factura, no se le muestra al operario.
    */
   readonly text: string;
+  /** Segunda línea, más chica: a quién se emitió la A. */
+  readonly detail?: string;
 }
 
 const FALLBACK_MESSAGE = 'No se pudo emitir la factura. Intentalo más tarde.';
@@ -62,12 +64,12 @@ export function describeInvoiceResult(input: {
         parts.push(formatVoucherNumber(invoice.ptoVta, invoice.cbteNro));
       }
       parts.push('emitida');
+      const text = parts.filter(Boolean).join(' ');
       // La A dice a quién: el operario confirma que salió con el CUIT que dio
       // el cliente. La B y la C son siempre a consumidor final.
-      if (invoice.cbteTipo === 1 && invoice.receptorNombre) {
-        parts.push('a', invoice.receptorNombre);
-      }
-      return { tone: 'success', text: parts.filter(Boolean).join(' ') };
+      return invoice.cbteTipo === 1 && invoice.receptorNombre
+        ? { tone: 'success', text, detail: `a ${invoice.receptorNombre}` }
+        : { tone: 'success', text };
     }
     case 'error':
     case 'issuing':
@@ -138,4 +140,33 @@ export function canIssueAfterCharge(
   invoice: InvoiceSummaryDto | null | undefined,
 ): boolean {
   return invoice?.status === 'pending' || invoice?.status === 'error';
+}
+
+/**
+ * Texto del «¿Seguro?» antes de emitir a mano: una factura emitida tiene
+ * efecto fiscal y no se anula desde Parkit, así que se repite qué sale y a
+ * quién. `amount` ya formateado (`$ 5.200,00`).
+ */
+export function describeIssueConfirmation(input: {
+  readonly letter: 'A' | 'B' | 'C';
+  readonly cuit: string | null;
+  readonly amount: string;
+}): { title: string; message: string; confirmLabel: string } {
+  const to =
+    input.letter === 'A' && input.cuit
+      ? `al CUIT ${formatCuit(input.cuit)}`
+      : 'a consumidor final';
+  return {
+    title: `¿Emitir la Factura ${input.letter}?`,
+    message: `Se emite ${to} por ${input.amount}. Una factura emitida no se puede anular desde Parkit.`,
+    confirmLabel: `Emitir Factura ${input.letter}`,
+  };
+}
+
+/** `30712345671` → `30-71234567-1`. */
+export function formatCuit(raw: string): string {
+  const cuit = normalizeCuit(raw);
+  return cuit.length === 11
+    ? `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}`
+    : raw;
 }
