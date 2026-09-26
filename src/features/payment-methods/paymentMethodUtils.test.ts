@@ -3,6 +3,7 @@ import {
   canSetDefault,
   canToggleEnabled,
   isIntegrationBacked,
+  sortByName,
 } from './paymentMethodUtils';
 
 /**
@@ -39,5 +40,25 @@ describe('paymentMethodUtils', () => {
     expect(isIntegrationBacked(undefined)).toBe(false);
     expect(canToggleEnabled(undefined)).toBe(true);
     expect(canSetDefault(undefined)).toBe(true);
+  });
+});
+
+describe('sortByName', () => {
+  it('ordena alfabéticamente sin importar mayúsculas ni tildes', () => {
+    const names = sortByName([
+      { name: 'Transferencia' },
+      { name: 'efectivo' },
+      { name: 'Tarjeta de Débito' },
+      { name: 'Tarjeta de Crédito' },
+      { name: 'Mercado Pago QR' },
+    ]).map((m) => m.name);
+
+    expect(names).toEqual([
+      'efectivo',
+      'Mercado Pago QR',
+      'Tarjeta de Crédito',
+      'Tarjeta de Débito',
+      'Transferencia',
+    ]);
   });
 });

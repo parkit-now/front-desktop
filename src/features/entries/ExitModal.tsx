@@ -44,6 +44,7 @@ import {
   QR_BLOCK_MESSAGES,
   type StayPrices,
 } from './entryUtils';
+import { sortByName } from '../payment-methods/paymentMethodUtils';
 
 /** Cada cuánto se recalcula el sugerido con el modal abierto. */
 const TICK_MS = 15_000;
@@ -130,7 +131,8 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         .where('tenantId')
         .equals(tenantId)
         .filter((pm) => pm.enabled)
-        .toArray(),
+        .toArray()
+        .then(sortByName),
     [tenantId],
   );
 
