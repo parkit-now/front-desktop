@@ -180,6 +180,16 @@ export function computeChange(amountDue: number, received: number): number {
   return Math.max(0, received - amountDue);
 }
 
+/**
+ * Efectivo: el cobro se confirma recién cuando el cliente entregó el total o
+ * más (y hay que darle vuelto). Sin monto recibido no se asume que pagó justo:
+ * el operario tiene que cargar lo que le dieron. Con $0 a cobrar no hay nada
+ * que recibir. El medio centavo absorbe el ruido de los floats.
+ */
+export function isCashCovered(amountDue: number, received: number): boolean {
+  return amountDue <= 0 || received + 0.005 >= amountDue;
+}
+
 export function calcSuggestedAmount(
   enteredAt: string,
   leftAt: string,

@@ -37,6 +37,7 @@ import {
   calcSuggestedAmount,
   computeChange,
   formatDuration,
+  isCashCovered,
   generateUuidV7,
   isCashMethod,
   isMercadoPagoMethod,
@@ -211,10 +212,11 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const visibleCuitError =
     cuitDigits > 0 && (cuitTouched || cuitDigits >= 11) ? cuitError : null;
 
-  // Received is optional (charges the exact amount); only an entered amount
-  // below the charge blocks confirmation. Una A sin CUIT válido, también.
+  // En efectivo hay que cargar lo que entregó el cliente, y tiene que cubrir
+  // el total (justo o con vuelto). Una A sin CUIT válido tampoco se confirma.
+  const cashCovered = isCashCovered(amountToCharge, receivedAmount);
   const canConfirm =
-    (!isCash || cashState !== 'short') && !(showInvoiceChooser && cuitError);
+    (!isCash || cashCovered) && !(showInvoiceChooser && cuitError);
   const invoiceReceiverCuit =
     showInvoiceChooser && wantsInvoiceA
       ? normalizeCuit(receiverCuit)
@@ -484,19 +486,12 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           : `Egreso guardado localmente: ${entry.plate}`,
         kind: 'success',
       });
-      const effectiveReceivedAmount = receivedEntered
-        ? receivedAmount
-        : amountToCharge;
-      const effectiveChange = computeChange(
-        amountToCharge,
-        effectiveReceivedAmount,
-      );
       setReceipt({
         plate: entry.plate,
         ticketNumber: entry.ticketNumber ?? undefined,
         amountDue: amountPaid ?? 0,
-        received: isCash ? effectiveReceivedAmount : undefined,
-        change: isCash ? effectiveChange : undefined,
+        received: isCash ? receivedAmount : undefined,
+        change: isCash ? change : undefined,
         paymentMethodName: splitEnabled
           ? 'Varios medios'
           : (effectivePm?.name ?? ''),
@@ -924,6 +919,11 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                       autoFocus
                     />
                   </div>
+                  {!receivedEntered && amountToCharge > 0 ? (
+                    <p className="exit-field-hint">
+                      Ingresá lo que te entregó el cliente.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="form-field">
                   <span className="form-label">
