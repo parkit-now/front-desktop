@@ -75,7 +75,6 @@ const INITIAL_COLUMN_VISIBILITY = {
 const INVOICE_CHIPS: ReadonlyArray<{ id: InvoiceChip; label: string }> = [
   { id: 'all', label: 'Todas' },
   { id: 'unbilled', label: 'Sin facturar' },
-  { id: 'error', label: 'Con error' },
 ];
 
 function receiverLabel(invoice: LocalInvoice | null): string {

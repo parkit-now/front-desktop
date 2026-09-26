@@ -245,20 +245,21 @@ export function resolveInvoiceState(
   return entry.manuallyInvoiced ? 'manual' : 'none';
 }
 
-/** «Sin facturar» = Pendiente + Sin factura + Con error. */
+/**
+ * «Sin facturar» = Pendiente + Sin factura + Con error: una con error tampoco
+ * está facturada, así que va en el mismo chip (no hay uno aparte).
+ */
 export function isUnbilled(state: InvoiceState): boolean {
   return state === 'pending' || state === 'none' || state === 'error';
 }
 
-export type InvoiceChip = 'all' | 'unbilled' | 'error';
+export type InvoiceChip = 'all' | 'unbilled';
 
 export function matchesInvoiceChip(
   state: InvoiceState,
   chip: InvoiceChip,
 ): boolean {
-  if (chip === 'unbilled') return isUnbilled(state);
-  if (chip === 'error') return state === 'error';
-  return true;
+  return chip === 'unbilled' ? isUnbilled(state) : true;
 }
 
 export function countInvoiceChips(
@@ -267,7 +268,6 @@ export function countInvoiceChips(
   return {
     all: rows.length,
     unbilled: rows.filter((row) => isUnbilled(row.invoiceState)).length,
-    error: rows.filter((row) => row.invoiceState === 'error').length,
   };
 }
 
