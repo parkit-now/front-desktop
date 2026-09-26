@@ -115,7 +115,11 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   // Factura A: el operario elige la letra y carga el CUIT que le dicta el
   // cliente. Lo mismo sirve para el cobro y para «Emitir factura» después.
   const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
-  const offersInvoiceA = canChooseInvoiceA(emitter);
+  // Certificado vencido: el cobro sigue igual, pero no se factura (la
+  // factura queda pendiente hasta que el dueño lo renueve).
+  const invoicingPaused = emitter?.certExpired ?? false;
+  const offersInvoiceA =
+    !invoicingPaused && canChooseInvoiceA(emitter?.condicionIva ?? null);
   const [invoiceChoice, setInvoiceChoice] = useState<InvoiceChoice>('B');
   const [receiverCuit, setReceiverCuit] = useState('');
   const [cuitTouched, setCuitTouched] = useState(false);
@@ -202,6 +206,8 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const invoicesOnCharge =
     selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
   const showInvoiceChooser = offersInvoiceA && invoicesOnCharge;
+  const showPausedNotice =
+    invoicingPaused && selectedModes.some((mode) => mode !== 'none');
   const wantsInvoiceA = offersInvoiceA && invoiceChoice === 'A';
   // Letra de «Emitir factura»: la elegida si es RI; si no, siempre C.
   const issueLetter: 'A' | 'B' | 'C' = offersInvoiceA ? invoiceChoice : 'C';
@@ -670,7 +676,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 >
                   Imprimir comprobante
                 </button>
-                {canIssueAfterCharge(lastInvoice) ? (
+                {!invoicingPaused && canIssueAfterCharge(lastInvoice) ? (
                   <button
                     type="button"
                     className="ghost-button"
@@ -894,6 +900,12 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
             {/* Fila 2: la factura, debajo del medio porque depende de él. */}
             {showInvoiceChooser ? (
               <InvoiceTypeChooser {...invoiceChooserProps} disabled={saving} />
+            ) : null}
+            {showPausedNotice ? (
+              <p className="exit-invoice-paused" role="status">
+                Facturación pausada: el certificado de ARCA venció. Avisale al
+                dueño.
+              </p>
             ) : null}
 
             {/* Fila 3 (efectivo): lo que entregó el cliente y el vuelto, lado

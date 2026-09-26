@@ -5421,6 +5421,18 @@ h2 {
   margin-top: var(--space-1);
 }
 
+/* Certificado de ARCA vencido: se cobra igual, sólo no se factura. */
+.exit-invoice-paused {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .exit-invoice-notice--success {
   color: var(--color-success-text);
 }
