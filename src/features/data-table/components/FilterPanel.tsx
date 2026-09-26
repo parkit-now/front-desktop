@@ -20,7 +20,11 @@ import {
 } from '../../../lib/ui/DateRangeFilter';
 import { useCloseOnOutsideClick } from '../../../lib/ui/useCloseOnOutsideClick';
 import type { DataTableFilterOption } from '../types';
-import { normalizeText } from '../utils';
+import {
+  isNumberRangeActive,
+  normalizeNumberRange,
+  normalizeText,
+} from '../utils';
 
 type FilterPanelProps<TData> = {
   table: Table<TData>;
@@ -84,7 +88,21 @@ function isDateColumn<TData>(column: Column<TData, unknown>): boolean {
   return String(column.columnDef.filterFn ?? '') === 'dateRange';
 }
 
+function isNumberColumn<TData>(column: Column<TData, unknown>): boolean {
+  return String(column.columnDef.filterFn ?? '') === 'numberRange';
+}
+
+/** `''` → sin extremo; cualquier otra cosa que no sea número, también. */
+function parseBound(raw: string): number | undefined {
+  if (raw.trim() === '') return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function activeUnitCount<TData>(column: Column<TData, unknown>): number {
+  if (isNumberColumn(column)) {
+    return normalizeNumberRange(column.getFilterValue()) ? 1 : 0;
+  }
   if (isDateColumn(column)) {
     return dateRangeValue(column as Column<unknown, unknown>)?.from ? 1 : 0;
   }
@@ -249,6 +267,51 @@ export function FilterPanel<TData>({
                       onChange={(next) => column.setFilterValue(next)}
                       placeholder="Elegir fecha"
                     />
+                  </div>
+                );
+              }
+
+              if (isNumberColumn(column)) {
+                const range =
+                  normalizeNumberRange(column.getFilterValue()) ?? {};
+                const setBound = (bound: 'min' | 'max', raw: string) => {
+                  const next = { ...range, [bound]: parseBound(raw) };
+                  column.setFilterValue(
+                    isNumberRangeActive(next) ? next : undefined,
+                  );
+                };
+                const label = resolveColumnLabel(column);
+                return (
+                  <div className="dt-filter-number-row" key={column.id}>
+                    <span className="dt-filter-date-label">
+                      <SlidersHorizontal size={15} />
+                      {label}
+                    </span>
+                    <div className="dt-filter-number-inputs">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={range.min ?? ''}
+                        onChange={(event) =>
+                          setBound('min', event.target.value)
+                        }
+                        placeholder="Desde"
+                        aria-label={`${label} desde`}
+                      />
+                      <span aria-hidden="true">–</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={range.max ?? ''}
+                        onChange={(event) =>
+                          setBound('max', event.target.value)
+                        }
+                        placeholder="Hasta"
+                        aria-label={`${label} hasta`}
+                      />
+                    </div>
                   </div>
                 );
               }

@@ -2,6 +2,7 @@ import type {
   ColumnDef,
   ColumnFiltersState,
   SortingState,
+  VisibilityState,
 } from '@tanstack/react-table';
 import type { ReactNode } from 'react';
 import type { TableTemplateScope } from '../table-view-template';
@@ -46,6 +47,8 @@ export type DataTableProps<TData> = {
   columnFiltersOverride?: ColumnFiltersState;
   columnFiltersOverrideKey?: string | number;
   initialSorting?: SortingState;
+  /** Columnas que existen (p. ej. para filtrar) pero arrancan ocultas. */
+  initialColumnVisibility?: VisibilityState;
   pageSizeOptions?: number[];
   getRowId?: (row: TData, index: number) => string;
   onRowClick?: (row: TData) => void;
