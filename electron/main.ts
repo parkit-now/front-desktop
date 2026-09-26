@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -384,6 +384,47 @@ if (!gotTheLock) {
         return null;
       }
     });
+
+    // «Guardar como…» para archivos que arma el renderer (el PDF de una
+    // factura). El renderer sólo propone el NOMBRE: la carpeta la elige la
+    // persona en el diálogo, y `basename` descarta cualquier ruta que venga.
+    ipcMain.handle(
+      'file:saveAs',
+      async (
+        _event,
+        payload: { defaultName: string; data: Uint8Array },
+      ): Promise<
+        | { ok: true; path: string }
+        | { ok: false; reason: 'canceled' | 'write-failed'; detail?: string }
+      > => {
+        const defaultName = path.basename(payload.defaultName) || 'archivo';
+        const options = {
+          defaultPath: path.join(app.getPath('downloads'), defaultName),
+          filters: defaultName.toLowerCase().endsWith('.pdf')
+            ? [{ name: 'PDF', extensions: ['pdf'] }]
+            : [],
+        };
+        const result = mainWindow
+          ? await dialog.showSaveDialog(mainWindow, options)
+          : await dialog.showSaveDialog(options);
+        if (result.canceled || !result.filePath) {
+          return { ok: false, reason: 'canceled' };
+        }
+        try {
+          await fs.promises.writeFile(
+            result.filePath,
+            Buffer.from(payload.data),
+          );
+          return { ok: true, path: result.filePath };
+        } catch (error) {
+          return {
+            ok: false,
+            reason: 'write-failed',
+            detail: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+    );
 
     ipcMain.handle('printer:list', () => listPrinters(mainWindow));
     ipcMain.handle(

@@ -21,6 +21,10 @@ declare global {
         detail?: string;
       };
 
+  type DesktopSaveFileResult =
+    | { ok: true; path: string }
+    | { ok: false; reason: 'canceled' | 'write-failed'; detail?: string };
+
   /** De dónde sale el video de este equipo. */
   type DesktopCameraMode = 'webcam' | 'ip';
 
@@ -104,6 +108,10 @@ declare global {
         tailFeedMm: number;
         pageWidthMm: number | null;
       }) => Promise<DesktopPrintResult>;
+      saveFile: (payload: {
+        defaultName: string;
+        data: Uint8Array;
+      }) => Promise<DesktopSaveFileResult>;
       getCameraConfig: () => Promise<DesktopCameraConfigRead>;
       probeCamera: (
         config: DesktopCameraConfigInput,

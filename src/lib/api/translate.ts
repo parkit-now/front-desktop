@@ -189,6 +189,10 @@ const CODE_MESSAGES: Record<string, string> = {
     'ARCA no tiene datos de ese CUIT. Revisalo o emití la factura como B.',
   INVOICE_RECEIVER_NOT_A:
     'Ese CUIT no puede recibir Factura A (no es Responsable Inscripto ni Monotributista). Emitila como B.',
+  INVOICE_NOT_ISSUED: 'La factura todavía no se emitió: no tiene PDF.',
+  INVOICE_PDF_FAILED: 'No se pudo generar el PDF. Probá de nuevo en un rato.',
+  ARCA_FISCAL_DATA_INCOMPLETE:
+    'Faltan Ingresos Brutos o la fecha de inicio de actividades: van impresos en la factura.',
   ARCA_CUIT_INVALID: 'El CUIT del cliente no es válido.',
 
   ENTRY_DUPLICATE_ACTIVE_STAY: 'El vehículo ya tiene un ingreso activo.',

@@ -9,6 +9,11 @@ import {
   isValidCuit,
   receiverCuitError,
 } from './invoiceUtils';
+import {
+  countInvoiceChips,
+  invoicePdfFileName,
+  resolveInvoiceState,
+} from './invoiceUtils';
 
 const base: InvoiceSummaryDto = {
   id: 'inv-1',
@@ -176,5 +181,38 @@ describe('invoiceUtils', () => {
       describeIssueConfirmation({ letter: 'B', cuit: null, amount: '$ 10,00' })
         .message,
     ).toMatch(/^Se emite a consumidor final por \$ 10,00\./);
+  });
+});
+
+describe('historial: estado de facturación (gemelo del panel web)', () => {
+  const paid = { leftAt: '2026-09-24T15:30:00.000Z', paidTotal: 1210 };
+
+  it('manda el estado de la factura; sin ella, sin factura o facturada a mano', () => {
+    expect(resolveInvoiceState(paid, { status: 'issued' })).toBe('issued');
+    expect(resolveInvoiceState(paid, { status: 'not_required' })).toBe('none');
+    expect(
+      resolveInvoiceState({ ...paid, manuallyInvoiced: true }, undefined),
+    ).toBe('manual');
+    expect(
+      resolveInvoiceState({ leftAt: null, paidTotal: null }, undefined),
+    ).toBe('na');
+  });
+
+  it('«Sin facturar» cuenta Pendiente + Sin factura + Con error', () => {
+    const rows = (
+      ['pending', 'none', 'error', 'issued', 'manual', 'na'] as const
+    ).map((invoiceState) => ({ invoiceState }));
+    expect(countInvoiceChips(rows)).toEqual({ all: 6, unbilled: 3 });
+  });
+
+  it('el PDF se llama patente-CAE-número.pdf', () => {
+    expect(
+      invoicePdfFileName({
+        plate: 'AB123CD',
+        cae: '86390928613357',
+        ptoVta: 1,
+        cbteNro: 6,
+      }),
+    ).toBe('AB123CD-86390928613357-0001-00000006.pdf');
   });
 });

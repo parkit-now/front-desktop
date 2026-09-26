@@ -4,6 +4,8 @@ import {
   getPaginationPageCount,
   getPaginationSummary,
   getVisiblePageNumbers,
+  inNumberRange,
+  normalizeNumberRange,
   normalizeText,
 } from './utils';
 
@@ -39,5 +41,23 @@ describe('data-table utils', () => {
       'end-ellipsis',
       12,
     ]);
+  });
+});
+
+describe('rango numérico', () => {
+  it('extremos inclusivos; sin número no pasa si hay rango', () => {
+    expect(inNumberRange(1000, { min: 1000, max: 2000 })).toBe(true);
+    expect(inNumberRange(2500, { max: 2000 })).toBe(false);
+    expect(inNumberRange(undefined, { min: 1 })).toBe(false);
+    expect(inNumberRange(undefined, undefined)).toBe(true);
+  });
+
+  it('normaliza lo persistido: descarta lo que no es un número', () => {
+    expect(normalizeNumberRange({ min: 10, max: 'x' })).toEqual({
+      min: 10,
+      max: undefined,
+    });
+    expect(normalizeNumberRange({})).toBeUndefined();
+    expect(normalizeNumberRange(['a'])).toBeUndefined();
   });
 });

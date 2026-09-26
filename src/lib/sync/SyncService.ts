@@ -64,7 +64,13 @@ import {
   uploadLprDetectionEventImage,
   type LprDetectionEventDto,
 } from '../api/lpr-events';
+import { pullInvoiceChanges } from '../api/arca';
 import { CAMERA_BASE_URL } from '../camera/constants';
+
+/** Facturas por página del feed; se pagina hasta alcanzar el `maxSeq`. */
+const INVOICE_PAGE_SIZE = 500;
+/** Tope de páginas por sync: lo que falte entra en la próxima vuelta. */
+const INVOICE_MAX_PAGES = 20;
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -119,6 +125,7 @@ function entryToLocal(e: EntryDto): LocalEntry {
         : undefined,
     cashSessionId: e.cashSessionId ?? undefined,
     ticketNumber: e.ticketNumber ?? undefined,
+    manuallyInvoiced: e.manuallyInvoiced,
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
@@ -669,6 +676,48 @@ class SyncService {
         lastSeq: afterSeq,
         lastSyncAt: new Date().toISOString(),
       });
+    }
+  }
+
+  /**
+   * Facturas de ARCA para el historial. Sólo lectura: las crea y emite el
+   * backend (al cerrar la estadía o a pedido), así que no hay ops locales que
+   * proteger y la fila del servidor siempre gana.
+   */
+  async pullInvoices(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const stateKey = `invoices:${this.tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    let afterSeq = state?.lastSeq ?? 0;
+
+    for (let page = 0; page < INVOICE_MAX_PAGES; page++) {
+      const response = await pullInvoiceChanges({
+        tenantId: this.tenantId,
+        bearer: this.accessToken,
+        afterSeq,
+        limit: INVOICE_PAGE_SIZE,
+      });
+      const nextSeq = Math.max(afterSeq, response.maxSeq);
+      await localDb.transaction(
+        'rw',
+        localDb.invoices,
+        localDb.syncState,
+        async () => {
+          if (response.items.length > 0) {
+            await localDb.invoices.bulkPut(response.items);
+          }
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: nextSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+      if (response.items.length < INVOICE_PAGE_SIZE || nextSeq === afterSeq) {
+        return;
+      }
+      afterSeq = nextSeq;
     }
   }
 
@@ -1287,6 +1336,7 @@ class SyncService {
       ['detecciones', () => this.pullLprDetectionEvents()],
       ['imágenes de detecciones', () => this.pushLprDetectionEventImages()],
       ['pagos', () => this.pullPaymentTransactions()],
+      ['facturas', () => this.pullInvoices()],
     ];
 
     const failures: string[] = [];

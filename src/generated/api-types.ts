@@ -1066,6 +1066,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/invoices/{invoiceId}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * PDF de una factura emitida
+         * @description Se genera a demanda con los datos guardados al emitir (la razón social de ese día, no la actual). 409 INVOICE_NOT_ISSUED si todavía no tiene CAE; 503 INVOICE_PDF_FAILED si no se pudo generar.
+         */
+        get: operations["InvoicesController_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoices/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emitir en lote a consumidor final
+         * @description De a una y en orden, con el resultado de cada estadía. Los conflictos de una (ya emitida, no facturable) no cortan el lote. Si ARCA no responde, las que faltan vuelven con ARCA_UNAVAILABLE sin intentarse. Sin ARCA vinculada: 409 ARCA_NOT_LINKED.
+         */
+        post: operations["InvoicesController_issueBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/invoices/changes": {
         parameters: {
             query?: never;
@@ -2363,6 +2403,8 @@ export interface components {
             invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
             /** Format: date-time */
             leftAt?: string;
+            /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
+            manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
             notes?: string;
             /** @example ABC123 */
@@ -2413,6 +2455,8 @@ export interface components {
             enteredAt?: string;
             /** Format: date-time */
             leftAt?: string;
+            /** @description Marca la estadía como facturada por fuera de Parkit (playas sin ARCA). Sólo en estadías cerradas; se permite aunque la caja esté cerrada. */
+            manuallyInvoiced?: boolean;
             /** @example Cliente frecuente */
             notes?: string;
             /** @description Payment breakdown replacing the current active lines. */
@@ -2480,8 +2524,11 @@ export interface components {
              * @example 20-12345678-3
              */
             cuit: string;
-            /** @example 901-123456-7 */
-            iibb?: string;
+            /**
+             * @description Número de inscripción en Ingresos Brutos, o la condición si no está inscripto («Exento», «No contribuyente»). Va impreso en la factura (RG 1415, Anexo II).
+             * @example 901-123456-7
+             */
+            iibb: string;
         };
         CreateCashSessionDto: {
             /**
@@ -3016,6 +3063,8 @@ export interface components {
             id: string;
             /** Format: date-time */
             leftAt?: string;
+            /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
+            manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
             notes?: string;
             /** @example ABC123 */
@@ -3114,6 +3163,17 @@ export interface components {
              */
             uptime: number;
         };
+        InvoiceBatchItemDto: {
+            /** Format: uuid */
+            entryId: string;
+            /** @description Por qué no salió: el `errorCode` de la factura o el del conflicto (INVOICE_ALREADY_ISSUED, INVOICE_NOT_INVOICEABLE, …). null si se emitió. */
+            errorCode?: string | null;
+            /** @description La factura como quedó; null si ni se intentó. */
+            invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
+        };
+        InvoiceBatchResponseDto: {
+            results: components["schemas"]["InvoiceBatchItemDto"][];
+        };
         InvoiceChangesResponseDto: {
             items: components["schemas"]["InvoiceDto"][];
             /** @description Highest sync sequence included in this page. */
@@ -3146,6 +3206,10 @@ export interface components {
             /** Format: date-time */
             issuedAt?: string | null;
             ptoVta?: number | null;
+            /** @description CUIT del receptor, o `0` a consumidor final. */
+            receptorDocNro?: string | null;
+            /** @description DocTipo de ARCA: 80 = CUIT (Factura A), 99 = consumidor final. */
+            receptorDocTipo?: number | null;
             /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
             status: components["schemas"]["InvoiceStatus"];
@@ -3179,6 +3243,10 @@ export interface components {
             /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
             status: components["schemas"]["InvoiceStatus"];
+        };
+        IssueInvoiceBatchDto: {
+            /** @description Estadías cobradas a facturar a consumidor final (1 a 50). */
+            entryIds: string[];
         };
         IssueInvoiceDto: {
             /**
@@ -4249,6 +4317,12 @@ export interface components {
             tokenType: string;
         };
         SetArcaSalesPointDto: {
+            /**
+             * Format: date
+             * @description Fecha de inicio de actividades: va impresa en la factura (RG 1415). Obligatoria si la cuenta todavía no la tiene.
+             * @example 2020-01-01
+             */
+            inicioActividad?: string;
             /** @example 3 */
             ptoVta: number;
         };
@@ -4525,6 +4599,11 @@ export interface components {
             condicionIva?: components["schemas"]["ArcaTaxCondition"];
             /** @description Sólo homologación (`fiscalDataEditable`). */
             domicilioFiscal?: string;
+            /**
+             * @description Número de inscripción en Ingresos Brutos, o la condición si no está inscripto («Exento», «No contribuyente»). Va impreso en la factura (RG 1415, Anexo II).
+             * @example 901-123456-7
+             */
+            iibb?: string;
             /**
              * Format: date
              * @description Va impresa en la factura. Editable en cualquier entorno.
@@ -7539,7 +7618,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
@@ -7951,6 +8030,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+        };
+    };
+    InvoicesController_issueBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueInvoiceBatchDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceBatchResponseDto"];
                 };
             };
         };

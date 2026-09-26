@@ -65,6 +65,15 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
   }): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> =>
     ipcRenderer.invoke('printer:printTicket', payload),
 
+  /** «Guardar como…»: el renderer propone el nombre, la persona elige dónde. */
+  saveFile: (payload: {
+    defaultName: string;
+    data: Uint8Array;
+  }): Promise<
+    | { ok: true; path: string }
+    | { ok: false; reason: 'canceled' | 'write-failed'; detail?: string }
+  > => ipcRenderer.invoke('file:saveAs', payload),
+
   // ── Cámara ────────────────────────────────────────────────────────────────
   //
   // La contraseña es de una sola vía: se puede mandar, nunca se puede leer.

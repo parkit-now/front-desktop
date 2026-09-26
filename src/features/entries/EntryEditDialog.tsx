@@ -25,6 +25,8 @@ import {
   printEntryTicket,
 } from '../../lib/print/printTicket';
 import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
+import { InvoiceSection } from './InvoiceSection';
+import type { ArcaEmitter } from './useArcaEmitter';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
 
 type ActorRole = 'admin' | 'owner' | 'operator' | null;
@@ -58,6 +60,8 @@ interface Props {
   parkingName?: string | null;
   parkingAddress?: string | null;
   parkingCuit?: string | null;
+  /** La playa como emisora de facturas; `null` = no factura con ARCA. */
+  emitter?: ArcaEmitter | null;
   onClose: () => void;
 }
 
@@ -210,6 +214,7 @@ export function EntryEditDialog({
   parkingName = null,
   parkingAddress = null,
   parkingCuit = null,
+  emitter = null,
   onClose,
 }: Props) {
   const { isOnline } = useNetwork();
@@ -906,6 +911,23 @@ export function EntryEditDialog({
               ) : null}
             </label>
           ) : null}
+
+          {/* Fuera del `readOnly` de la caja: facturar o marcar «Facturada»
+              no toca la plata, y el backend lo permite con la caja cerrada. */}
+          <InvoiceSection
+            entry={entry}
+            paidTotal={
+              entry.paymentLines.length > 0
+                ? entry.paymentLines.reduce((sum, line) => sum + line.amount, 0)
+                : entry.amountPaid != null
+                  ? parseFloat(entry.amountPaid)
+                  : null
+            }
+            tenantId={tenantId}
+            accessToken={accessToken}
+            isOnline={isOnline}
+            emitter={emitter}
+          />
         </div>
 
         <div className="rate-dialog-actions entry-edit-actions">

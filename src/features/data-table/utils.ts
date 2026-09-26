@@ -11,6 +11,40 @@ export const NON_PICKABLE_COLUMN_IDS = new Set([
   'info',
 ]);
 
+/**
+ * Rango numérico de un filtro (p. ej. monto): cualquiera de los dos extremos.
+ * Gemelo de front-web `features/data-table/utils.ts`.
+ */
+export type NumberRange = { min?: number; max?: number };
+
+export function isNumberRangeActive(range: NumberRange | undefined): boolean {
+  return range?.min !== undefined || range?.max !== undefined;
+}
+
+/** Extremos inclusivos; una fila sin número sólo pasa si no hay rango. */
+export function inNumberRange(
+  value: unknown,
+  range: NumberRange | undefined,
+): boolean {
+  if (!range || !isNumberRangeActive(range)) return true;
+  if (typeof value !== 'number' || Number.isNaN(value)) return false;
+  if (range.min !== undefined && value < range.min) return false;
+  if (range.max !== undefined && value > range.max) return false;
+  return true;
+}
+
+/** Valor persistido (localStorage) → rango válido, o `undefined`. */
+export function normalizeNumberRange(value: unknown): NumberRange | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as { min?: unknown; max?: unknown };
+  const bound = (item: unknown) =>
+    typeof item === 'number' && Number.isFinite(item) ? item : undefined;
+  const range = { min: bound(raw.min), max: bound(raw.max) };
+  return isNumberRangeActive(range) ? range : undefined;
+}
+
 export function normalizeText(value: unknown): string {
   const text =
     value === null || value === undefined

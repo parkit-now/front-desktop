@@ -39,13 +39,17 @@ import type { DataTableProps } from './types';
 import {
   caseInsensitiveSort,
   getPaginationPageCount,
+  inNumberRange,
+  normalizeNumberRange,
   normalizeText,
+  type NumberRange,
 } from './utils';
 
 declare module '@tanstack/react-table' {
   interface FilterFns {
     includesSome: FilterFn<unknown>;
     dateRange: FilterFn<unknown>;
+    numberRange: FilterFn<unknown>;
   }
 
   // Los type params son obligatorios para el declaration merging, aunque este
@@ -62,6 +66,7 @@ const includesSomeFilter: FilterFn<unknown> = (row, columnId, value) => {
 };
 
 const EMPTY_FILTERABLE_COLUMNS: string[] = [];
+const EMPTY_VISIBILITY: VisibilityState = {};
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 30, 50];
 
 function toDateKey(raw: unknown): string | null {
@@ -81,6 +86,9 @@ const dateRangeFilter: FilterFn<unknown> = (row, columnId, value) => {
   const toKey = format(range.to ?? range.from, 'yyyy-MM-dd');
   return key >= fromKey && key <= toKey;
 };
+
+const numberRangeFilter: FilterFn<unknown> = (row, columnId, value) =>
+  inNumberRange(row.getValue(columnId), value as NumberRange | undefined);
 
 function makeGlobalFilter<TData>(searchableKeys?: string[]): FilterFn<TData> {
   return (row, _columnId, value) => {
@@ -159,6 +167,11 @@ function columnFilterNormalizersFromDefinitions<TData>(
         return normalizers;
       }
 
+      if (String(column.filterFn ?? '') === 'numberRange') {
+        normalizers[id] = normalizeNumberRange;
+        return normalizers;
+      }
+
       if (filterableColumns.includes(id)) {
         normalizers[id] = normalizeOptionListFilterValue;
       }
@@ -231,6 +244,7 @@ export function DataTable<TData>({
   columnFiltersOverride,
   columnFiltersOverrideKey,
   initialSorting,
+  initialColumnVisibility = EMPTY_VISIBILITY,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   getRowId,
   onRowClick,
@@ -288,7 +302,12 @@ export function DataTable<TData>({
       initialPersistedStateRef.current?.config.sorting ?? initialSorting ?? [],
   );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    () => initialPersistedStateRef.current?.config.columns.visibility ?? {},
+    // Lo guardado gana, pero una columna nueva que arranca oculta sigue
+    // oculta para quien ya tenía la vista persistida de antes.
+    () => ({
+      ...initialColumnVisibility,
+      ...initialPersistedStateRef.current?.config.columns.visibility,
+    }),
   );
   const [columnOrder, setColumnOrder] = useState<string[]>(
     () => initialPersistedStateRef.current?.config.columns.order ?? [],
@@ -384,6 +403,7 @@ export function DataTable<TData>({
     filterFns: {
       includesSome: includesSomeFilter,
       dateRange: dateRangeFilter,
+      numberRange: numberRangeFilter,
     },
     defaultColumn: {
       filterFn: 'includesSome',
@@ -424,7 +444,7 @@ export function DataTable<TData>({
         setGlobalFilter('');
         setColumnFilters([]);
         setSorting(initialSorting ?? []);
-        setColumnVisibility({});
+        setColumnVisibility(initialColumnVisibility);
         setColumnOrder([]);
         setColumnPinning({ left: [] });
         setPagination({ pageIndex: 0, pageSize: initialPageSize });
@@ -465,6 +485,7 @@ export function DataTable<TData>({
       }
     },
     [
+      initialColumnVisibility,
       initialPageSize,
       initialSorting,
       filterNormalizers,
@@ -675,7 +696,7 @@ export function DataTable<TData>({
             table={table}
             columnOrder={columnOrder}
             onResetColumns={() => {
-              setColumnVisibility({});
+              setColumnVisibility(initialColumnVisibility);
               setColumnOrder([]);
               setColumnPinning({ left: [] });
             }}
