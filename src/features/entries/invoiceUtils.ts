@@ -26,6 +26,8 @@ export interface InvoiceNotice {
    * en la factura, no se le muestra al operario.
    */
   readonly text: string;
+  /** Segunda línea, más chica: a quién se emitió la A. */
+  readonly detail?: string;
 }
 
 const FALLBACK_MESSAGE = 'No se pudo emitir la factura. Intentalo más tarde.';
@@ -62,7 +64,12 @@ export function describeInvoiceResult(input: {
         parts.push(formatVoucherNumber(invoice.ptoVta, invoice.cbteNro));
       }
       parts.push('emitida');
-      return { tone: 'success', text: parts.filter(Boolean).join(' ') };
+      const text = parts.filter(Boolean).join(' ');
+      // La A dice a quién: el operario confirma que salió con el CUIT que dio
+      // el cliente. La B y la C son siempre a consumidor final.
+      return invoice.cbteTipo === 1 && invoice.receptorNombre
+        ? { tone: 'success', text, detail: `a ${invoice.receptorNombre}` }
+        : { tone: 'success', text };
     }
     case 'error':
     case 'issuing':
@@ -83,4 +90,83 @@ export function describeInvoiceResult(input: {
       // `not_required`: nada que mostrar en el cobro.
       return null;
   }
+}
+
+// ── Factura A: CUIT del cliente ─────────────────────────────────────────────
+
+/** Pesos del dígito verificador del CUIT/CUIL (módulo 11). */
+const CUIT_WEIGHTS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2] as const;
+
+/** Deja sólo los dígitos: acepta `20-12345678-3` y `20 12345678 3`. */
+export function normalizeCuit(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
+/**
+ * 11 dígitos y dígito verificador correcto. Gemela de
+ * `backend/src/arca/arca-cuit.ts`: acá se avisa antes de cobrar, pero la regla
+ * que vale es la del backend.
+ */
+export function isValidCuit(cuit: string): boolean {
+  if (!/^\d{11}$/.test(cuit)) return false;
+  const digits = [...cuit].map(Number);
+  const sum = CUIT_WEIGHTS.reduce((acc, w, i) => acc + w * digits[i], 0);
+  const mod = 11 - (sum % 11);
+  const expected = mod === 11 ? 0 : mod;
+  return expected !== 10 && expected === digits[10];
+}
+
+/** Mensaje del campo CUIT, o `null` si está bien. */
+export function receiverCuitError(raw: string): string | null {
+  const cuit = normalizeCuit(raw);
+  if (cuit.length === 0) return 'Ingresá el CUIT del cliente.';
+  if (!isValidCuit(cuit)) return 'El CUIT no es válido.';
+  return null;
+}
+
+/** Sólo un Responsable Inscripto emite A; el resto factura siempre igual. */
+export function canChooseInvoiceA(
+  emitter: 'responsable_inscripto' | 'monotributo' | 'exento' | null,
+): boolean {
+  return emitter === 'responsable_inscripto';
+}
+
+/**
+ * Si al terminar el cobro se ofrece «Emitir factura»: la playa factura, hay
+ * red y la factura quedó sin emitir (medio en Manual, o un intento que falló
+ * y se puede reintentar, por ejemplo una A con un CUIT que no la recibe).
+ */
+export function canIssueAfterCharge(
+  invoice: InvoiceSummaryDto | null | undefined,
+): boolean {
+  return invoice?.status === 'pending' || invoice?.status === 'error';
+}
+
+/**
+ * Texto del «¿Seguro?» antes de emitir a mano: una factura emitida tiene
+ * efecto fiscal y no se anula desde Parkit, así que se repite qué sale y a
+ * quién. `amount` ya formateado (`$ 5.200,00`).
+ */
+export function describeIssueConfirmation(input: {
+  readonly letter: 'A' | 'B' | 'C';
+  readonly cuit: string | null;
+  readonly amount: string;
+}): { title: string; message: string; confirmLabel: string } {
+  const to =
+    input.letter === 'A' && input.cuit
+      ? `al CUIT ${formatCuit(input.cuit)}`
+      : 'a consumidor final';
+  return {
+    title: `¿Emitir la Factura ${input.letter}?`,
+    message: `Se emite ${to} por ${input.amount}. Una factura emitida no se puede anular desde Parkit.`,
+    confirmLabel: `Emitir Factura ${input.letter}`,
+  };
+}
+
+/** `30712345671` → `30-71234567-1`. */
+export function formatCuit(raw: string): string {
+  const cuit = normalizeCuit(raw);
+  return cuit.length === 11
+    ? `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}`
+    : raw;
 }

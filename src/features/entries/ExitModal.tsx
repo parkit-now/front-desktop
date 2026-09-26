@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { closeEntry, type PaymentLineDto } from '../../lib/api/entries';
+import { issueInvoice } from '../../lib/api/arca';
+import {
+  closeEntry,
+  type InvoiceSummaryDto,
+  type PaymentLineDto,
+} from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
 import {
   localDb,
@@ -13,14 +18,26 @@ import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
+import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { PaymentMethodSelect } from './PaymentMethodSelect';
 import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
 import { useMercadoPagoIntent } from './useMercadoPagoIntent';
-import { describeInvoiceResult, type InvoiceNotice } from './invoiceUtils';
+import {
+  canChooseInvoiceA,
+  canIssueAfterCharge,
+  describeInvoiceResult,
+  describeIssueConfirmation,
+  normalizeCuit,
+  receiverCuitError,
+  type InvoiceNotice,
+} from './invoiceUtils';
+import { InvoiceTypeChooser, type InvoiceChoice } from './InvoiceTypeChooser';
+import { useArcaEmitter } from './useArcaEmitter';
 import {
   calcSuggestedAmount,
   computeChange,
   formatDuration,
+  isCashCovered,
   generateUuidV7,
   isCashMethod,
   isMercadoPagoMethod,
@@ -28,6 +45,7 @@ import {
   QR_BLOCK_MESSAGES,
   type StayPrices,
 } from './entryUtils';
+import { sortByName } from '../payment-methods/paymentMethodUtils';
 
 /** Cada cuánto se recalcula el sugerido con el modal abierto. */
 const TICK_MS = 15_000;
@@ -94,6 +112,19 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [invoiceNotice, setInvoiceNotice] = useState<InvoiceNotice | null>(
     null,
   );
+  // Factura A: el operario elige la letra y carga el CUIT que le dicta el
+  // cliente. Lo mismo sirve para el cobro y para «Emitir factura» después.
+  const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
+  const offersInvoiceA = canChooseInvoiceA(emitter);
+  const [invoiceChoice, setInvoiceChoice] = useState<InvoiceChoice>('B');
+  const [receiverCuit, setReceiverCuit] = useState('');
+  const [cuitTouched, setCuitTouched] = useState(false);
+  const [lastInvoice, setLastInvoice] = useState<InvoiceSummaryDto | null>(
+    null,
+  );
+  const [issuePanelOpen, setIssuePanelOpen] = useState(false);
+  const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
+  const [issuing, setIssuing] = useState(false);
 
   const enabledPms = useLiveQuery(
     () =>
@@ -101,7 +132,8 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         .where('tenantId')
         .equals(tenantId)
         .filter((pm) => pm.enabled)
-        .toArray(),
+        .toArray()
+        .then(sortByName),
     [tenantId],
   );
 
@@ -156,9 +188,39 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         ? 'over'
         : 'exact';
 
-  // Received is optional (charges the exact amount); only an entered amount
-  // below the charge blocks confirmation.
-  const canConfirm = !isCash || cashState !== 'short';
+  // El selector B/A va sólo si el cobro factura solo (todos los medios en
+  // Automática): con un medio Manual la letra se elige al emitir después.
+  const selectedModes = splitEnabled
+    ? pms
+        .filter(
+          (pm) => parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0') > 0,
+        )
+        .map((pm) => pm.invoiceMode)
+    : effectivePm
+      ? [effectivePm.invoiceMode]
+      : [];
+  const invoicesOnCharge =
+    selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
+  const showInvoiceChooser = offersInvoiceA && invoicesOnCharge;
+  const wantsInvoiceA = offersInvoiceA && invoiceChoice === 'A';
+  // Letra de «Emitir factura»: la elegida si es RI; si no, siempre C.
+  const issueLetter: 'A' | 'B' | 'C' = offersInvoiceA ? invoiceChoice : 'C';
+  const cuitError = wantsInvoiceA ? receiverCuitError(receiverCuit) : null;
+  // El error aparece al salir del campo o con los 11 dígitos, y nunca con el
+  // campo vacío: ahí alcanza con la ayuda y el botón deshabilitado.
+  const cuitDigits = normalizeCuit(receiverCuit).length;
+  const visibleCuitError =
+    cuitDigits > 0 && (cuitTouched || cuitDigits >= 11) ? cuitError : null;
+
+  // En efectivo hay que cargar lo que entregó el cliente, y tiene que cubrir
+  // el total (justo o con vuelto). Una A sin CUIT válido tampoco se confirma.
+  const cashCovered = isCashCovered(amountToCharge, receivedAmount);
+  const canConfirm =
+    (!isCash || cashCovered) && !(showInvoiceChooser && cuitError);
+  const invoiceReceiverCuit =
+    showInvoiceChooser && wantsInvoiceA
+      ? normalizeCuit(receiverCuit)
+      : undefined;
 
   // ── Cobro con QR de Mercado Pago ──────────────────────────────────────────
   // Sólo en cobro de un solo medio: repartir una estadía entre QR y efectivo
@@ -308,8 +370,15 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           entryId: entry.id,
           expectedVersion: entry.version,
           bearer: accessToken,
-          body: { leftAt, amountPaid, cashSessionId, payments },
+          body: {
+            leftAt,
+            amountPaid,
+            cashSessionId,
+            payments,
+            invoiceReceiverCuit,
+          },
         });
+        setLastInvoice(result.invoice ?? null);
         const txs: LocalPaymentTransaction[] = (payments ?? []).map((p) => ({
           id: p.id,
           tenantId,
@@ -390,7 +459,13 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               entityId: entry.id,
               payload: {
                 expectedVersion: entry.version,
-                body: { leftAt, amountPaid, cashSessionId, payments },
+                body: {
+                  leftAt,
+                  amountPaid,
+                  cashSessionId,
+                  payments,
+                  invoiceReceiverCuit,
+                },
               },
               status: 'pending',
             });
@@ -411,19 +486,12 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
           : `Egreso guardado localmente: ${entry.plate}`,
         kind: 'success',
       });
-      const effectiveReceivedAmount = receivedEntered
-        ? receivedAmount
-        : amountToCharge;
-      const effectiveChange = computeChange(
-        amountToCharge,
-        effectiveReceivedAmount,
-      );
       setReceipt({
         plate: entry.plate,
         ticketNumber: entry.ticketNumber ?? undefined,
         amountDue: amountPaid ?? 0,
-        received: isCash ? effectiveReceivedAmount : undefined,
-        change: isCash ? effectiveChange : undefined,
+        received: isCash ? receivedAmount : undefined,
+        change: isCash ? change : undefined,
         paymentMethodName: splitEnabled
           ? 'Varios medios'
           : (effectivePm?.name ?? ''),
@@ -435,6 +503,55 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
       setSaving(false);
     }
   }
+
+  /**
+   * «Emitir factura» después del cobro: medio en Manual, o un intento que no
+   * salió (por ejemplo, una A con un CUIT que no puede recibirla). La estadía
+   * tiene que existir en el servidor, así que sólo con red.
+   */
+  async function handleIssue(): Promise<void> {
+    if (!isOnline) {
+      showToast({
+        message: 'Necesitás conexión para emitir la factura.',
+        kind: 'error',
+      });
+      return;
+    }
+    if (wantsInvoiceA && cuitError) {
+      setCuitTouched(true);
+      return;
+    }
+    setIssuing(true);
+    try {
+      const invoice = await issueInvoice({
+        tenantId,
+        entryId: entry.id,
+        bearer: accessToken,
+        receiverCuit: wantsInvoiceA ? normalizeCuit(receiverCuit) : undefined,
+      });
+      setLastInvoice(invoice);
+      setInvoiceNotice(
+        describeInvoiceResult({ invoice, offline: false, lineModes: [] }),
+      );
+      if (invoice.status === 'issued') setIssuePanelOpen(false);
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setIssuing(false);
+    }
+  }
+
+  const invoiceChooserProps = {
+    letter: invoiceChoice,
+    onLetterChange: (letter: InvoiceChoice) => {
+      setInvoiceChoice(letter);
+      setCuitTouched(false);
+    },
+    cuit: receiverCuit,
+    onCuitChange: (value: string) => setReceiverCuit(value),
+    onCuitBlur: () => setCuitTouched(true),
+    cuitError: visibleCuitError,
+  };
 
   return (
     <div
@@ -472,10 +589,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
 
         {receipt ? (
           <div className="exit-receipt">
-            <div className="exit-modal-info">
+            <div className="exit-modal-info exit-receipt-summary">
               <div className="exit-info-row">
                 <span className="muted">Cobrado</span>
-                <span className="exit-duration">
+                <span className="exit-receipt-total">
                   {formatArs(receipt.amountDue)}
                 </span>
               </div>
@@ -487,9 +604,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 <>
                   <div className="exit-info-row">
                     <span className="muted">Recibido</span>
-                    <span className="exit-received-amount">
-                      {formatArs(receipt.received)}
-                    </span>
+                    <span>{formatArs(receipt.received)}</span>
                   </div>
                   <div className="exit-info-row">
                     <span className="muted">Vuelto</span>
@@ -500,33 +615,100 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 </>
               ) : null}
               {invoiceNotice ? (
-                <div className="exit-info-row">
+                <div className="exit-info-row exit-info-row--invoice">
                   <span className="muted">Factura</span>
                   <span
                     className={`exit-invoice-notice exit-invoice-notice--${invoiceNotice.tone}`}
                     role={invoiceNotice.tone === 'warning' ? 'alert' : 'status'}
                   >
                     {invoiceNotice.text}
+                    {invoiceNotice.detail ? (
+                      <span className="exit-invoice-detail">
+                        {invoiceNotice.detail}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
               ) : null}
             </div>
-            <div className="rate-dialog-actions">
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => printReceipt(receipt)}
-              >
-                Imprimir comprobante
-              </button>
-              <button
-                type="button"
-                className="primary-button compact"
-                onClick={onClose}
-              >
-                Cerrar
-              </button>
-            </div>
+
+            {issuePanelOpen ? (
+              // El panel reemplaza a los botones del comprobante: mientras se
+              // elige la factura, la única salida es emitir o volver.
+              <div className="exit-issue-panel">
+                <p className="exit-issue-title">Emitir factura</p>
+                <InvoiceTypeChooser
+                  {...invoiceChooserProps}
+                  disabled={issuing}
+                  showLabel={false}
+                />
+                <div className="rate-dialog-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setIssuePanelOpen(false)}
+                    disabled={issuing}
+                  >
+                    Volver
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button compact"
+                    onClick={() => setConfirmIssueOpen(true)}
+                    disabled={issuing || (wantsInvoiceA && !!cuitError)}
+                  >
+                    Emitir Factura {invoiceChoice}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rate-dialog-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => printReceipt(receipt)}
+                >
+                  Imprimir comprobante
+                </button>
+                {canIssueAfterCharge(lastInvoice) ? (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={issuing}
+                    onClick={() => {
+                      // Con una sola letra posible (monotributo: C) no hay
+                      // nada que elegir: se pasa directo a confirmar.
+                      if (offersInvoiceA) setIssuePanelOpen(true);
+                      else setConfirmIssueOpen(true);
+                    }}
+                  >
+                    {issuing ? 'Emitiendo...' : 'Emitir factura'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={onClose}
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+
+            <ConfirmDialog
+              open={confirmIssueOpen}
+              {...describeIssueConfirmation({
+                letter: issueLetter,
+                cuit: issueLetter === 'A' ? normalizeCuit(receiverCuit) : null,
+                amount: formatArs(receipt.amountDue),
+              })}
+              isPending={issuing}
+              onCancel={() => setConfirmIssueOpen(false)}
+              onConfirm={async () => {
+                await handleIssue();
+                setConfirmIssueOpen(false);
+              }}
+            />
           </div>
         ) : mpIntent.intent && mpIntent.view ? (
           <MercadoPagoQrPanel
@@ -591,30 +773,54 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
               ) : null}
             </div>
 
-            <div className="form-field exit-money-field">
-              <label className="form-label" htmlFor="exit-amount">
-                Monto a cobrar
-              </label>
-              <div className="exit-money-input">
-                <span className="exit-money-prefix" aria-hidden="true">
-                  $
-                </span>
-                <input
-                  id="exit-amount"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  className="exit-money-control"
-                  value={amount}
-                  onChange={(e) => {
-                    setAmountEdited(true);
-                    setAmount(e.target.value);
-                  }}
-                  autoFocus
-                />
+            {/* Fila 1: cuánto y con qué. El medio se oculta al dividir el
+                pago, porque cada línea del split ya dice el suyo. */}
+            <div className="exit-pay-grid">
+              <div className="form-field">
+                <label className="form-label" htmlFor="exit-amount">
+                  Monto a cobrar
+                </label>
+                <div className="exit-money-input">
+                  <span className="exit-money-prefix" aria-hidden="true">
+                    $
+                  </span>
+                  <input
+                    id="exit-amount"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    className="exit-money-control"
+                    value={amount}
+                    onChange={(e) => {
+                      setAmountEdited(true);
+                      setAmount(e.target.value);
+                    }}
+                    autoFocus
+                  />
+                </div>
+                {suggested > 0 ? (
+                  <p className="exit-field-hint">
+                    Sugerido: {formatArs(suggested)}
+                  </p>
+                ) : null}
               </div>
-              {suggested > 0 ? (
-                <p className="form-helper">Sugerido: {formatArs(suggested)}</p>
+
+              {!splitEnabled && pms.length > 0 ? (
+                <div className="form-field">
+                  <span className="form-label">Medio de pago</span>
+                  <PaymentMethodSelect
+                    options={pms}
+                    value={effectivePmId}
+                    onChange={handlePaymentMethodChange}
+                    ariaLabel="Medio de pago"
+                  />
+                  {isMpQr ? (
+                    <p className="exit-field-hint">
+                      El cliente escanea el QR del mostrador: el importe le
+                      aparece solo.
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
 
@@ -683,65 +889,56 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                   ) : null}
                 </div>
               </div>
-            ) : (
-              <>
-                {pms.length > 0 ? (
-                  <div className="form-field">
-                    <span className="form-label">Medio de pago</span>
-                    <PaymentMethodSelect
-                      options={pms}
-                      value={effectivePmId}
-                      onChange={handlePaymentMethodChange}
-                      ariaLabel="Medio de pago"
+            ) : null}
+
+            {/* Fila 2: la factura, debajo del medio porque depende de él. */}
+            {showInvoiceChooser ? (
+              <InvoiceTypeChooser {...invoiceChooserProps} disabled={saving} />
+            ) : null}
+
+            {/* Fila 3 (efectivo): lo que entregó el cliente y el vuelto, lado
+                a lado y a la misma altura. */}
+            {isCash ? (
+              <div className="exit-pay-grid">
+                <div className="form-field">
+                  <label className="form-label" htmlFor="exit-received">
+                    Recibido
+                  </label>
+                  <div className="exit-money-input">
+                    <span className="exit-money-prefix" aria-hidden="true">
+                      $
+                    </span>
+                    <input
+                      id="exit-received"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      className="exit-money-control"
+                      value={received}
+                      onChange={(e) => setReceived(e.target.value)}
+                      autoFocus
                     />
-                    {isMpQr ? (
-                      <p className="form-helper">
-                        El cliente escanea el QR del mostrador: el importe le
-                        aparece solo.
-                      </p>
-                    ) : null}
                   </div>
-                ) : null}
-
-                {isCash ? (
-                  <>
-                    <div className="form-field exit-money-field">
-                      <label className="form-label" htmlFor="exit-received">
-                        Monto recibido
-                      </label>
-                      <div className="exit-money-input exit-money-input--received">
-                        <span className="exit-money-prefix" aria-hidden="true">
-                          $
-                        </span>
-                        <input
-                          id="exit-received"
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0,00"
-                          className="exit-money-control"
-                          value={received}
-                          onChange={(e) => setReceived(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-
-                    <div
-                      className={`exit-result exit-result--${cashState}`}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      <span className="exit-result-label">
-                        {cashState === 'short' ? 'Faltan' : 'Vuelto'}
-                      </span>
-                      <span className="exit-result-amount">
-                        {formatArs(cashState === 'short' ? shortfall : change)}
-                      </span>
-                    </div>
-                  </>
-                ) : null}
-              </>
-            )}
+                  {!receivedEntered && amountToCharge > 0 ? (
+                    <p className="exit-field-hint">
+                      Ingresá lo que te entregó el cliente.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="form-field">
+                  <span className="form-label">
+                    {cashState === 'short' ? 'Faltan' : 'Vuelto'}
+                  </span>
+                  <div
+                    className={`exit-change exit-change--${cashState}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {formatArs(cashState === 'short' ? shortfall : change)}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="rate-dialog-actions">
               <button

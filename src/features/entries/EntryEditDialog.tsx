@@ -25,6 +25,7 @@ import {
   printEntryTicket,
 } from '../../lib/print/printTicket';
 import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
+import { sortByName } from '../payment-methods/paymentMethodUtils';
 
 type ActorRole = 'admin' | 'owner' | 'operator' | null;
 
@@ -259,7 +260,8 @@ export function EntryEditDialog({
         .where('tenantId')
         .equals(tenantId)
         .filter((pm) => pm.enabled)
-        .toArray(),
+        .toArray()
+        .then(sortByName),
     [tenantId],
   );
 
