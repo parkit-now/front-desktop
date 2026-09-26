@@ -7,6 +7,7 @@ import type { VehicleTypeDto } from '../api/vehicle-types';
 import type { VehicleDto } from '../api/vehicles';
 import type {
   LocalEntry,
+  LocalInvoice,
   LocalLprDetectionEvent,
   LocalPaymentMethod,
   LocalRate,
@@ -58,6 +59,7 @@ const h = vi.hoisted(() => {
   const vehicleTypes = makeTable<LocalVehicleType>();
   const paymentMethods = makeTable<LocalPaymentMethod>();
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
+  const invoices = makeTable<LocalInvoice>();
 
   const localDb = {
     entries: {
@@ -71,6 +73,7 @@ const h = vi.hoisted(() => {
     vehicleTypes,
     paymentMethods,
     lprDetectionEvents,
+    invoices,
     syncState: {
       get(key: string): Promise<SyncState | undefined> {
         return Promise.resolve(syncState.get(key));
@@ -139,8 +142,15 @@ const h = vi.hoisted(() => {
     vehicleTypes,
     paymentMethods,
     lprDetectionEvents,
+    invoices,
     localDb,
     pullEntryChanges,
+    pullInvoiceChanges: vi.fn(
+      (input: {
+        afterSeq: number;
+      }): Promise<{ items: LocalInvoice[]; maxSeq: number }> =>
+        Promise.resolve({ items: [], maxSeq: input.afterSeq }),
+    ),
     pullRateChanges: changesMock<RateDto>(),
     pullVehicleChanges: changesMock<VehicleDto>(),
     pullVehicleTypeChanges: changesMock<VehicleTypeDto>(),
@@ -175,6 +185,10 @@ vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
   pullPaymentMethodChanges: h.pullPaymentMethodChanges,
 }));
+vi.mock('../api/arca', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/arca')>()),
+  pullInvoiceChanges: h.pullInvoiceChanges,
+}));
 vi.mock('../api/lpr-events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/lpr-events')>()),
   pullLprDetectionEventChanges: h.pullLprDetectionEventChanges,
@@ -191,6 +205,7 @@ function serverEntry(id: string, overrides: Partial<EntryDto> = {}): EntryDto {
     tenantId: TENANT,
     plate: 'ABC123',
     source: 'manual',
+    manuallyInvoiced: false,
     enteredAt: ENTERED_AT,
     version: 1,
     syncSeq: 1,
@@ -900,5 +915,52 @@ describe('pullLprDetectionEvents y los cambios locales sin sincronizar', () => {
     await syncService.pullLprDetectionEvents();
 
     expect(h.lprDetectionEvents.rows.get('lpr-2')?.bestCaptureId).toBe('cap-2');
+  });
+});
+
+describe('pullInvoices', () => {
+  function invoice(id: string, syncSeq: number): LocalInvoice {
+    return {
+      id,
+      tenantId: TENANT,
+      entryId: `entry-${id}`,
+      status: 'issued',
+      impTotal: 1210,
+      syncSeq,
+      version: 1,
+      updatedAt: ENTERED_AT,
+    };
+  }
+
+  beforeEach(() => {
+    h.invoices.rows.clear();
+    h.syncState.clear();
+    h.pullInvoiceChanges.mockClear();
+    syncService.setCredentials(TENANT, TOKEN);
+  });
+
+  it('pagina hasta la última página y guarda el cursor', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => invoice(`a${i}`, i + 1));
+    h.pullInvoiceChanges
+      .mockResolvedValueOnce({ items: full, maxSeq: 500 })
+      .mockResolvedValueOnce({ items: [invoice('b', 501)], maxSeq: 501 });
+
+    await syncService.pullInvoices();
+
+    expect(h.pullInvoiceChanges).toHaveBeenCalledTimes(2);
+    expect(h.invoices.rows.size).toBe(501);
+    expect(h.syncState.get(`invoices:${TENANT}`)?.lastSeq).toBe(501);
+  });
+
+  it('la fila del servidor pisa la local (el desktop sólo la lee)', async () => {
+    h.invoices.rows.set('x', { ...invoice('x', 1), status: 'pending' });
+    h.pullInvoiceChanges.mockResolvedValueOnce({
+      items: [invoice('x', 2)],
+      maxSeq: 2,
+    });
+
+    await syncService.pullInvoices();
+
+    expect(h.invoices.rows.get('x')?.status).toBe('issued');
   });
 });

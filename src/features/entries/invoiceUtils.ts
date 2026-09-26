@@ -3,7 +3,8 @@ import { translateErrorCode } from '../../lib/api/translate';
 import type { PaymentMethodInvoiceMode } from '../../lib/db/localDb';
 
 /**
- * Lógica pura de la factura en el cobro. Gemela de la del panel web (Etapa 2):
+ * Lógica pura de la factura en el cobro y en el historial. Gemela de la del
+ * panel web (`front-web/src/features/owner/sections/operacion/invoiceUtils.ts`):
  * si cambia acá, cambiar allá.
  */
 
@@ -169,4 +170,154 @@ export function formatCuit(raw: string): string {
   return cuit.length === 11
     ? `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}`
     : raw;
+}
+
+// ── Historial: estado de facturación de cada cobro ─────────────────────────
+
+/**
+ * Estado de facturación de un cobro:
+ * - `issued` / `issuing` / `error` / `pending`: el de la factura de ARCA.
+ * - `manual`: sin factura de ARCA, marcada «Facturada» a mano.
+ * - `none`: cobrada y sin factura (medio sin facturación, o playa sin ARCA).
+ * - `na`: no se factura (auto en base, o cobro de $0).
+ */
+export type InvoiceState =
+  | 'issued'
+  | 'issuing'
+  | 'error'
+  | 'pending'
+  | 'manual'
+  | 'none'
+  | 'na';
+
+export const INVOICE_STATE_LABEL: Record<InvoiceState, string> = {
+  issued: 'Facturada',
+  issuing: 'Emitiendo',
+  error: 'Con error',
+  pending: 'Pendiente',
+  manual: 'Facturada a mano',
+  none: 'Sin factura',
+  na: 'No aplica',
+};
+
+/** Clase de `.status-badge` para cada estado. */
+export const INVOICE_STATE_BADGE: Record<InvoiceState, string> = {
+  issued: 'status-ok',
+  issuing: 'status-brand',
+  error: 'status-err',
+  pending: 'status-warn',
+  manual: 'status-ok',
+  none: 'status-muted',
+  na: 'status-muted',
+};
+
+/** Orden de las opciones del filtro «Factura». */
+export const INVOICE_STATE_ORDER: readonly InvoiceState[] = [
+  'pending',
+  'none',
+  'error',
+  'issuing',
+  'issued',
+  'manual',
+  'na',
+];
+
+export function resolveInvoiceState(
+  entry: {
+    leftAt?: string | null;
+    paidTotal: number | null;
+    manuallyInvoiced?: boolean;
+  },
+  invoice: { status: string } | undefined,
+): InvoiceState {
+  switch (invoice?.status) {
+    case 'issued':
+    case 'issuing':
+    case 'error':
+    case 'pending':
+      return invoice.status;
+    default:
+      break;
+  }
+  if (!entry.leftAt || !(entry.paidTotal != null && entry.paidTotal > 0)) {
+    return 'na';
+  }
+  return entry.manuallyInvoiced ? 'manual' : 'none';
+}
+
+/** «Sin facturar» = Pendiente + Sin factura + Con error. */
+export function isUnbilled(state: InvoiceState): boolean {
+  return state === 'pending' || state === 'none' || state === 'error';
+}
+
+export type InvoiceChip = 'all' | 'unbilled' | 'error';
+
+export function matchesInvoiceChip(
+  state: InvoiceState,
+  chip: InvoiceChip,
+): boolean {
+  if (chip === 'unbilled') return isUnbilled(state);
+  if (chip === 'error') return state === 'error';
+  return true;
+}
+
+export function countInvoiceChips(
+  rows: ReadonlyArray<{ invoiceState: InvoiceState }>,
+): Record<InvoiceChip, number> {
+  return {
+    all: rows.length,
+    unbilled: rows.filter((row) => isUnbilled(row.invoiceState)).length,
+    error: rows.filter((row) => row.invoiceState === 'error').length,
+  };
+}
+
+/** «Factura B 0001-00000123», o sólo «Factura B» si todavía no tiene número. */
+export function voucherLabel(invoice: {
+  cbteTipo?: number | null;
+  ptoVta?: number | null;
+  cbteNro?: number | null;
+}): string | null {
+  const letter = invoiceLetter(invoice.cbteTipo);
+  if (!letter) return null;
+  return invoice.ptoVta != null && invoice.cbteNro != null
+    ? `Factura ${letter} ${formatVoucherNumber(invoice.ptoVta, invoice.cbteNro)}`
+    : `Factura ${letter}`;
+}
+
+/**
+ * `2026-10-04` → `04/10/2026`, sin pasar por `Date` (que lo leería a las
+ * 00:00 UTC y en Argentina daría el día anterior).
+ */
+export function formatIsoDay(value: string | null | undefined): string | null {
+  const match = value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
+}
+
+/** «EMPRESA SA · CUIT 30-71234567-1», o «Consumidor final». */
+export function receiverDescription(invoice: {
+  receptorDocTipo?: number | null;
+  receptorDocNro?: string | null;
+  receptorNombre?: string | null;
+}): string {
+  if (invoice.receptorDocTipo !== 80 || !invoice.receptorDocNro) {
+    return 'Consumidor final';
+  }
+  const cuit = formatCuit(invoice.receptorDocNro);
+  return invoice.receptorNombre
+    ? `${invoice.receptorNombre} · CUIT ${cuit}`
+    : `CUIT ${cuit}`;
+}
+
+/** Siempre termina en `.pdf`: `PATENTE-CAE-0001-00000006.pdf`. */
+export function invoicePdfFileName(input: {
+  plate: string;
+  cae?: string | null;
+  ptoVta?: number | null;
+  cbteNro?: number | null;
+}): string {
+  const number =
+    input.ptoVta != null && input.cbteNro != null
+      ? formatVoucherNumber(input.ptoVta, input.cbteNro)
+      : null;
+  return `${[input.plate, input.cae, number].filter(Boolean).join('-')}.pdf`;
 }

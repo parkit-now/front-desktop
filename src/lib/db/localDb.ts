@@ -57,10 +57,22 @@ export interface LocalEntry {
   rateSnapshotMediaEstadiaPriceArs?: string;
   cashSessionId?: string;
   ticketNumber?: number;
+  /**
+   * Checkbox «Facturada» de las playas sin ARCA. Opcional: el campo nació sin
+   * bumpear `sync_seq`, así que una fila vieja no lo trae; `undefined` = no.
+   */
+  manuallyInvoiced?: boolean;
   version: number;
   syncSeq: number;
   updatedAt: string;
 }
+
+/**
+ * Factura de ARCA de una estadía, tal como la manda `/invoices/changes`. La
+ * crea y la emite el backend: el desktop sólo la lee (emitir y reintentar son
+ * llamadas online). Alias del contrato generado, no una copia a mano.
+ */
+export type LocalInvoice = components['schemas']['InvoiceDto'];
 
 export interface LocalCashSession {
   id: string;
@@ -285,6 +297,7 @@ class ParkitLocalDb extends Dexie {
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
   cashSessions!: Table<LocalCashSession>;
   paymentTransactions!: Table<LocalPaymentTransaction>;
+  invoices!: Table<LocalInvoice>;
   syncState!: Table<SyncState>;
   pendingOps!: Table<PendingOp>;
 
@@ -540,6 +553,13 @@ class ParkitLocalDb extends Dexie {
           )
           .delete();
       });
+
+    // v15: facturas de ARCA para el historial (estado, comprobante, CAE). Se
+    // leen por estadía, así que van indexadas por `entryId`. Tabla nueva: el
+    // primer pull las baja todas, no hace falta resetear ningún cursor.
+    this.version(15).stores({
+      invoices: 'id, [tenantId+syncSeq], tenantId, entryId',
+    });
   }
 }
 

@@ -9,8 +9,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   localDb,
   type LocalEntry,
+  type LocalInvoice,
   type LocalPaymentTransaction,
 } from '../../lib/db/localDb';
+import { useNetwork } from '../../lib/network/NetworkContext';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
 import { cashSessionLabel } from '../../lib/format/cashSession';
 import {
@@ -19,6 +21,19 @@ import {
 } from '../table-view-template';
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import { EntryEditDialog } from './EntryEditDialog';
+import {
+  countInvoiceChips,
+  INVOICE_STATE_BADGE,
+  INVOICE_STATE_LABEL,
+  INVOICE_STATE_ORDER,
+  invoiceLetter,
+  matchesInvoiceChip,
+  resolveInvoiceState,
+  voucherLabel,
+  type InvoiceChip,
+  type InvoiceState,
+} from './invoiceUtils';
+import { useArcaEmitter } from './useArcaEmitter';
 
 interface Props {
   tenantId: string;
@@ -36,7 +51,55 @@ interface Props {
 
 type EntryHistoryRow = LocalEntry & {
   paymentLines: LocalPaymentTransaction[];
+  paidTotal: number | null;
+  invoice: LocalInvoice | null;
+  invoiceState: InvoiceState;
+  /** `A` / `B` / `C`, o `''`: filtro «Comprobante». */
+  invoiceLetterValue: string;
+  /** «Razón social · CUIT» del receptor de la A, o `''`: filtro «Receptor». */
+  invoiceReceiver: string;
 };
+
+const INVOICE_STATE_OPTIONS: DataTableFilterOption[] = INVOICE_STATE_ORDER.map(
+  (state) => ({ value: state, label: INVOICE_STATE_LABEL[state] }),
+);
+const INVOICE_LETTER_OPTIONS: DataTableFilterOption[] = ['A', 'B', 'C'].map(
+  (letter) => ({ value: letter, label: `Factura ${letter}` }),
+);
+/** Existen para filtrar; se muestran desde el selector de columnas. */
+const INITIAL_COLUMN_VISIBILITY = {
+  invoiceLetterValue: false,
+  invoiceReceiver: false,
+  paidTotal: false,
+};
+const INVOICE_CHIPS: ReadonlyArray<{ id: InvoiceChip; label: string }> = [
+  { id: 'all', label: 'Todas' },
+  { id: 'unbilled', label: 'Sin facturar' },
+  { id: 'error', label: 'Con error' },
+];
+
+function receiverLabel(invoice: LocalInvoice | null): string {
+  if (!invoice || invoice.receptorDocTipo !== 80) return '';
+  const cuit = invoice.receptorDocNro ?? '';
+  return invoice.receptorNombre ? `${invoice.receptorNombre} · ${cuit}` : cuit;
+}
+
+function InvoiceCell({ row }: { row: EntryHistoryRow }) {
+  if (row.invoiceState === 'na') return <span className="muted">—</span>;
+  const voucher =
+    row.invoice &&
+    (row.invoiceState === 'issued' || row.invoiceState === 'issuing')
+      ? voucherLabel(row.invoice)
+      : null;
+  return (
+    <div className="entry-invoice-cell">
+      <span className={`status-badge ${INVOICE_STATE_BADGE[row.invoiceState]}`}>
+        {INVOICE_STATE_LABEL[row.invoiceState]}
+      </span>
+      {voucher ? <small>{voucher}</small> : null}
+    </div>
+  );
+}
 
 function dateOnly(iso: string | undefined): string {
   return iso ? iso.slice(0, 10) : '';
@@ -189,6 +252,49 @@ const COLUMNS_TAIL: ColumnDef<EntryHistoryRow, unknown>[] = [
     },
   },
   {
+    id: 'invoiceState',
+    accessorKey: 'invoiceState',
+    header: 'Factura',
+    size: 170,
+    filterFn: 'includesSome',
+    cell: ({ row }) => <InvoiceCell row={row.original} />,
+  },
+  {
+    id: 'invoiceLetterValue',
+    accessorKey: 'invoiceLetterValue',
+    header: 'Comprobante',
+    size: 110,
+    filterFn: 'includesSome',
+    cell: ({ row }) =>
+      row.original.invoiceLetterValue ? (
+        `Factura ${row.original.invoiceLetterValue}`
+      ) : (
+        <span className="muted">—</span>
+      ),
+  },
+  {
+    id: 'invoiceReceiver',
+    accessorKey: 'invoiceReceiver',
+    header: 'Receptor',
+    size: 200,
+    filterFn: 'includesSome',
+    cell: ({ row }) =>
+      row.original.invoiceReceiver || <span className="muted">—</span>,
+  },
+  {
+    id: 'paidTotal',
+    accessorFn: (row) => row.paidTotal ?? undefined,
+    header: 'Monto',
+    size: 110,
+    filterFn: 'numberRange',
+    cell: ({ row }) =>
+      row.original.paidTotal != null ? (
+        formatArs(row.original.paidTotal)
+      ) : (
+        <span className="muted">—</span>
+      ),
+  },
+  {
     accessorKey: 'cochera',
     header: 'Cochera',
     size: 85,
@@ -217,6 +323,10 @@ const FILTERABLE_COLUMNS = [
   'leftAt',
   'cashSessionId',
   'amountPaid',
+  'invoiceState',
+  'invoiceLetterValue',
+  'invoiceReceiver',
+  'paidTotal',
   'rateSnapshotName',
   'vehicleBrand',
   'vehicleModel',
@@ -262,6 +372,9 @@ export function EntryHistoryPanel({
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
+  const [invoiceChip, setInvoiceChip] = useState<InvoiceChip>('all');
+  const { isOnline } = useNetwork();
+  const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnFiltersOverride, setColumnFiltersOverride] =
     useState<ColumnFiltersState>([]);
@@ -338,8 +451,18 @@ export function EntryHistoryPanel({
     [tenantId],
   );
 
+  const allInvoices = useLiveQuery(
+    () => localDb.invoices.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
   const entries = useMemo(() => {
-    if (!allEntries || !allPaymentTransactions) return undefined;
+    if (!allEntries || !allPaymentTransactions || !allInvoices) {
+      return undefined;
+    }
+    const invoiceByEntryId = new Map(
+      allInvoices.map((invoice) => [invoice.entryId, invoice]),
+    );
 
     const paymentsByEntryId = new Map<string, LocalPaymentTransaction[]>();
     allPaymentTransactions
@@ -364,10 +487,40 @@ export function EntryHistoryPanel({
     }
 
     return filtered
-      .map<EntryHistoryRow>((entry) => ({
-        ...entry,
-        paymentLines: paymentsByEntryId.get(entry.id) ?? [],
-      }))
+      .map<EntryHistoryRow>((entry) => {
+        const paymentLines = paymentsByEntryId.get(entry.id) ?? [];
+        const paidTotal =
+          paymentLines.length > 0
+            ? paymentLines.reduce((total, line) => total + line.amount, 0)
+            : entry.amountPaid != null
+              ? parseFloat(entry.amountPaid)
+              : null;
+        const invoice = invoiceByEntryId.get(entry.id) ?? null;
+        const invoiceState = resolveInvoiceState(
+          {
+            leftAt: entry.leftAt,
+            paidTotal,
+            manuallyInvoiced: entry.manuallyInvoiced,
+          },
+          invoice ?? undefined,
+        );
+        // Letra y receptor sólo de un comprobante real o por emitir.
+        const countsAsVoucher =
+          invoiceState !== 'none' &&
+          invoiceState !== 'na' &&
+          invoiceState !== 'manual';
+        return {
+          ...entry,
+          paymentLines,
+          paidTotal,
+          invoice,
+          invoiceState,
+          invoiceLetterValue: countsAsVoucher
+            ? invoiceLetter(invoice?.cbteTipo)
+            : '',
+          invoiceReceiver: countsAsVoucher ? receiverLabel(invoice) : '',
+        };
+      })
       .sort(
         (a, b) =>
           new Date(b.leftAt ?? b.enteredAt).getTime() -
@@ -376,10 +529,22 @@ export function EntryHistoryPanel({
   }, [
     allEntries,
     allPaymentTransactions,
+    allInvoices,
     includeInLot,
     onlyCurrentSession,
     activeCashSession,
   ]);
+
+  const chipCounts = useMemo(() => countInvoiceChips(entries ?? []), [entries]);
+  const visibleEntries = useMemo(
+    () =>
+      invoiceChip === 'all'
+        ? entries
+        : entries?.filter((row) =>
+            matchesInvoiceChip(row.invoiceState, invoiceChip),
+          ),
+    [entries, invoiceChip],
+  );
 
   const paymentMethodFilterOptions = useMemo<DataTableFilterOption[]>(() => {
     if (!allPaymentTransactions) return [];
@@ -461,9 +626,9 @@ export function EntryHistoryPanel({
   return (
     <>
       <DataTable
-        data={entries ?? []}
+        data={visibleEntries ?? []}
         columns={columns}
-        isLoading={entries === undefined}
+        isLoading={visibleEntries === undefined}
         emptyMessage="No hay movimientos registrados todavía."
         searchPlaceholder="Buscar por patente, vehículo o notas…"
         searchableKeys={SEARCHABLE_KEYS}
@@ -471,7 +636,30 @@ export function EntryHistoryPanel({
         filterOptionsByColumn={{
           amountPaid: paymentMethodFilterOptions,
           cashSessionId: cashSessionFilterOptions,
+          invoiceState: INVOICE_STATE_OPTIONS,
+          invoiceLetterValue: INVOICE_LETTER_OPTIONS,
         }}
+        initialColumnVisibility={INITIAL_COLUMN_VISIBILITY}
+        toolbarExtra={
+          <div
+            className="entry-invoice-chips"
+            role="group"
+            aria-label="Facturación"
+          >
+            {INVOICE_CHIPS.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                className="entry-invoice-chip"
+                aria-pressed={invoiceChip === chip.id}
+                onClick={() => setInvoiceChip(chip.id)}
+              >
+                {chip.label}
+                {chip.id === 'all' ? null : <b>{chipCounts[chip.id]}</b>}
+              </button>
+            ))}
+          </div>
+        }
         initialColumnFilters={initialColumnFilters}
         onColumnFiltersChange={handleColumnFiltersChange}
         columnFiltersOverride={columnFiltersOverride}
@@ -529,6 +717,7 @@ export function EntryHistoryPanel({
           parkingName={parkingName}
           parkingAddress={parkingAddress}
           parkingCuit={parkingCuit}
+          emitter={emitter}
           onClose={() => setEditingEntry(null)}
         />
       ) : null}
