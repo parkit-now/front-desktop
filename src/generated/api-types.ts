@@ -840,6 +840,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/arca/taxpayers/{cuit}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qué factura sale con este CUIT (padrón de ARCA)
+         * @description Consulta la constancia de inscripción (caché de 30 días) y devuelve la letra y la razón social, para mostrarlas antes de emitir. `identified: false` = ARCA no tiene datos: la factura va a consumidor final. 422 ARCA_CUIT_INVALID, 409 ARCA_NOT_LINKED, 503 ARCA_UNAVAILABLE, 422 ARCA_CERT_NOT_AUTHORIZED (falta asociar la constancia al certificado).
+         */
+        get: operations["InvoicesController_taxpayer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/audit": {
         parameters: {
             query?: never;
@@ -1023,7 +1043,7 @@ export interface paths {
         put?: never;
         /**
          * Emitir (o reintentar) la factura de una estadía cobrada
-         * @description Emite a consumidor final, o Factura A con `receiverCuit` si el emisor es Responsable Inscripto. Los problemas de ARCA (caído, rechazo, certificado vencido, receptor que no puede recibir A) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
+         * @description Emite a consumidor final o, con `receiverCuit`, identificada con ese CUIT: la letra la decide el padrón (A si el emisor es RI y el receptor RI o monotributista). Los problemas de ARCA (caído, rechazo, certificado vencido, CUIT sin datos en el padrón) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
          */
         post: operations["InvoicesController_issue"];
         delete?: never;
@@ -1060,6 +1080,23 @@ export interface paths {
         put?: never;
         /** Register a vehicle entry from an LPR detection event */
         post: operations["EntriesController_createFromLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoice-receivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** CUIT ya facturados en la playa (sugerencias del cobro) */
+        get: operations["InvoicesController_receivers"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2368,7 +2405,7 @@ export interface components {
             /** @example Cochera 3 */
             cochera?: string;
             /**
-             * @description CUIT del cliente para emitir Factura A (emisor Responsable Inscripto). Con o sin guiones. Un CUIT inválido no hace fallar el cierre: la factura queda pendiente con ARCA_CUIT_INVALID.
+             * @description CUIT del cliente para identificarlo en la factura, con o sin guiones. La letra la decide el padrón (A sólo si el emisor es RI y el receptor RI o monotributista). Un CUIT inválido no hace fallar el cierre: la factura queda pendiente con ARCA_CUIT_INVALID.
              * @example 30-71234567-1
              */
             invoiceReceiverCuit?: string;
@@ -2525,7 +2562,7 @@ export interface components {
              */
             cuit: string;
             /**
-             * @description Número de inscripción en Ingresos Brutos, o la condición si no está inscripto («Exento», «No contribuyente»). Va impreso en la factura (RG 1415, Anexo II).
+             * @description Número de inscripción en Ingresos Brutos, o «No contribuyente» si la actividad no está alcanzada (RG 1415, Anexo II). Va impreso en la factura. «Exento» no reemplaza al número: un exento está inscripto.
              * @example 901-123456-7
              */
             iibb: string;
@@ -3220,6 +3257,15 @@ export interface components {
             updatedAt: string;
             version: number;
         };
+        InvoiceReceiverDto: {
+            condicionIvaReceptorId: number | null;
+            /** @example 30712345671 */
+            cuit: string;
+            /** Format: date-time */
+            lastUsedAt: string;
+            /** @example EMPRESA SA */
+            razonSocial: string | null;
+        };
         /** @enum {string} */
         InvoiceStatus: "not_required" | "pending" | "issuing" | "issued" | "error";
         InvoiceSummaryDto: {
@@ -3250,7 +3296,7 @@ export interface components {
         };
         IssueInvoiceDto: {
             /**
-             * @description CUIT del cliente para emitir Factura A (emisor Responsable Inscripto), con o sin guiones. Sin él se emite a consumidor final.
+             * @description CUIT del cliente, con o sin guiones. La letra la decide el padrón: A si el emisor es RI y el receptor RI o monotributista; si no, B o C identificada con el CUIT. Sin él se emite a consumidor final.
              * @example 30-71234567-1
              */
             receiverCuit?: string;
@@ -4432,6 +4478,28 @@ export interface components {
             /** @description Same weekday one week back, truncated to the same elapsed offset. Weekday-aligned because parking demand swings hard between weekdays and weekends. */
             previousWeek: components["schemas"]["DayComparisonDto"];
         };
+        TaxpayerDto: {
+            /** @description Homologación: ARCA no tiene datos de prueba de este CUIT y se tomó como Responsable Inscripto para poder probar la Factura A. */
+            assumed: boolean;
+            /** @example IVA Responsable Inscripto */
+            condicionIva: string | null;
+            /** @description `CondicionIVAReceptorId` de ARCA. `null` si no se identifica. */
+            condicionIvaReceptorId: number | null;
+            /**
+             * @description Sólo dígitos.
+             * @example 30712345671
+             */
+            cuit: string;
+            /** @description Si la factura sale identificada con este CUIT. `false` = ARCA no tiene datos del CUIT (producción): la factura va a consumidor final. */
+            identified: boolean;
+            /**
+             * @description La letra que sale: A si el emisor es RI y el receptor RI o monotributista; C siempre para un emisor monotributista o exento.
+             * @enum {string}
+             */
+            letter: "A" | "B" | "C";
+            /** @example EMPRESA SA */
+            razonSocial: string | null;
+        };
         TicketTemplateDto: {
             /**
              * @description Optional CUIT override printed on the ticket.
@@ -4600,7 +4668,7 @@ export interface components {
             /** @description Sólo homologación (`fiscalDataEditable`). */
             domicilioFiscal?: string;
             /**
-             * @description Número de inscripción en Ingresos Brutos, o la condición si no está inscripto («Exento», «No contribuyente»). Va impreso en la factura (RG 1415, Anexo II).
+             * @description Número de inscripción en Ingresos Brutos, o «No contribuyente» si la actividad no está alcanzada (RG 1415, Anexo II). Va impreso en la factura. «Exento» no reemplaza al número: un exento está inscripto.
              * @example 901-123456-7
              */
             iibb?: string;
@@ -7614,6 +7682,30 @@ export interface operations {
             };
         };
     };
+    InvoicesController_taxpayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Con o sin guiones */
+                cuit: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxpayerDto"];
+                };
+            };
+        };
+    };
     entitiesListAudit: {
         parameters: {
             query?: {
@@ -8030,6 +8122,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_receivers: {
+        parameters: {
+            query?: {
+                limit?: components["schemas"]["Object"];
+                /** @description Con dígitos busca por el principio del CUIT; con letras, dentro de la razón social. Vacío: los más recientes. */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceReceiverDto"][];
                 };
             };
         };

@@ -5366,6 +5366,13 @@ h2 {
   margin-top: 2px;
 }
 
+/* Lo que dijo el padrón del CUIT: qué letra sale y a quién. */
+.exit-invoice-lookup {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .exit-invoice-segments {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6096,6 +6103,16 @@ h2 {
 
 .entry-invoice-error p {
   margin: 0;
+}
+
+/* «Emitir factura» en el historial: receptor arriba, botones abajo. */
+.entry-invoice-issue {
+  display: grid;
+  gap: 10px;
+}
+
+.entry-invoice-issue .entry-invoice-actions {
+  justify-content: flex-end;
 }
 
 .entry-invoice-actions {

@@ -186,9 +186,11 @@ const CODE_MESSAGES: Record<string, string> = {
   INVOICE_NOT_INVOICEABLE:
     'Esta estadía no se puede facturar: sigue abierta o se cobró $0.',
   INVOICE_RECEIVER_NOT_FOUND:
-    'ARCA no tiene datos de ese CUIT. Revisalo o emití la factura como B.',
+    'ARCA no tiene datos de ese CUIT. Revisalo o emití la factura a consumidor final.',
+  // Ya no lo emite el backend (desde la Etapa 5 un CUIT sin A sale B
+  // identificada); queda para las facturas viejas que lo tienen guardado.
   INVOICE_RECEIVER_NOT_A:
-    'Ese CUIT no puede recibir Factura A (no es Responsable Inscripto ni Monotributista). Emitila como B.',
+    'Ese CUIT no puede recibir Factura A (no es Responsable Inscripto ni Monotributista). Emitila de nuevo.',
   INVOICE_NOT_ISSUED: 'La factura todavía no se emitió: no tiene PDF.',
   INVOICE_PDF_FAILED: 'No se pudo generar el PDF. Probá de nuevo en un rato.',
   ARCA_FISCAL_DATA_INCOMPLETE:

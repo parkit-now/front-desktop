@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { InvoiceSummaryDto } from '../../lib/api/entries';
 import {
-  canChooseInvoiceA,
   canIssueAfterCharge,
+  consumerFinalLetter,
+  describeTaxpayerLookup,
+  expectedLetter,
+  isReceiverReady,
+  receiverCuitToSend,
   describeInvoiceResult,
   describeIssueConfirmation,
   formatVoucherNumber,
@@ -148,10 +152,10 @@ describe('invoiceUtils', () => {
     expect(receiverCuitError('30-71234567-0')).toBe('El CUIT no es válido.');
   });
 
-  it('sólo un Responsable Inscripto elige entre A y B', () => {
-    expect(canChooseInvoiceA('responsable_inscripto')).toBe(true);
-    expect(canChooseInvoiceA('monotributo')).toBe(false);
-    expect(canChooseInvoiceA(null)).toBe(false);
+  it('a consumidor final: B si la playa es RI, C si no', () => {
+    expect(consumerFinalLetter('responsable_inscripto')).toBe('B');
+    expect(consumerFinalLetter('monotributo')).toBe('C');
+    expect(consumerFinalLetter(null)).toBe('C');
   });
 
   it('«Emitir factura» después del cobro: pendiente o con error, no emitida ni sin factura', () => {
@@ -181,6 +185,194 @@ describe('invoiceUtils', () => {
       describeIssueConfirmation({ letter: 'B', cuit: null, amount: '$ 10,00' })
         .message,
     ).toMatch(/^Se emite a consumidor final por \$ 10,00\./);
+  });
+
+  it('confirmación con razón social y sin letra conocida', () => {
+    expect(
+      describeIssueConfirmation({
+        letter: null,
+        cuit: '30712345671',
+        receiverName: 'EMPRESA SA',
+        amount: '$ 10,00',
+      }),
+    ).toEqual({
+      title: '¿Emitir la factura?',
+      message:
+        'Se emite a EMPRESA SA (CUIT 30-71234567-1) por $ 10,00. Una factura emitida no se puede anular desde Parkit.',
+      confirmLabel: 'Emitir',
+    });
+  });
+
+  it('la emitida con CUIT dice a quién, en cualquier letra', () => {
+    expect(
+      describeInvoiceResult({
+        invoice: {
+          ...base,
+          cbteTipo: 6,
+          receptorNombre: 'FUNDACION',
+        },
+        offline: false,
+        lineModes: [],
+      })?.detail,
+    ).toBe('a FUNDACION');
+    expect(
+      describeInvoiceResult({
+        invoice: { ...base, receptorNombre: 'Consumidor Final' },
+        offline: false,
+        lineModes: [],
+      })?.detail,
+    ).toBeUndefined();
+  });
+});
+
+describe('receptor con CUIT (padrón)', () => {
+  const taxpayer = {
+    cuit: '30712345671',
+    identified: true,
+    letter: 'A' as const,
+    razonSocial: 'EMPRESA SA',
+    condicionIvaReceptorId: 1,
+    condicionIva: 'IVA Responsable Inscripto',
+    assumed: false,
+  };
+  const done = { status: 'done' as const, taxpayer };
+
+  it('manda el CUIT sólo si es válido y el padrón no dijo que no existe', () => {
+    const cuit = '30-71234567-1';
+    expect(receiverCuitToSend({ choice: 'final', cuit, lookup: done })).toBe(
+      undefined,
+    );
+    expect(receiverCuitToSend({ choice: 'cuit', cuit, lookup: done })).toBe(
+      '30712345671',
+    );
+    expect(
+      receiverCuitToSend({
+        choice: 'cuit',
+        cuit,
+        lookup: {
+          status: 'done',
+          taxpayer: { ...taxpayer, identified: false },
+        },
+      }),
+    ).toBeUndefined();
+    // ARCA caída: se manda igual, el backend vuelve a consultar al emitir.
+    expect(
+      receiverCuitToSend({
+        choice: 'cuit',
+        cuit,
+        lookup: { status: 'error', message: 'x' },
+      }),
+    ).toBe('30712345671');
+    expect(
+      receiverCuitToSend({ choice: 'cuit', cuit: '30712345670', lookup: done }),
+    ).toBeUndefined();
+  });
+
+  it('con CUIT se confirma recién cuando el padrón contestó', () => {
+    const cuit = '30712345671';
+    expect(
+      isReceiverReady({
+        choice: 'final',
+        cuit: '',
+        lookup: { status: 'idle' },
+      }),
+    ).toBe(true);
+    expect(
+      isReceiverReady({ choice: 'cuit', cuit, lookup: { status: 'loading' } }),
+    ).toBe(false);
+    expect(isReceiverReady({ choice: 'cuit', cuit, lookup: done })).toBe(true);
+    expect(
+      isReceiverReady({
+        choice: 'cuit',
+        cuit,
+        lookup: { status: 'error', message: 'x' },
+      }),
+    ).toBe(true);
+    expect(
+      isReceiverReady({ choice: 'cuit', cuit: '3071', lookup: done }),
+    ).toBe(false);
+  });
+
+  it('la letra esperada: la de consumidor final, la del padrón o todavía no', () => {
+    expect(
+      expectedLetter({
+        emitter: 'responsable_inscripto',
+        choice: 'final',
+        lookup: done,
+      }),
+    ).toBe('B');
+    expect(
+      expectedLetter({
+        emitter: 'responsable_inscripto',
+        choice: 'cuit',
+        lookup: done,
+      }),
+    ).toBe('A');
+    expect(
+      expectedLetter({
+        emitter: 'responsable_inscripto',
+        choice: 'cuit',
+        lookup: { status: 'loading' },
+      }),
+    ).toBeNull();
+    expect(
+      expectedLetter({
+        emitter: 'monotributo',
+        choice: 'cuit',
+        lookup: { status: 'loading' },
+      }),
+    ).toBe('C');
+  });
+
+  it('describe lo que dijo el padrón', () => {
+    expect(describeTaxpayerLookup({ status: 'idle' })).toBeNull();
+    expect(describeTaxpayerLookup(done)).toEqual({
+      tone: 'success',
+      text: 'Factura A · EMPRESA SA',
+      detail: 'IVA Responsable Inscripto',
+    });
+    expect(
+      describeTaxpayerLookup({
+        status: 'done',
+        taxpayer: {
+          ...taxpayer,
+          letter: 'B',
+          razonSocial: 'FUNDACION',
+          condicionIvaReceptorId: 4,
+          condicionIva: 'IVA Sujeto Exento',
+        },
+      }),
+    ).toEqual({
+      tone: 'info',
+      text: 'Factura B · FUNDACION',
+      detail: 'IVA Sujeto Exento: no recibe Factura A.',
+    });
+    expect(
+      describeTaxpayerLookup({
+        status: 'done',
+        taxpayer: {
+          ...taxpayer,
+          identified: false,
+          letter: 'B',
+          razonSocial: null,
+          condicionIvaReceptorId: null,
+          condicionIva: null,
+        },
+      }),
+    ).toEqual({
+      tone: 'warning',
+      text: 'ARCA no tiene datos de ese CUIT.',
+      detail: 'Se emite Factura B a consumidor final.',
+    });
+    expect(
+      describeTaxpayerLookup({
+        status: 'done',
+        taxpayer: { ...taxpayer, razonSocial: null, assumed: true },
+      }),
+    ).toMatchObject({
+      tone: 'info',
+      text: 'Factura A · CUIT 30-71234567-1',
+    });
   });
 });
 
