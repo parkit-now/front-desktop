@@ -45,7 +45,7 @@ from fastapi.responses import Response, StreamingResponse
 
 import lpr_client
 from capture import CameraCapture, redact_source
-from motion import MotionDetector
+from motion import MotionDetector, roi_crop
 from storage import LocalStorage
 from watchdog import CameraWatchdog
 
@@ -143,6 +143,10 @@ _storage:      LocalStorage   | None = None
 _watchdog:     CameraWatchdog | None = None
 _motion:       MotionDetector | None = None
 _lpr_executor: ThreadPoolExecutor | None = None
+
+# Ya se avisó que esta cámara corre sin zona de detección. Se rearma al cambiar
+# el ROI desde la config, para que el aviso vuelva si lo borran.
+_warned_no_roi = False
 _server:       uvicorn.Server | None = None
 _shutting_down = False
 
@@ -469,6 +473,52 @@ async def _process_loop() -> None:
             if _shutting_down or not triggered or lpr_busy:
                 continue
 
+            # EL ROI SE APLICA ACÁ, NO SOLO AL MOVIMIENTO.
+            #
+            # El detector es `yolo-v9-t-384`: reescala a 384x384 lo que sea que
+            # reciba. Mandarle el cuadro completo de una cámara de 2560x1440
+            # significa achicar 6,7 veces, y una patente de 320 px llega al
+            # modelo con 48 px: no la ve. Medido sobre un frame real de la
+            # Hikvision, con la patente nítida y centrada:
+            #
+            #     frame completo 2560x1440  -> SIN DETECCION
+            #     reescalado a 1280x720     -> SIN DETECCION   (no es el tamaño
+            #     reescalado a 640x360      -> SIN DETECCION    del JPEG, es la
+            #     recorte al ROI 1131x762   -> 'GIL 322' 0.945  proporción)
+            #
+            # Reescalar antes no arregla nada, porque lo que decide es qué
+            # FRACCIÓN del cuadro ocupa la patente, y eso no cambia al achicar.
+            # Lo único que la agranda es recortar.
+            #
+            # Así se veía el síntoma: no fallaba del todo, "tardaba". Detectaba
+            # sólo cuando el auto ya estaba encima y la patente era enorme, y
+            # mientras tanto el log mostraba scans saliendo con 404 (que en el
+            # LPR es "no hay patente", no un error).
+            #
+            # El recorte reemplaza al snapshot y no se queda sólo para la
+            # inferencia, a propósito: el `bbox` que vuelve del LPR está en
+            # coordenadas de la imagen que se mandó, y esa misma imagen es la
+            # que se guarda como evidencia y sobre la que `_crop_to_plate`
+            # dibuja el recuadro. Si se mandara el recorte y se guardara el
+            # cuadro completo, el recuadro quedaría corrido.
+            #
+            # Sin ROI configurado esto no hace nada (`roi_crop` devuelve el
+            # frame tal cual), que es el comportamiento de siempre.
+            snapshot = roi_crop(snapshot, ROI)
+
+            # Y si no hay ROI y la cámara es de alta resolución, avisar UNA vez:
+            # es exactamente la instalación donde esto falla en silencio, porque
+            # el servicio se ve perfecto —video fluido, scans saliendo— y lo
+            # único que pasa es que casi nunca detecta.
+            if ROI is None and snapshot.shape[1] >= 1600 and not _warned_no_roi:
+                globals()["_warned_no_roi"] = True
+                logger.warning(
+                    "sin zona de detección con una cámara de %dx%d: la patente le "
+                    "llega al modelo demasiado chica y se van a perder detecciones. "
+                    "Marcá la zona en Configurar cámara.",
+                    snapshot.shape[1], snapshot.shape[0],
+                )
+
             # Reset fallback clock on every actual LPR call (motion or fallback).
             last_fallback = time.monotonic()
             lpr_calls += 1
@@ -781,6 +831,7 @@ def set_config(payload: dict):
         g[_GLOBAL_BY_KEY[key]] = value
     if roi_given:
         g["ROI"] = roi
+        g["_warned_no_roi"] = False
 
     # STREAM_FPS nunca puede superar el FPS de captura: pedir más cuadros de los
     # que entran solo hace que el generador duerma de más.
