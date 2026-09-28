@@ -1704,6 +1704,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/rates/open-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cuántos autos hay adentro con cada tarifa
+         * @description Para decidir si preguntar al dueño si un cambio de precios alcanza a los autos que ya están en el estacionamiento.
+         */
+        get: operations["RatesController_openEntriesByRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/schedules": {
         parameters: {
             query?: never;
@@ -3693,6 +3713,17 @@ export interface components {
              */
             tenantId: string | null;
         };
+        OpenEntriesByRateDto: {
+            counts: components["schemas"]["OpenEntriesForRateDto"][];
+            /** @description Autos adentro SIN tarifa asignada — los que creó la cámara. No los alcanza ninguna propagación porque no tienen precio congelado. */
+            withoutRate: number;
+        };
+        OpenEntriesForRateDto: {
+            /** @description Autos adentro con esta tarifa. */
+            openEntries: number;
+            /** Format: uuid */
+            rateId: string;
+        };
         PaginatedAuditDto: {
             /** @description Events on this page, most recent first. */
             items: components["schemas"]["AuditEventDto"][];
@@ -4006,6 +4037,11 @@ export interface components {
              * @description Creation timestamp.
              */
             createdAt: string;
+            /**
+             * Format: date-time
+             * @description Baja lógica. No nulo = este medio se borró; el feed de cambios lo manda igual para que los equipos offline se enteren y lo saquen de su copia local.
+             */
+            deletedAt?: string | null;
             /**
              * @description Whether the method is currently enabled for the entity.
              * @example true
@@ -4910,6 +4946,11 @@ export interface components {
             status: "active" | "maintenance";
         };
         UpdateRateDto: {
+            /**
+             * @description Si los autos que están adentro con esta tarifa pasan a los precios nuevos. Ausente o false = se quedan con el precio que tenían al entrar, que es el comportamiento histórico. Sólo aplica si el body trae algún precio: mandarlo con un cambio de nombre no hace nada.
+             * @example false
+             */
+            applyToOpenEntries?: boolean;
             /**
              * @description Si la fracción se deriva de hora / 12 en el formulario. Preferencia de UI: el valor derivado se guarda igual en fractionPriceArs.
              * @example false
@@ -7718,7 +7759,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
@@ -9670,6 +9711,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateChangesResponseDto"];
+                };
+            };
+        };
+    };
+    RatesController_openEntriesByRate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenEntriesByRateDto"];
                 };
             };
         };

@@ -6524,3 +6524,35 @@ h2 {
     overflow-x: auto;
   }
 }
+
+/* ── Pregunta al cambiar precios con autos adentro ───────────────────────── */
+
+.rate-propagation-diff {
+  list-style: none;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.rate-propagation-diff li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rate-propagation-offline {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.rate-propagation-note {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.75;
+}
