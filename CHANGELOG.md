@@ -1,3 +1,30 @@
+# [1.5.0](https://github.com/parkit-now/front-desktop/compare/v1.4.0...v1.5.0) (2026-09-28)
+
+
+### Bug Fixes
+
+* **entries:** en efectivo no se confirma el cobro sin el monto recibido completo ([0d53033](https://github.com/parkit-now/front-desktop/commit/0d53033315d7e43e1473f66235595fd02cda1f43))
+* **entries:** medios de pago en orden alfabético al cobrar ([8768692](https://github.com/parkit-now/front-desktop/commit/8768692c630359c50a4ec86f7ed50f1d892354fd))
+* **entries:** mensaje corto de la factura en el resumen del egreso ([34b5b45](https://github.com/parkit-now/front-desktop/commit/34b5b45daf2cf16c1ad34dc8723cb9eaf4a7617b))
+* **entries:** no duplicar el punto final del motivo de la factura ([1e33f43](https://github.com/parkit-now/front-desktop/commit/1e33f436d615783d65fd9f235e437c9a896a4d12))
+* **entries:** resumen del egreso parejo y confirmación antes de emitir la factura ([d3b4070](https://github.com/parkit-now/front-desktop/commit/d3b407066dae574de08602eaed9a5d229925eedb))
+
+
+### Features
+
+* **arca:** aviso de facturación pausada por certificado vencido ([f4f0296](https://github.com/parkit-now/front-desktop/commit/f4f02967771f270818a317983fcfcb8fe21b3f75))
+* botón para ver contraseña en login ([730c56c](https://github.com/parkit-now/front-desktop/commit/730c56c348c08ce29e3b7e960282ccd765972d01))
+* **cámara:** una tarjeta por auto y foto completa del vehículo ([36e1dc0](https://github.com/parkit-now/front-desktop/commit/36e1dc020ed80cf63f428f92d413d1908f4f5372))
+* **camera:** implement ROI cropping for improved detection accuracy ([17ee7dc](https://github.com/parkit-now/front-desktop/commit/17ee7dc246560d0aefbb39aeb4ac5edacf9de1f9))
+* **cobro:** factura con CUIT decidida por el padrón ([79179d4](https://github.com/parkit-now/front-desktop/commit/79179d46215d09016f488790d998b30a33f01edc))
+* **data-table:** filtro por rango numérico y columnas ocultas al inicio ([a068016](https://github.com/parkit-now/front-desktop/commit/a0680161a1838d27a7fd2a6502ed1ee41e5bf6a7))
+* **electron:** «Guardar como…» por IPC (file:saveAs) ([48d7d34](https://github.com/parkit-now/front-desktop/commit/48d7d343a29162e7e74c9ba78e9d337f0331155e))
+* **entries:** elegir factura A o B al cobrar y emitir factura después del cobro ([752b0c8](https://github.com/parkit-now/front-desktop/commit/752b0c824f60dd3804f54b7c5763c528b49d9f3e))
+* **entries:** mensaje para la factura que no sale por certificado sin autorizar ([7179610](https://github.com/parkit-now/front-desktop/commit/7179610a344267407d9325d235aae7cf9235c850))
+* **entries:** mostrar el resultado de la factura al registrar el egreso ([ea2cc7b](https://github.com/parkit-now/front-desktop/commit/ea2cc7bb5ceaaf0217c7ee9a599f5e159b9aedd0))
+* **historial:** facturación en el historial del desktop ([4f36cf4](https://github.com/parkit-now/front-desktop/commit/4f36cf46b88d750a879c5be50d77a7bade28a528))
+* **sync:** sincronizar solo y poder curar la base local ([1885868](https://github.com/parkit-now/front-desktop/commit/1885868112df4bd4139422d43aaa3dbcc490efcb))
+
 # [1.4.0](https://github.com/parkit-now/front-desktop/compare/v1.3.0...v1.4.0) (2026-09-22)
 
 
