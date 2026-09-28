@@ -6,6 +6,7 @@ export type CameraAdvancedField = {
   key: keyof DesktopCameraTuning;
   label: string;
   step: number;
+  hint: string;
   modes?: Array<DesktopCameraConfig['mode']>;
 };
 
@@ -86,4 +87,62 @@ export function advancedFieldsForMode(
   mode: DesktopCameraConfig['mode'],
 ): CameraAdvancedField[] {
   return fields.filter((field) => !field.modes || field.modes.includes(mode));
+}
+
+/**
+ * El mismo margen que usa `_coherent_cluster_timing` en el servicio de cámara
+ * (`SETTLE_MARGIN` en `services/camera/main.py`).
+ *
+ * La copia de acá es sólo para AVISARLE al operador antes de guardar; quien
+ * decide es el servicio, que clampea por su cuenta y devuelve lo aplicado. Por
+ * eso, si estos números divergieran, lo peor que pasa es un aviso equivocado:
+ * nunca se bloquea un guardado ni queda el panel mostrando algo que no es.
+ */
+export const CAMERA_CLUSTER_SETTLE_MARGIN = 0.5;
+
+export type CameraTuningValidationIssue = {
+  field: keyof DesktopCameraTuning;
+  message: string;
+};
+
+export function validateCameraTuning(
+  tuning: DesktopCameraTuning,
+): CameraTuningValidationIssue[] {
+  const issues: CameraTuningValidationIssue[] = [];
+  const minSettle = tuning.motionCooldown + CAMERA_CLUSTER_SETTLE_MARGIN;
+  if (tuning.clusterSettle < minSettle) {
+    issues.push({
+      field: 'clusterSettle',
+      message: `Quietud antes de guardar debe ser al menos ${minSettle.toLocaleString(
+        'es-AR',
+        { maximumFractionDigits: 1 },
+      )} s porque Segundos entre análisis está en ${tuning.motionCooldown.toLocaleString(
+        'es-AR',
+        { maximumFractionDigits: 1 },
+      )} s.`,
+    });
+  }
+
+  const minWindow = Math.max(
+    2 * tuning.motionCooldown + CAMERA_CLUSTER_SETTLE_MARGIN,
+    tuning.clusterSettle + tuning.motionCooldown,
+  );
+  if (tuning.clusterWindow < minWindow) {
+    issues.push({
+      field: 'clusterWindow',
+      message: `Ventana de agrupamiento debe ser al menos ${minWindow.toLocaleString(
+        'es-AR',
+        { maximumFractionDigits: 1 },
+      )} s para que entre una segunda lectura antes de cerrar el grupo.`,
+    });
+  }
+
+  if (tuning.streamFps > tuning.fps) {
+    issues.push({
+      field: 'streamFps',
+      message: 'FPS del preview no puede ser mayor que FPS de captura.',
+    });
+  }
+
+  return issues;
 }

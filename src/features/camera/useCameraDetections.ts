@@ -14,12 +14,22 @@ import type {
 import { CAMERA_BASE_URL } from '../../lib/camera/constants';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useSync } from '../../lib/sync/SyncContext';
+import { parsePlateBbox } from './plateBbox';
 
 export { CAMERA_BASE_URL };
 export const LPR_RECENT_EXIT_SUPPRESSION_MINUTES = 30;
 
-const POLL_MS = 2_000;
+const PENDING_RECONCILE_MS = 30_000;
+/**
+ * Cada cuánto se le reenvía al servicio de cámara la lista de autos adentro.
+ * Tiene que ser holgadamente menor que el vencimiento del otro lado (30 s), o
+ * la lista caduca entre envío y envío y la supresión se apaga sola.
+ */
+export const KNOWN_PLATES_PUSH_MS = 10_000;
+export const CAMERA_KNOWN_PLATES_TTL_MS = 30_000;
 const RECENT_EXIT_TICK_MS = 60_000;
+const PENDING_DUPLICATE_WINDOW_MS = 2 * 60_000;
+const BLANK_DUPLICATE_WINDOW_MS = 10_000;
 
 type SuppressionStatus = Extract<
   LprDetectionStatus,
@@ -29,6 +39,7 @@ type SuppressionStatus = Extract<
 >;
 
 type CameraEventPayload = {
+  plateBbox?: unknown;
   id?: unknown;
   eventId?: unknown;
   cameraId?: unknown;
@@ -89,6 +100,45 @@ function normalisePlate(value: string | undefined): string | undefined {
   return normalized || undefined;
 }
 
+function fuzzyPlate(value: string | undefined): string | undefined {
+  const normalized = normalisePlate(value);
+  if (!normalized) return undefined;
+  return normalized
+    .replace(/[OD]/g, '0')
+    .replace(/I/g, '1')
+    .replace(/S/g, '5')
+    .replace(/B/g, '8');
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] =
+        a[i - 1] === b[j - 1]
+          ? previous[j - 1]
+          : Math.min(previous[j - 1], previous[j], current[j - 1]) + 1;
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+function plateDistance(a: string | undefined, b: string | undefined): number {
+  const left = normalisePlate(a);
+  const right = normalisePlate(b);
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  return Math.min(
+    levenshteinDistance(left, right),
+    levenshteinDistance(fuzzyPlate(left) ?? left, fuzzyPlate(right) ?? right),
+  );
+}
+
 function isLprStatus(value: unknown): value is LprDetectionStatus {
   return (
     value === 'pending' ||
@@ -112,6 +162,66 @@ function qualityScore(event: LocalLprDetectionEvent): number {
     invalid_format: 1,
   }[event.qualityStatus];
   return rank + event.confidence;
+}
+
+function detectionSeenAt(event: LocalLprDetectionEvent): number {
+  const time = new Date(event.lastSeenAt || event.firstSeenAt).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function pendingDuplicateDistanceLimit(
+  a: LocalLprDetectionEvent,
+  b: LocalLprDetectionEvent,
+): number {
+  const shortest = Math.min(
+    a.normalizedText?.length ?? 0,
+    b.normalizedText?.length ?? 0,
+  );
+  if (shortest >= 7) return 3;
+  if (shortest === 6) return 2;
+  return 1;
+}
+
+function isBlankWeakDetection(event: LocalLprDetectionEvent): boolean {
+  return (
+    !event.normalizedText &&
+    (event.qualityStatus === 'low_confidence' ||
+      event.qualityStatus === 'invalid_format')
+  );
+}
+
+function samePendingVehicleCluster(
+  a: LocalLprDetectionEvent,
+  b: LocalLprDetectionEvent,
+): boolean {
+  if (a.id === b.id) return true;
+  if (a.cameraId !== b.cameraId || a.location !== b.location) return false;
+
+  const elapsed = Math.abs(detectionSeenAt(a) - detectionSeenAt(b));
+  if (elapsed > PENDING_DUPLICATE_WINDOW_MS) return false;
+
+  const distance = plateDistance(a.normalizedText, b.normalizedText);
+  if (
+    Number.isFinite(distance) &&
+    distance <= pendingDuplicateDistanceLimit(a, b)
+  ) {
+    return true;
+  }
+
+  return (
+    elapsed <= BLANK_DUPLICATE_WINDOW_MS &&
+    isBlankWeakDetection(a) &&
+    isBlankWeakDetection(b)
+  );
+}
+
+function parseCameraEventMessage(data: string): CameraEventPayload | null {
+  try {
+    const parsed = JSON.parse(data) as unknown;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function toLocalEvent(
@@ -187,6 +297,7 @@ function toLocalEvent(
     candidates: Array.isArray(payload.candidates)
       ? payload.candidates
       : (existing?.candidates ?? []),
+    plateBbox: parsePlateBbox(payload.plateBbox) ?? existing?.plateBbox,
     version: asNumber(payload.version, existing?.version ?? 1),
     syncSeq: asNumber(payload.syncSeq, existing?.syncSeq ?? 0),
     createdAt: asString(payload.createdAt) ?? existing?.createdAt ?? now,
@@ -219,6 +330,9 @@ function toUpsertPayload(
     // path the retention job had already purged from Storage.
     bestCaptureId: event.bestCaptureId,
     candidates: event.candidates as UpsertLprDetectionEventDto['candidates'],
+    // Esto SÍ se manda, a diferencia de los campos de imagen de arriba: el
+    // backend no tiene forma de derivarlo, sólo lo sabe el equipo que capturó.
+    plateBbox: event.plateBbox,
   };
 }
 
@@ -387,6 +501,24 @@ async function storeCameraEvent(
   const event = toLocalEvent(tenantId, payload, existing);
   if (!event) return;
 
+  // El servicio sigue creyendo que esta detección está pendiente, pero acá ya
+  // se resolvió. Reenviarle el aviso que se perdió.
+  //
+  // POR QUÉ HACE FALTA RECONCILIAR Y NO ALCANZA CON AVISAR UNA VEZ
+  //
+  // `patchCameraEvent` es best-effort: si el servicio está reiniciándose
+  // cuando el operador descarta una tarjeta, el aviso se pierde y NADA lo
+  // reintenta. Esa fila se queda `pending` para siempre en su base.
+  //
+  // Eso derivó en 69 filas zombi, algunas de un mes atrás, y mientras el
+  // servicio usó su propia base para decidir si ya tenía una tarjeta de esa
+  // patente, una sola de esas filas dejaba al auto sin poder detectarse nunca
+  // más. Ya no la usa para eso, pero la deriva se arregla igual acá: cada
+  // poll es una oportunidad de volver a intentarlo, así que se cura sola.
+  if (shouldResendResolution(existing, payload.status)) {
+    void patchCameraEvent(id, existing!.status, existing!.entryId);
+  }
+
   await localDb.transaction(
     'rw',
     localDb.lprDetectionEvents,
@@ -400,17 +532,71 @@ async function storeCameraEvent(
   );
 }
 
+function betterPendingKeeper(
+  a: LocalLprDetectionEvent,
+  b: LocalLprDetectionEvent,
+): LocalLprDetectionEvent {
+  const scoreDiff = qualityScore(a) - qualityScore(b);
+  if (scoreDiff !== 0) return scoreDiff > 0 ? a : b;
+
+  const lengthDiff =
+    (a.normalizedText?.length ?? 0) - (b.normalizedText?.length ?? 0);
+  if (lengthDiff !== 0) return lengthDiff > 0 ? a : b;
+
+  return detectionSeenAt(a) >= detectionSeenAt(b) ? a : b;
+}
+
 function keeperByPlate(events: LocalLprDetectionEvent[]): Map<string, string> {
-  const keepers = new Map<string, LocalLprDetectionEvent>();
-  for (const event of events) {
-    if (!event.normalizedText) continue;
-    const key = event.normalizedText;
-    const current = keepers.get(key);
-    if (!current || qualityScore(event) > qualityScore(current)) {
-      keepers.set(key, event);
+  const clusters: LocalLprDetectionEvent[][] = [];
+  const sorted = [...events].sort(
+    (a, b) => detectionSeenAt(a) - detectionSeenAt(b),
+  );
+
+  let previousEvent: LocalLprDetectionEvent | undefined;
+  for (const event of sorted) {
+    if (isBlankWeakDetection(event)) {
+      const previous = previousEvent;
+      const previousClusterIndex = previous
+        ? clusters.findIndex((cluster) => cluster.includes(previous))
+        : -1;
+      if (
+        previous &&
+        previousClusterIndex >= 0 &&
+        isBlankWeakDetection(previous) &&
+        samePendingVehicleCluster(previous, event)
+      ) {
+        clusters[previousClusterIndex].push(event);
+      } else {
+        clusters.push([event]);
+      }
+      previousEvent = event;
+      continue;
     }
+
+    const matchingIndexes = clusters
+      .map((cluster, index) =>
+        cluster.some((candidate) => samePendingVehicleCluster(candidate, event))
+          ? index
+          : -1,
+      )
+      .filter((index) => index >= 0);
+
+    if (matchingIndexes.length !== 1) {
+      clusters.push([event]);
+      previousEvent = event;
+      continue;
+    }
+
+    clusters[matchingIndexes[0]].push(event);
+    previousEvent = event;
   }
-  return new Map([...keepers].map(([plate, event]) => [plate, event.id]));
+
+  const keepers = new Map<string, string>();
+  for (const cluster of clusters) {
+    const keeper = cluster.reduce(betterPendingKeeper);
+    for (const event of cluster) keepers.set(event.id, keeper.id);
+  }
+  return keepers;
 }
 
 function suppressionReason(
@@ -420,17 +606,78 @@ function suppressionReason(
   recentExitPlates: Set<string>,
 ): SuppressionStatus | null {
   const plate = event.normalizedText;
-  if (!plate) return null;
-  if (activePlates.has(plate)) return 'suppressed_active_entry';
-  if (keepers.get(plate) !== event.id) return 'suppressed_pending_event';
-  if (recentExitPlates.has(plate)) return 'suppressed_recent_exit';
+  if (plate && activePlates.has(plate)) return 'suppressed_active_entry';
+  if (keepers.has(event.id) && keepers.get(event.id) !== event.id) {
+    return 'suppressed_pending_event';
+  }
+  if (plate && recentExitPlates.has(plate)) return 'suppressed_recent_exit';
   return null;
+}
+
+/**
+ * Si hay que reenviarle al servicio de cámara una resolución que se perdió.
+ *
+ * `patchCameraEvent` es best-effort: si el servicio estaba reiniciándose
+ * cuando el operador descartó la tarjeta, el aviso se perdió y nada lo
+ * reintenta. Cada poll es una oportunidad de darse cuenta y reintentarlo.
+ */
+export function shouldResendResolution(
+  existing: LocalLprDetectionEvent | undefined,
+  incomingStatus: unknown,
+): boolean {
+  return Boolean(
+    existing && isResolved(existing.status) && incomingStatus === 'pending',
+  );
+}
+
+/**
+ * Las patentes de las que NO queremos otra tarjeta: las que ya están adentro
+ * y las que ya tienen una tarjeta abierta esperando al operador.
+ */
+export function platesToSuppress(
+  activePlates: Set<string>,
+  pendingEvents: LocalLprDetectionEvent[],
+): string[] {
+  const plates = new Set<string>();
+  for (const plate of activePlates) {
+    const normalized = normalisePlate(plate);
+    if (normalized) plates.add(normalized);
+  }
+  for (const event of pendingEvents) {
+    if (event.status !== 'pending') continue;
+    const normalized = normalisePlate(
+      event.normalizedText ?? event.displayPlate ?? event.rawText,
+    );
+    if (normalized) plates.add(normalized);
+  }
+  return Array.from(plates).sort();
+}
+
+export async function pushKnownPlatesSnapshot(
+  activePlates: Set<string>,
+  pendingEvents: LocalLprDetectionEvent[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const plates = platesToSuppress(activePlates, pendingEvents);
+  await fetchImpl(`${CAMERA_BASE_URL}/known-plates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plates }),
+  });
 }
 
 export const cameraDetectionTestUtils = {
   keeperByPlate,
   normalisePlate,
+  parseCameraEventMessage,
+  plateDistance,
+  CAMERA_KNOWN_PLATES_TTL_MS,
+  KNOWN_PLATES_PUSH_MS,
+  platesToSuppress,
+  pushKnownPlatesSnapshot,
   qualityScore,
+  samePendingVehicleCluster,
+  shouldResendResolution,
   suppressionReason,
 };
 
@@ -452,7 +699,8 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     if (!tenantId) return;
     const currentTenantId = tenantId;
     let cancelled = false;
-    async function poll() {
+
+    async function reconcilePending() {
       try {
         const res = await fetch(`${CAMERA_BASE_URL}/detections/pending`);
         if (!res.ok) return;
@@ -465,11 +713,32 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
         // Service unreachable — keep showing the local Dexie state.
       }
     }
-    void poll();
-    const id = setInterval(() => void poll(), POLL_MS);
+
+    function handleDetectionMessage(message: MessageEvent<string>) {
+      const event = parseCameraEventMessage(message.data);
+      if (event) void storeCameraEvent(currentTenantId, event);
+    }
+
+    void reconcilePending();
+    const reconcileId = setInterval(
+      () => void reconcilePending(),
+      PENDING_RECONCILE_MS,
+    );
+
+    const source =
+      typeof EventSource === 'undefined'
+        ? null
+        : new EventSource(`${CAMERA_BASE_URL}/detections/events`);
+    source?.addEventListener('detection', handleDetectionMessage);
+    source?.addEventListener('error', () => {
+      // Normal in Windows/exe startup or when the local service restarts.
+      // EventSource reconnects by itself; pending reconciliation is the fallback.
+    });
+
     return () => {
       cancelled = true;
-      clearInterval(id);
+      clearInterval(reconcileId);
+      source?.close();
     };
   }, [tenantId]);
 
@@ -509,6 +778,55 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     () => keeperByPlate(pendingEvents ?? []),
     [pendingEvents],
   );
+
+  /**
+   * Avisarle al servicio de cámara de qué patentes NO queremos otra tarjeta.
+   *
+   * Son dos conjuntos: los autos que ya están adentro, y las patentes que ya
+   * tienen una tarjeta abierta esperando al operador. Sin esto, un auto
+   * estacionado frente a la cámara genera una imagen en disco y una subida al
+   * bucket cada vez que algo se mueve en cuadro, aunque ya esté registrado o
+   * ya tenga su tarjeta. La supresión de más abajo lo tapa en pantalla, pero
+   * actúa DESPUÉS: para cuando llega acá, el gasto ya se hizo.
+   *
+   * ESTA LISTA ES LA AUTORIDAD, Y TIENE QUE SALIR DE ACÁ
+   *
+   * El servicio llegó a resolverlo solo, mirando los eventos `pending` de su
+   * propia base. Derivaba: cuando el operador descarta una tarjeta, el aviso
+   * que le mandamos es best-effort, y si el servicio está reiniciándose se
+   * pierde sin que nadie lo reintente. Esas filas quedaban `pending` para
+   * siempre y dejaban a esa patente ciega — pasó con un `AB123CD` de hacía un
+   * mes, con el servicio aparentemente sano.
+   *
+   * Desde acá no puede derivar: es la misma fuente que le muestra las
+   * tarjetas al operador. Y la lista VENCE a los 30 s del otro lado, así que
+   * hay que reenviarla aunque no cambie: si esto deja de correr, el servicio
+   * vuelve a guardar de más, que es el error seguro.
+   */
+  useEffect(() => {
+    if (!tenantId || !activePlates || !pendingEvents) return;
+    const currentActivePlates = activePlates;
+    const currentPendingEvents = pendingEvents;
+    let cancelled = false;
+    async function push() {
+      try {
+        await pushKnownPlatesSnapshot(
+          currentActivePlates,
+          currentPendingEvents,
+        );
+      } catch {
+        // El servicio de cámara puede no estar levantado. No es un error.
+      }
+    }
+    void push();
+    const id = setInterval(() => {
+      if (!cancelled) void push();
+    }, KNOWN_PLATES_PUSH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [tenantId, activePlates, pendingEvents]);
 
   useEffect(() => {
     if (!tenantId || !pendingEvents || !activePlates || !recentExitPlates)

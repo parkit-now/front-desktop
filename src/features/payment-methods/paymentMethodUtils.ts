@@ -91,3 +91,16 @@ export const INTEGRATION_DELETE_HINT =
 
 export const INTEGRATION_DEFAULT_HINT =
   'Este medio no se marca como predeterminado desde acá: si la integración se cae, queda preseleccionado al cobrar y sin forma de apagarlo. Administralo desde el panel web, en Integraciones.';
+
+/**
+ * Orden alfabético para los selectores de cobro, sin distinguir mayúsculas ni
+ * tildes («Débito» junto a «Depósito»). Dexie los devuelve en el orden del
+ * índice `tenantId` + `id` (UUID): para el operario, un orden al azar.
+ */
+export function sortByName<T extends { readonly name: string }>(
+  methods: readonly T[],
+): T[] {
+  return [...methods].sort((a, b) =>
+    a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }),
+  );
+}

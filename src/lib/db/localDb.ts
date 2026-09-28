@@ -11,6 +11,8 @@ import type { components } from '../../generated/api-types';
  * segunda fuente de verdad silenciosa.
  */
 export type PaymentMethodKind = components['schemas']['PaymentMethodType'];
+export type PaymentMethodInvoiceMode =
+  components['schemas']['PaymentMethodInvoiceMode'];
 
 export interface LocalRate {
   id: string;
@@ -55,10 +57,22 @@ export interface LocalEntry {
   rateSnapshotMediaEstadiaPriceArs?: string;
   cashSessionId?: string;
   ticketNumber?: number;
+  /**
+   * Checkbox «Facturada» de las playas sin ARCA. Opcional: el campo nació sin
+   * bumpear `sync_seq`, así que una fila vieja no lo trae; `undefined` = no.
+   */
+  manuallyInvoiced?: boolean;
   version: number;
   syncSeq: number;
   updatedAt: string;
 }
+
+/**
+ * Factura de ARCA de una estadía, tal como la manda `/invoices/changes`. La
+ * crea y la emite el backend: el desktop sólo la lee (emitir y reintentar son
+ * llamadas online). Alias del contrato generado, no una copia a mano.
+ */
+export type LocalInvoice = components['schemas']['InvoiceDto'];
 
 export interface LocalCashSession {
   id: string;
@@ -167,6 +181,13 @@ export interface LocalPaymentMethod {
   enabled: boolean;
   isDefault: boolean;
   isSystem: boolean;
+  /**
+   * Si se factura al cobrar con este medio. Opcional: la columna nació sin
+   * bumpear `sync_seq`, así que una fila vieja no lo trae hasta que el dueño
+   * toque el medio (y ahí sí baja). `undefined` = no sabemos, no se promete
+   * ninguna factura.
+   */
+  invoiceMode?: PaymentMethodInvoiceMode;
   syncSeq: number;
   version: number;
   updatedAt: string;
@@ -188,6 +209,14 @@ export type LprQualityStatus =
   | 'valid_low'
   | 'invalid_format'
   | 'low_confidence';
+
+/** Recuadro de la patente en fracciones de la imagen (no en píxeles). */
+export interface PlateBbox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface LocalLprDetectionEvent {
   id: string;
@@ -211,6 +240,7 @@ export interface LocalLprDetectionEvent {
   imageDeletedAt?: string;
   bestCaptureId?: string;
   candidates: unknown[];
+  plateBbox?: PlateBbox;
   version: number;
   syncSeq: number;
   createdAt: string;
@@ -276,6 +306,7 @@ class ParkitLocalDb extends Dexie {
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
   cashSessions!: Table<LocalCashSession>;
   paymentTransactions!: Table<LocalPaymentTransaction>;
+  invoices!: Table<LocalInvoice>;
   syncState!: Table<SyncState>;
   pendingOps!: Table<PendingOp>;
 
@@ -528,6 +559,26 @@ class ParkitLocalDb extends Dexie {
             (s: SyncState) =>
               typeof s.key === 'string' &&
               (s.key.startsWith('rates:') || s.key.startsWith('entries:')),
+          )
+          .delete();
+      });
+
+    // v15: facturas de ARCA para el historial (estado, comprobante, CAE). Se
+    // leen por estadía, así que van indexadas por `entryId`. Tabla nueva: el
+    // primer pull las baja todas, no hace falta resetear ningún cursor.
+    this.version(15).stores({
+      invoices: 'id, [tenantId+syncSeq], tenantId, entryId',
+    });
+    this.version(16)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' &&
+              s.key.startsWith('lprDetectionEvents:'),
           )
           .delete();
       });

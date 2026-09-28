@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeChange,
+  isCashCovered,
   isCashMethod,
   isMercadoPagoMethod,
   qrChargeBlockReason,
 } from './entryUtils';
 
 describe('entryUtils', () => {
+  describe('isCashCovered', () => {
+    it('sin monto recibido no se puede confirmar', () => {
+      expect(isCashCovered(5200, 0)).toBe(false);
+    });
+
+    it('con menos del total no, con el total justo o más sí', () => {
+      expect(isCashCovered(5200, 5000)).toBe(false);
+      expect(isCashCovered(5200, 5200)).toBe(true);
+      expect(isCashCovered(5200, 6000)).toBe(true);
+    });
+
+    it('con $0 a cobrar no hay nada que recibir', () => {
+      expect(isCashCovered(0, 0)).toBe(true);
+    });
+  });
+
   describe('computeChange', () => {
     it('returns the difference when received exceeds the amount due', () => {
       expect(computeChange(1500, 2000)).toBe(500);

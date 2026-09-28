@@ -1,5 +1,12 @@
 import { classifyPushFailure } from './retryPolicy';
+import type { Table } from 'dexie';
 import { splitTombstones } from './tombstones';
+import {
+  decidePrune,
+  reconcileStateKey,
+  shouldReconcile,
+  RECONCILE_INTERVAL_MS,
+} from './reconcile';
 import {
   type LocalCashSession,
   type LocalEntry,
@@ -22,6 +29,7 @@ import {
 import {
   createRate,
   deactivateRate,
+  listRates,
   pullRateChanges,
   updateRate,
   type RateDto,
@@ -36,6 +44,7 @@ import {
 import {
   createVehicleType,
   deleteVehicleType,
+  listVehicleTypes,
   pullVehicleTypeChanges,
   updateVehicleType,
   type VehicleTypeDto,
@@ -43,6 +52,7 @@ import {
 import {
   createPaymentMethod,
   deletePaymentMethod,
+  listPaymentMethods,
   togglePaymentMethod,
   pullPaymentMethodChanges,
   type PaymentMethodDto,
@@ -64,7 +74,18 @@ import {
   uploadLprDetectionEventImage,
   type LprDetectionEventDto,
 } from '../api/lpr-events';
-import { CAMERA_BASE_URL } from '../camera/constants';
+import { pullInvoiceChanges } from '../api/arca';
+import { ApiError } from '../api/client';
+import {
+  CAMERA_BASE_URL,
+  LPR_CLOUD_IMAGE_MAX_WIDTH,
+  LPR_CLOUD_IMAGE_QUALITY,
+} from '../camera/constants';
+
+/** Facturas por página del feed; se pagina hasta alcanzar el `maxSeq`. */
+const INVOICE_PAGE_SIZE = 500;
+/** Tope de páginas por sync: lo que falte entra en la próxima vuelta. */
+const INVOICE_MAX_PAGES = 20;
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -119,6 +140,7 @@ function entryToLocal(e: EntryDto): LocalEntry {
         : undefined,
     cashSessionId: e.cashSessionId ?? undefined,
     ticketNumber: e.ticketNumber ?? undefined,
+    manuallyInvoiced: e.manuallyInvoiced,
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
@@ -204,11 +226,30 @@ function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
     enabled: pm.enabled,
     isDefault: pm.isDefault,
     isSystem: pm.isSystem,
+    invoiceMode: pm.invoiceMode,
     syncSeq: pm.syncSeq,
     version: pm.version,
     updatedAt: pm.updatedAt,
     createdAt: pm.createdAt,
   };
+}
+
+/**
+ * Si este fallo de subida no tiene sentido reintentar.
+ *
+ * Un 4xx significa que el servidor rechazó ESTE payload: el próximo ciclo de
+ * sync le va a mandar exactamente lo mismo. Como la fila queda sin
+ * `imageStoragePath`, volvería a elegirse como candidata para siempre.
+ *
+ * El 429 queda afuera a propósito: es «ahora no», no «esto nunca va a andar».
+ */
+function isPermanentUploadFailure(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 429
+  );
 }
 
 function lprDetectionEventToLocal(
@@ -243,6 +284,11 @@ function lprDetectionEventToLocal(
       event.candidates.length > 0
         ? event.candidates
         : (existing?.candidates ?? []),
+    // Cae al valor local, NO es server-authoritative como los campos de
+    // imagen de arriba: el bbox lo conoce primero el equipo que capturó, y la
+    // subida de la imagen ocurre después del upsert. Ningún job del servidor
+    // lo limpia, así que un `null` acá sólo puede ser «todavía no llegó».
+    plateBbox: event.plateBbox ?? existing?.plateBbox,
     version: event.version,
     syncSeq: event.syncSeq,
     createdAt: event.createdAt,
@@ -491,14 +537,26 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
-      // Ver `dropLocallyDirty`. Este feed no trae tombstones, así que alcanza
-      // con el filtro: prender/apagar un medio de pago o marcarlo como default
+      // Un medio con `deletedAt` es un tombstone: el backend lo dio de baja y
+      // esta es la única señal que vamos a tener de que hay que sacarlo.
+      //
+      // Antes este feed no traía bajas —el borrado era físico— y por eso un
+      // medio borrado desde otro equipo se quedaba acá para siempre,
+      // seleccionable en la pantalla de cobro y escribiendo cobros contra un
+      // id que el servidor no conoce.
+      const { active, deleted } = splitTombstones(response.items);
+
+      // Ver `dropLocallyDirty`: prender/apagar un medio o marcarlo como default
       // se encola, y hasta que el push salga el servidor manda el estado
       // anterior. Pisarlo vuelve a habilitar en pantalla algo que el operador
       // acaba de sacar del cobro.
+      //
+      // El tombstone NO pasa por ese filtro, igual que en tarifas: una baja es
+      // una afirmación del servidor, no una foto vieja, y dejar vivo un medio
+      // que allá no existe es peor — se le puede seguir cobrando.
       const incoming = await this.dropLocallyDirty(
         'paymentMethod',
-        response.items.map((pm) => ({ ...paymentMethodToLocal(pm), tenantId })),
+        active.map((pm) => ({ ...paymentMethodToLocal(pm), tenantId })),
       );
 
       await localDb.transaction(
@@ -506,7 +564,12 @@ class SyncService {
         localDb.paymentMethods,
         localDb.syncState,
         async () => {
-          await localDb.paymentMethods.bulkPut(incoming);
+          if (incoming.length > 0) {
+            await localDb.paymentMethods.bulkPut(incoming);
+          }
+          if (deleted.length > 0) {
+            await localDb.paymentMethods.bulkDelete(deleted.map((pm) => pm.id));
+          }
           await localDb.syncState.put({
             key: stateKey,
             lastSeq: response.maxSeq,
@@ -559,10 +622,15 @@ class SyncService {
    * `pullLprDetectionEvents` depende de eso: aparea por posición contra un
    * `bulkGet` hecho sobre esta lista ya filtrada.
    */
-  private async dropLocallyDirty<T extends { id: string }>(
+  /**
+   * Los ids que tienen una operación local sin resolver.
+   *
+   * Se extrajo de `dropLocallyDirty` porque la reconciliación necesita el
+   * conjunto, no las filas filtradas. Misma query y mismos cinco estados.
+   */
+  private async dirtyIds(
     entityType: PendingOp['entityType'],
-    rows: T[],
-  ): Promise<T[]> {
+  ): Promise<Set<string>> {
     const ops = await localDb.pendingOps
       .where('[tenantId+status]')
       .anyOf([
@@ -574,10 +642,16 @@ class SyncService {
       ])
       .toArray();
 
-    const dirty = new Set(
+    return new Set(
       ops.filter((op) => op.entityType === entityType).map((op) => op.entityId),
     );
+  }
 
+  private async dropLocallyDirty<T extends { id: string }>(
+    entityType: PendingOp['entityType'],
+    rows: T[],
+  ): Promise<T[]> {
+    const dirty = await this.dirtyIds(entityType);
     return rows.filter((row) => !dirty.has(row.id));
   }
 
@@ -668,6 +742,48 @@ class SyncService {
         lastSeq: afterSeq,
         lastSyncAt: new Date().toISOString(),
       });
+    }
+  }
+
+  /**
+   * Facturas de ARCA para el historial. Sólo lectura: las crea y emite el
+   * backend (al cerrar la estadía o a pedido), así que no hay ops locales que
+   * proteger y la fila del servidor siempre gana.
+   */
+  async pullInvoices(): Promise<void> {
+    if (!this.tenantId || !this.accessToken) return;
+
+    const stateKey = `invoices:${this.tenantId}`;
+    const state = await localDb.syncState.get(stateKey);
+    let afterSeq = state?.lastSeq ?? 0;
+
+    for (let page = 0; page < INVOICE_MAX_PAGES; page++) {
+      const response = await pullInvoiceChanges({
+        tenantId: this.tenantId,
+        bearer: this.accessToken,
+        afterSeq,
+        limit: INVOICE_PAGE_SIZE,
+      });
+      const nextSeq = Math.max(afterSeq, response.maxSeq);
+      await localDb.transaction(
+        'rw',
+        localDb.invoices,
+        localDb.syncState,
+        async () => {
+          if (response.items.length > 0) {
+            await localDb.invoices.bulkPut(response.items);
+          }
+          await localDb.syncState.put({
+            key: stateKey,
+            lastSeq: nextSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+      if (response.items.length < INVOICE_PAGE_SIZE || nextSeq === afterSeq) {
+        return;
+      }
+      afterSeq = nextSeq;
     }
   }
 
@@ -775,7 +891,9 @@ class SyncService {
     for (const event of candidates) {
       try {
         const captureResponse = await fetch(
-          `${CAMERA_BASE_URL}/capture/${encodeURIComponent(event.bestCaptureId!)}/plate.jpg`,
+          `${CAMERA_BASE_URL}/capture/${encodeURIComponent(event.bestCaptureId!)}` +
+            `/image.jpg?maxWidth=${LPR_CLOUD_IMAGE_MAX_WIDTH}` +
+            `&quality=${LPR_CLOUD_IMAGE_QUALITY}`,
         );
         if (!captureResponse.ok) continue;
         const image = await captureResponse.blob();
@@ -789,9 +907,39 @@ class SyncService {
         await localDb.lprDetectionEvents.put(
           lprDetectionEventToLocal(updated, event),
         );
-      } catch {
-        // Offline, or the local camera service isn't running — retried on
-        // the next sync cycle since the row still has no imageStoragePath.
+
+        // Avisarle al servicio de cámara que este archivo ya está respaldado.
+        // Es lo único que lo habilita a borrarlo cuando pase la retención
+        // local: no habla con el backend, así que por su cuenta no puede
+        // distinguir una captura sincronizada de una que se perdería.
+        //
+        // Best-effort a propósito: si falla, la única consecuencia es que el
+        // archivo se queda en disco de más. Nunca al revés.
+        if (updated.imageStoragePath) {
+          void fetch(
+            `${CAMERA_BASE_URL}/detections/${encodeURIComponent(event.id)}/uploaded`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storagePath: updated.imageStoragePath }),
+            },
+          ).catch(() => undefined);
+        }
+      } catch (error) {
+        // Un 4xx del servidor no se arregla solo: el payload va a ser el mismo
+        // la próxima vez. Como la fila queda sin `imageStoragePath`, seguiría
+        // eligiéndose como candidata en cada ciclo de sync, para siempre, y el
+        // catch pelado que había antes no dejaba ni rastro de por qué.
+        //
+        // El resto —sin red, servicio de cámara apagado, 5xx— sí se reintenta:
+        // es transitorio y la fila vuelve sola en el próximo ciclo.
+        if (isPermanentUploadFailure(error)) {
+          console.warn(
+            `[sync] el backend rechazó la imagen de la detección ${event.id}; no se reintenta`,
+            error,
+          );
+          continue;
+        }
       }
     }
   }
@@ -1265,7 +1413,209 @@ class SyncService {
    * Si alguna etapa falla se sigue con las demás y recién al terminar se lanza
    * un error con todas las que fallaron, para que el SyncButton lo muestre.
    */
-  async fullSync(ignoreBackoff = false): Promise<void> {
+  /**
+   * Pull chico y seguido de lo único que cambia lo que el POS cobra.
+   *
+   * POR QUÉ EXISTE
+   *
+   * Hasta acá el desktop sincronizaba sólo al abrir la app, al cambiar de
+   * sucursal, al reconectar y con el botón. No había ningún intervalo. O sea
+   * que el dueño podía cambiar un precio desde la web y la playa seguir
+   * cobrando el viejo durante horas, sin que nada lo delatara.
+   *
+   * Y no era sólo plata mal cobrada: el backend SÍ tenía el precio nuevo, así
+   * que cada egreso cobrado al viejo entraba por `closeEntry`, que calcula el
+   * sugerido contra su propio snapshot, y quedaba registrado como un SUBCOBRO
+   * en Auditoría. El dueño se llenaba la pantalla de subcobros falsos causados
+   * por su propio cambio de precio.
+   *
+   * POR QUÉ NO ES UN `fullSync`
+   *
+   * `fullSync` son once etapas, incluida la subida de imágenes de detecciones.
+   * Correr eso cada minuto y medio en la PC de un estacionamiento es gasto puro.
+   * Acá van las dos que importan, las dos incrementales por cursor: si no hay
+   * novedades, son dos requests que vuelven vacíos.
+   *
+   * No acumula fallos ni los traduce: el que llama decide qué hacer. Un pull de
+   * fondo que falla no tiene que gritar — el próximo lo reintenta.
+   */
+  async pullOperationalChanges(): Promise<void> {
+    await this.pullRates();
+    await this.pullEntries();
+  }
+
+  /**
+   * Poda de una entidad contra la lista autoritativa del servidor.
+   *
+   * EL ORDEN DE LAS LECTURAS NO ES CASUAL
+   *
+   * Primero el servidor, después lo local, y las ops sucias AL FINAL, lo más
+   * cerca posible del borrado. Así se achica la ventana en la que una fila se
+   * ensucia después de haber sido medida.
+   *
+   * Y la poda se calcula sobre el snapshot de `localIds` leído acá: una fila
+   * que el operador cree durante la corrida no está en esa lista, así que es
+   * imposible que entre en el borrado. La carrera queda cerrada por
+   * construcción y no por suerte.
+   */
+  private async reconcileEntity<T extends { id: string }>(input: {
+    entity: string;
+    entityType: PendingOp['entityType'];
+    table: Table<T>;
+    intervalMs: number;
+    force: boolean;
+    fetchServerIds: () => Promise<{ ids: string[]; complete: boolean }>;
+  }): Promise<void> {
+    const key = reconcileStateKey(input.entity, this.tenantId);
+    const state = await localDb.syncState.get(key);
+
+    if (
+      !shouldReconcile({
+        lastRunAt: state?.lastSyncAt,
+        intervalMs: input.intervalMs,
+        now: Date.now(),
+        force: input.force,
+      })
+    ) {
+      return;
+    }
+
+    const server = await input.fetchServerIds();
+    const localIds = (
+      await input.table.where('tenantId').equals(this.tenantId).toArray()
+    ).map((row) => row.id);
+    const dirty = await this.dirtyIds(input.entityType);
+
+    const decision = decidePrune({
+      localIds,
+      serverIds: server.ids,
+      dirtyIds: dirty,
+      serverComplete: server.complete,
+    });
+
+    if ('skip' in decision && decision.skip !== 'nothing-to-prune') {
+      console.warn(
+        `[sync] reconciliación de ${input.entity}: no se podó nada (${decision.skip})`,
+        { local: localIds.length, servidor: server.ids.length },
+      );
+    }
+
+    if (decision.prune.length > 0) {
+      await input.table.bulkDelete(decision.prune);
+      console.info(
+        `[sync] reconciliación de ${input.entity}: se podaron ${decision.prune.length} filas que el servidor no reconoce`,
+      );
+    }
+
+    // El sello se pone SÓLO si la corrida fue concluyente. Un fallo transitorio
+    // no sella, así que el próximo ciclo reintenta en vez de esperar 6 horas.
+    if (decision.seal) {
+      await localDb.syncState.put({
+        key,
+        lastSeq: 0,
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * La red de seguridad contra filas locales que el servidor ya no conoce.
+   *
+   * El pull incremental sólo agrega y actualiza: sobre una fila que el feed no
+   * menciona no tiene opinión. Si una fila desaparece de verdad del servidor
+   * —un borrado físico, un restore, una migración— la copia local queda para
+   * siempre, y la única salida era borrar la base local entera.
+   *
+   * Cada entidad se aísla: que falle el listado de una no puede impedir que las
+   * otras se curen.
+   */
+  async reconcileCatalogs(force: boolean): Promise<void> {
+    const bearer = this.accessToken;
+    const tenantId = this.tenantId;
+    if (!bearer || !tenantId) return;
+
+    const entities: [string, () => Promise<void>][] = [
+      [
+        'medios de pago',
+        () =>
+          this.reconcileEntity({
+            entity: 'paymentMethod',
+            entityType: 'paymentMethod',
+            table: localDb.paymentMethods,
+            intervalMs: RECONCILE_INTERVAL_MS.small,
+            force,
+            fetchServerIds: async () => {
+              const rows = await listPaymentMethods({ tenantId, bearer });
+              return { ids: rows.map((r) => r.id), complete: true };
+            },
+          }),
+      ],
+      [
+        'tarifas',
+        () =>
+          this.reconcileEntity({
+            entity: 'rate',
+            entityType: 'rate',
+            table: localDb.rates,
+            intervalMs: RECONCILE_INTERVAL_MS.small,
+            force,
+            fetchServerIds: async () => {
+              // `includeInactive: true` NO ES OPCIONAL. Sin ese flag el backend
+              // filtra `isActive: true`, y una tarifa desactivada —que sigue
+              // viva y el dueño puede reactivar cuando quiera— no aparecería en
+              // la lista. La reconciliación la leería como fantasma y se la
+              // borraría. Es el error más caro que puede cometer este archivo.
+              const rows = await listRates({
+                tenantId,
+                bearer,
+                query: { includeInactive: true },
+              });
+              return { ids: rows.map((r) => r.id), complete: true };
+            },
+          }),
+      ],
+      [
+        'tipos de vehículo',
+        () =>
+          this.reconcileEntity({
+            entity: 'vehicleType',
+            entityType: 'vehicleType',
+            table: localDb.vehicleTypes,
+            intervalMs: RECONCILE_INTERVAL_MS.small,
+            force,
+            fetchServerIds: async () => {
+              const rows = await listVehicleTypes({ tenantId, bearer });
+              return { ids: rows.map((r) => r.id), complete: true };
+            },
+          }),
+      ],
+    ];
+
+    const failures: string[] = [];
+    for (const [label, run] of entities) {
+      try {
+        await run();
+      } catch (error) {
+        failures.push(label);
+        console.error(`[sync] falló la reconciliación de ${label}`, error);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`reconciliación: ${failures.join(', ')}`);
+    }
+  }
+
+  /**
+   * `forceReconcile` va aparte de `ignoreBackoff` a propósito: hoy los dos son
+   * true cuando el operador aprieta Sincronizar, pero son cosas distintas
+   * —saltearse la espera entre reintentos y forzar la poda de catálogos— y
+   * atarlas obliga a desatarlas la primera vez que diverjan.
+   */
+  async fullSync(
+    options: { ignoreBackoff?: boolean; forceReconcile?: boolean } = {},
+  ): Promise<void> {
+    const ignoreBackoff = options.ignoreBackoff ?? false;
     const stages: [string, () => Promise<void>][] = [
       ['cambios pendientes', () => this.pushPendingOps(ignoreBackoff)],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
@@ -1286,6 +1636,14 @@ class SyncService {
       ['detecciones', () => this.pullLprDetectionEvents()],
       ['imágenes de detecciones', () => this.pushLprDetectionEventImages()],
       ['pagos', () => this.pullPaymentTransactions()],
+      ['facturas', () => this.pullInvoices()],
+      // VA ÚLTIMA, y en particular DESPUÉS del push: si corriera antes, las
+      // altas creadas offline que salen en este mismo ciclo todavía no serían
+      // conocidas por el servidor y las leería como fantasmas.
+      [
+        'reconciliación de catálogos',
+        () => this.reconcileCatalogs(options.forceReconcile ?? false),
+      ],
     ];
 
     const failures: string[] = [];

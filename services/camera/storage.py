@@ -12,9 +12,10 @@ first use.
 
 import logging
 import json
+import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 
@@ -74,6 +75,7 @@ class LocalStorage:
                 image_url          TEXT,
                 best_capture_id    TEXT,
                 candidates         TEXT NOT NULL DEFAULT '[]',
+                plate_bbox         TEXT,
                 version            INTEGER NOT NULL DEFAULT 1,
                 sync_seq           INTEGER NOT NULL DEFAULT 0,
                 created_at         TEXT NOT NULL,
@@ -88,6 +90,15 @@ class LocalStorage:
             "CREATE INDEX IF NOT EXISTS lpr_events_plate_status_idx "
             "ON lpr_detection_events(normalized_text, status)"
         )
+        # Aditiva e idempotente, igual que `captures.bbox`: una base creada por
+        # una versión anterior no tiene esta columna y el CREATE TABLE de arriba
+        # no la agrega porque la tabla ya existe.
+        try:
+            self._conn.execute(
+                "ALTER TABLE lpr_detection_events ADD COLUMN plate_bbox TEXT"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         self._conn.commit()
         logger.info("storage_ready", extra={"db": db_path, "images_dir": images_dir})
 
@@ -173,6 +184,11 @@ class LocalStorage:
             "image_url": event.get("image_url"),
             "best_capture_id": event.get("best_capture_id"),
             "candidates": json.dumps(event.get("candidates") or []),
+            "plate_bbox": (
+                json.dumps(event["plate_bbox"])
+                if event.get("plate_bbox") is not None
+                else None
+            ),
             "updated_at": now,
         }
         with self._lock:
@@ -182,13 +198,13 @@ class LocalStorage:
                        raw_text, normalized_text, display_plate, confidence,
                        format_valid, format_type, quality_status, status, entry_id,
                        reviewed_at, image_storage_path, image_url, best_capture_id,
-                       candidates, created_at, updated_at
+                       candidates, plate_bbox, created_at, updated_at
                    ) VALUES (
                        :id, :tenant_id, :camera_id, :location, :first_seen_at, :last_seen_at,
                        :raw_text, :normalized_text, :display_plate, :confidence,
                        :format_valid, :format_type, :quality_status, :status, :entry_id,
                        :reviewed_at, :image_storage_path, :image_url, :best_capture_id,
-                       :candidates, :updated_at, :updated_at
+                       :candidates, :plate_bbox, :updated_at, :updated_at
                    )
                    ON CONFLICT(id) DO UPDATE SET
                        camera_id = excluded.camera_id,
@@ -209,6 +225,7 @@ class LocalStorage:
                        image_url = excluded.image_url,
                        best_capture_id = excluded.best_capture_id,
                        candidates = excluded.candidates,
+                       plate_bbox = excluded.plate_bbox,
                        version = version + 1,
                        updated_at = excluded.updated_at""",
                 row,
@@ -229,25 +246,111 @@ class LocalStorage:
         cols = [d[0] for d in cur.description]
         return _event_row_to_dict(dict(zip(cols, row)))
 
-    def has_pending_lpr_event_for_plate(
-        self,
-        normalized_text: str | None,
-        exclude_event_id: str | None = None,
-    ) -> bool:
-        if not normalized_text:
-            return False
-        query = """SELECT id
-                   FROM lpr_detection_events
-                   WHERE normalized_text = ? AND status = 'pending'"""
-        params: tuple[str, ...]
-        if exclude_event_id:
-            query += " AND id != ?"
-            params = (normalized_text, exclude_event_id)
-        else:
-            params = (normalized_text,)
-        query += " LIMIT 1"
-        cur = self._conn.execute(query, params)
-        return cur.fetchone() is not None
+    def mark_lpr_event_uploaded(self, event_id: str, storage_path: str) -> bool:
+        """Anotar que la imagen de este evento ya está en la nube.
+
+        Lo avisa el renderer, que es quien la sube. Este servicio no habla con
+        el backend, así que sin este aviso no tendría forma de saber qué
+        archivos ya están respaldados — y la purga no puede borrar nada que no
+        lo esté.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                """UPDATE lpr_detection_events
+                   SET image_storage_path = ?, updated_at = ?
+                   WHERE id = ?""",
+                (storage_path, _now_iso(), event_id),
+            )
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def purge_images_older_than(self, days: int) -> dict:
+        """Borrar las imágenes viejas QUE YA ESTÉN RESPALDADAS.
+
+        Sin esto el directorio crece para siempre: no había ninguna retención
+        local, y en una playa de 200 ingresos diarios son ~15 GB al año en la
+        PC del estacionamiento. El job del backend borra del bucket, no de acá.
+
+        LA CONDICIÓN DE «YA SUBIDA» NO ES NEGOCIABLE
+
+        Borrar una captura que todavía no se sincronizó pierde la evidencia
+        justo del período en que la playa estuvo sin internet, que es cuando
+        más importa. Por eso sólo se borra lo que cae en alguno de estos casos:
+
+          * el evento tiene `image_storage_path` — está en la nube;
+          * el evento es `suppressed_pending_event` — un duplicado, que
+            `pushLprDetectionEventImages` nunca va a subir;
+          * no hay evento — huérfana de una versión vieja, nadie la va a subir.
+
+        Una captura sin subir de un evento vivo se queda donde está, por más
+        vieja que sea. Si eso pasa seguido es que el equipo lleva mucho sin
+        sincronizar, y el aviso del log es más útil que el espacio liberado.
+        """
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=days)
+        ).isoformat()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT c.id, c.path
+                   FROM captures c
+                   LEFT JOIN lpr_detection_events e ON e.id = c.event_id
+                   WHERE c.timestamp < ?
+                     AND (e.image_storage_path IS NOT NULL
+                          OR e.status = 'suppressed_pending_event'
+                          OR e.id IS NULL)""",
+                (cutoff,),
+            ).fetchall()
+            retenidas = self._conn.execute(
+                """SELECT COUNT(*)
+                   FROM captures c
+                   JOIN lpr_detection_events e ON e.id = c.event_id
+                   WHERE c.timestamp < ?
+                     AND e.image_storage_path IS NULL
+                     AND e.status != 'suppressed_pending_event'""",
+                (cutoff,),
+            ).fetchone()[0]
+
+            borradas, bytes_liberados = 0, 0
+            for capture_id, path in rows:
+                try:
+                    size = os.path.getsize(path)
+                    os.remove(path)
+                    bytes_liberados += size
+                except FileNotFoundError:
+                    pass  # ya no estaba; la fila se limpia igual
+                except OSError as exc:
+                    logger.warning(
+                        "purge_delete_failed", extra={"path": path, "error": str(exc)}
+                    )
+                    continue
+                # La fila se borra aunque el archivo ya no estuviera: si no, la
+                # tabla crece igual que el disco y la volvemos a mirar siempre.
+                self._conn.execute("DELETE FROM captures WHERE id = ?", (capture_id,))
+                borradas += 1
+            self._conn.commit()
+
+        if borradas or retenidas:
+            logger.info(
+                "purge_done",
+                extra={
+                    "borradas": borradas,
+                    "mb_liberados": round(bytes_liberados / 1_048_576, 1),
+                    "retenidas_sin_subir": retenidas,
+                },
+            )
+        if retenidas:
+            logger.warning(
+                "%d capturas de más de %d días siguen en disco porque todavía "
+                "no se subieron. Si el número crece, este equipo no está "
+                "sincronizando.",
+                retenidas,
+                days,
+            )
+        return {
+            "deleted": borradas,
+            "freedBytes": bytes_liberados,
+            "keptUnsynced": retenidas,
+        }
 
     def list_pending_lpr_events(self) -> list[dict]:
         """Return pending LPR events ordered newest first."""
@@ -332,6 +435,15 @@ def _event_row_to_dict(row: dict) -> dict:
         candidates = json.loads(candidates_raw)
     except json.JSONDecodeError:
         candidates = []
+    # None acá NO es "falta el dato": significa que la imagen de este evento es
+    # del formato viejo —el recorte de la patente— y que no hay que recortarla
+    # de nuevo del otro lado.
+    plate_bbox = None
+    if row.get("plate_bbox"):
+        try:
+            plate_bbox = json.loads(row["plate_bbox"])
+        except json.JSONDecodeError:
+            plate_bbox = None
     event = {
         "id": row["id"],
         "eventId": row["id"],
@@ -359,6 +471,7 @@ def _event_row_to_dict(row: dict) -> dict:
         "bestCaptureId": row["best_capture_id"],
         "capture_id": row["best_capture_id"],
         "candidates": candidates,
+        "plateBbox": plate_bbox,
         "version": row["version"],
         "syncSeq": row["sync_seq"],
         "createdAt": row["created_at"],

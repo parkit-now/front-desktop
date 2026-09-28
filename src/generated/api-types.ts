@@ -674,6 +674,192 @@ export interface paths {
         patch: operations["entitiesUpdateProfile"];
         trace?: never;
     };
+    "/tenants/{tenantId}/arca/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the ARCA account of the entity
+         * @description The 404 ARCA_NOT_LINKED is the happy path of "not linked yet" (an unlinked account also answers 404). A `pending_*` status means the linking wizard is half way: resume it from that step.
+         */
+        get: operations["arcaGetAccount"];
+        put?: never;
+        /**
+         * Wizard step 1: CUIT and IIBB, generates the certificate request
+         * @description Validates the CUIT check digit, generates the RSA key (kept encrypted, never returned) and the CSR, and leaves the account in `pending_certificate`. Calling it again while the wizard is in progress starts over, discarding the previous key and certificate.
+         */
+        post: operations["arcaCreateAccount"];
+        /**
+         * Unlink ARCA (or cancel a half-done wizard)
+         * @description Deletes the key and the certificate, keeps every invoice already issued, and sets every payment method of the entity to `invoiceMode = none`.
+         */
+        delete: operations["arcaUnlinkAccount"];
+        options?: never;
+        head?: never;
+        /**
+         * Update the IVA rate and, in homologación, the fiscal data
+         * @description In production the fiscal data comes from ARCA’s registry: sending it answers 409 ARCA_LINK_STEP_INVALID (`fiscalDataEditable` tells the UI).
+         */
+        patch: operations["arcaUpdateAccount"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wizard step 2: verify the certificate ARCA issued
+         * @description Checks the certificate (CUIT, expiry, that it was issued for Parkit’s CSR), logs in to ARCA for both services and reads the taxpayer registry. Leaves the account in `pending_sales_point`. In homologación the registry usually has no data (`padronFound: false`): load it with PATCH.
+         */
+        post: operations["arcaUploadCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/csr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the certificate request (CSR) to upload to ARCA */
+        get: operations["arcaGetCsr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/renewal/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the renewed certificate and switch to it
+         * @description Checks it like the wizard does, but against the renewal key, and logs in to ARCA with it. Switches the certificate in every entity that shares it; an entity in `cert_expired` goes back to `linked`.
+         */
+        post: operations["arcaUploadRenewalCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/renewal/csr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the request (CSR) to renew the certificate
+         * @description Same alias as the current certificate: in ARCA it goes to «Agregar certificado» on that alias, which keeps the associated services. Prepared by the daily job 30 days before expiry, or generated on the spot. The current certificate keeps working until the renewed one is uploaded.
+         */
+        get: operations["arcaGetRenewalCsr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/reusable-certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Other entities of the caller linked with the same CUIT */
+        get: operations["arcaListReusableCertificates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/reuse-certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wizard step 2 shortcut: use the certificate of another entity
+         * @description Copies the certificate and fiscal data of another entity the caller owns, linked with the same CUIT. The sales point is not copied: each entity has its own.
+         */
+        post: operations["arcaReuseCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/account/sales-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wizard step 3: verify the sales point and finish linking
+         * @description The sales point must be a web services one (listed by FEParamGetPtosVenta, not blocked) and `getLastVoucher` must answer for the entity’s letter. Leaves the account `linked`.
+         */
+        post: operations["arcaSetSalesPoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/taxpayers/{cuit}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qué factura sale con este CUIT (padrón de ARCA)
+         * @description Consulta la constancia de inscripción (caché de 30 días) y devuelve la letra y la razón social, para mostrarlas antes de emitir. `identified: false` = ARCA no tiene datos: la factura va a consumidor final. 422 ARCA_CUIT_INVALID, 409 ARCA_NOT_LINKED, 503 ARCA_UNAVAILABLE, 422 ARCA_CERT_NOT_AUTHORIZED (falta asociar la constancia al certificado).
+         */
+        get: operations["InvoicesController_taxpayer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/audit": {
         parameters: {
             query?: never;
@@ -756,7 +942,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Close the current session and auto-open the next one. Active entries carry over. */
+        /** Close the current session. Optionally open the next one and carry active entries over. */
         patch: operations["CashSessionsController_close"];
         trace?: never;
     };
@@ -846,6 +1032,26 @@ export interface paths {
         patch: operations["EntriesController_correct"];
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/{entryId}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emitir (o reintentar) la factura de una estadía cobrada
+         * @description Emite a consumidor final o, con `receiverCuit`, identificada con ese CUIT: la letra la decide el padrón (A si el emisor es RI y el receptor RI o monotributista). Los problemas de ARCA (caído, rechazo, certificado vencido, CUIT sin datos en el padrón) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
+         */
+        post: operations["InvoicesController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries/changes": {
         parameters: {
             query?: never;
@@ -874,6 +1080,80 @@ export interface paths {
         put?: never;
         /** Register a vehicle entry from an LPR detection event */
         post: operations["EntriesController_createFromLpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoice-receivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** CUIT ya facturados en la playa (sugerencias del cobro) */
+        get: operations["InvoicesController_receivers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoices/{invoiceId}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * PDF de una factura emitida
+         * @description Se genera a demanda con los datos guardados al emitir (la razón social de ese día, no la actual). 409 INVOICE_NOT_ISSUED si todavía no tiene CAE; 503 INVOICE_PDF_FAILED si no se pudo generar.
+         */
+        get: operations["InvoicesController_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoices/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emitir en lote a consumidor final
+         * @description De a una y en orden, con el resultado de cada estadía. Los conflictos de una (ya emitida, no facturable) no cortan el lote. Si ARCA no responde, las que faltan vuelven con ARCA_UNAVAILABLE sin intentarse. Sin ARCA vinculada: 409 ARCA_NOT_LINKED.
+         */
+        post: operations["InvoicesController_issueBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/invoices/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull incremental invoice changes for sync */
+        get: operations["InvoicesController_pullChanges"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1424,6 +1704,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/rates/open-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cuántos autos hay adentro con cada tarifa
+         * @description Para decidir si preguntar al dueño si un cambio de precios alcanza a los autos que ya están en el estacionamiento.
+         */
+        get: operations["RatesController_openEntriesByRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/schedules": {
         parameters: {
             query?: never;
@@ -1957,6 +2257,96 @@ export interface components {
              */
             submittedAt: string | null;
         };
+        ArcaAccountDto: {
+            /**
+             * @description Alias del certificado: el «Nombre simbólico del DN» a usar en WSASS o en Certificados Digitales.
+             * @example parkit1a2b3c4d
+             */
+            certAlias: string;
+            /** Format: date-time */
+            certExpiresAt?: string | null;
+            /** @description Decide la letra: monotributo y exento emiten C; responsable inscripto, A o B. */
+            condicionIva?: components["schemas"]["ArcaTaxCondition"] | null;
+            /**
+             * @description 11 dígitos, sin guiones.
+             * @example 20123456783
+             */
+            cuit: string;
+            domicilioFiscal?: string | null;
+            environment: components["schemas"]["ArcaEnvironment"];
+            /** @description Si los datos fiscales se pueden cargar a mano (sólo homologación, donde el padrón no tiene los CUIT reales). */
+            fiscalDataEditable: boolean;
+            /** Format: uuid */
+            id: string;
+            iibb?: string | null;
+            /**
+             * Format: date
+             * @description AAAA-MM-DD.
+             */
+            inicioActividad?: string | null;
+            /**
+             * @description Alícuota de IVA (%). Sólo aplica a responsables inscriptos.
+             * @example 21
+             */
+            ivaRate: number;
+            /** Format: date-time */
+            linkedAt?: string | null;
+            ptoVta?: number | null;
+            razonSocial?: string | null;
+            /**
+             * Format: date-time
+             * @description Cuándo se preparó la solicitud de renovación del certificado (null si no hay una en curso).
+             */
+            renewalPreparedAt?: string | null;
+            /**
+             * @description Paso de la vinculación en el que está la playa:
+             *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
+             *     - `pending_sales_point`: certificado verificado, falta el punto de venta (y, en homologación, puede faltar cargar los datos fiscales: `condicionIva` en null).
+             *     - `linked`: vinculada, emite.
+             *     - `cert_expired`: venció el certificado; no emite hasta renovarlo (`account/renewal/*`).
+             *     Una cuenta desvinculada responde 404 ARCA_NOT_LINKED.
+             */
+            status: components["schemas"]["ArcaAccountStatus"];
+        };
+        /**
+         * @description Paso de la vinculación en el que está la playa:
+         *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
+         *     - `pending_sales_point`: certificado verificado, falta el punto de venta (y, en homologación, puede faltar cargar los datos fiscales: `condicionIva` en null).
+         *     - `linked`: vinculada, emite.
+         *     - `cert_expired`: venció el certificado; no emite hasta renovarlo (`account/renewal/*`).
+         *     Una cuenta desvinculada responde 404 ARCA_NOT_LINKED.
+         * @enum {string}
+         */
+        ArcaAccountStatus: "pending_certificate" | "pending_sales_point" | "linked" | "cert_expired" | "unlinked";
+        ArcaCertificateResultDto: {
+            account: components["schemas"]["ArcaAccountDto"];
+            /** @description Si el padrón devolvió los datos fiscales. En homologación suele ser false: hay que cargarlos con PATCH. */
+            padronFound: boolean;
+        };
+        ArcaCsrDto: {
+            /** @example parkit1a2b3c4d */
+            alias: string;
+            /** @description PEM completo, con las líneas BEGIN/END CERTIFICATE REQUEST. */
+            csrPem: string;
+            /** @example parkit1a2b3c4d.csr */
+            fileName: string;
+        };
+        /** @enum {string} */
+        ArcaEnvironment: "homologacion" | "produccion";
+        ArcaReusableCertificateDto: {
+            /** Format: date-time */
+            certExpiresAt?: string | null;
+            cuit: string;
+            razonSocial?: string | null;
+            /** Format: uuid */
+            tenantId: string;
+            tenantName: string;
+        };
+        /**
+         * @description Decide la letra: monotributo y exento emiten C; responsable inscripto, A o B.
+         * @enum {string}
+         */
+        ArcaTaxCondition: "responsable_inscripto" | "monotributo" | "exento";
         AuditEventDto: {
             /** @description Recorded action, e.g. "entity.approved" */
             action: string;
@@ -2035,6 +2425,11 @@ export interface components {
             /** @example Cochera 3 */
             cochera?: string;
             /**
+             * @description CUIT del cliente para identificarlo en la factura, con o sin guiones. La letra la decide el padrón (A sólo si el emisor es RI y el receptor RI o monotributista). Un CUIT inválido no hace fallar el cierre: la factura queda pendiente con ARCA_CUIT_INVALID.
+             * @example 30-71234567-1
+             */
+            invoiceReceiverCuit?: string;
+            /**
              * Format: date-time
              * @description Exit timestamp (ISO 8601). Defaults to now on the server if omitted.
              */
@@ -2043,6 +2438,70 @@ export interface components {
             notes?: string;
             /** @description Payment breakdown per method. When provided, amountPaid is set to the sum. */
             payments?: components["schemas"]["PaymentLineDto"][];
+        };
+        CloseEntryResponseDto: {
+            amountPaid?: number;
+            /** Format: uuid */
+            cashSessionId?: string;
+            /** @example Cochera 3 */
+            cochera?: string;
+            /** @example Rojo */
+            color?: string;
+            /** Format: date-time */
+            enteredAt: string;
+            entryCameraId?: string;
+            /** @description URL of the entry photo captured by the LPR camera */
+            entryImageUrl?: string;
+            exitCameraId?: string;
+            exitImageUrl?: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Factura de la estadía. `null` si la playa no factura con ARCA. Un problema al emitir NO hace fallar el cierre: viene en `status`/`errorCode`. */
+            invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
+            /** Format: date-time */
+            leftAt?: string;
+            /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
+            manuallyInvoiced: boolean;
+            /** @example Cliente frecuente */
+            notes?: string;
+            /** @example ABC123 */
+            plate: string;
+            /** Format: uuid */
+            rateId?: string;
+            rateSnapshotFractionPriceArs?: number;
+            rateSnapshotHourPriceArs?: number;
+            rateSnapshotMediaEstadiaPriceArs?: number;
+            rateSnapshotName?: string;
+            rateSnapshotStayPriceArs?: number;
+            /**
+             * @description auto = created by LPR; manual = operator-typed
+             * @example manual
+             */
+            source: string;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            ticketNumber?: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /**
+             * @description Vehicle brand snapshot.
+             * @example Volkswagen
+             */
+            vehicleBrand?: string;
+            /**
+             * @description Vehicle model snapshot.
+             * @example Bora
+             */
+            vehicleModel?: string;
+            /** @description Snapshot del nombre del tipo al momento del ingreso. Texto y no FK: un ingreso histórico no debe cambiar si el dueño renombra o borra el tipo. */
+            vehicleType?: string | null;
+            version: number;
+            /**
+             * Format: uuid
+             * @description Set when entry was authorized via whitelist
+             */
+            whitelistId?: string;
         };
         CorrectEntryDto: {
             /** @example Cochera 3 */
@@ -2053,6 +2512,8 @@ export interface components {
             enteredAt?: string;
             /** Format: date-time */
             leftAt?: string;
+            /** @description Marca la estadía como facturada por fuera de Parkit (playas sin ARCA). Sólo en estadías cerradas; se permite aunque la caja esté cerrada. */
+            manuallyInvoiced?: boolean;
             /** @example Cliente frecuente */
             notes?: string;
             /** @description Payment breakdown replacing the current active lines. */
@@ -2113,6 +2574,18 @@ export interface components {
              * @example 110
              */
             totalSpots?: number;
+        };
+        CreateArcaAccountDto: {
+            /**
+             * @description Con o sin guiones. Se valida el dígito verificador.
+             * @example 20-12345678-3
+             */
+            cuit: string;
+            /**
+             * @description Número de inscripción en Ingresos Brutos, o «No contribuyente» si la actividad no está alcanzada (RG 1415, Anexo II). Va impreso en la factura. «Exento» no reemplaza al número: un exento está inscripto.
+             * @example 901-123456-7
+             */
+            iibb: string;
         };
         CreateCashSessionDto: {
             /**
@@ -2402,6 +2875,52 @@ export interface components {
             /** @description Cuántos vehículos se movieron al tipo destino. Cada uno recibe su propio `syncSeq` y `version`, así que viajan por /vehicles/changes. */
             reassignedVehicles: number;
         };
+        DesktopCameraConfigDto: {
+            /**
+             * @description Stable camera identifier sent with LPR detections.
+             * @example entrada-rivadavia
+             */
+            cameraId: string;
+            /**
+             * @description OpenCV webcam index.
+             * @example 0
+             */
+            deviceIndex: number;
+            /**
+             * @description IP camera host. Empty for webcam mode.
+             * @example 192.168.1.26
+             */
+            host: string;
+            /**
+             * @description Camera location.
+             * @example entrada
+             * @enum {string}
+             */
+            location: "entrada" | "salida";
+            /**
+             * @description Video source mode.
+             * @example ip
+             * @enum {string}
+             */
+            mode: "webcam" | "ip";
+            /**
+             * @description IP camera RTSP port.
+             * @example 554
+             */
+            port: number;
+            /**
+             * @description IP camera stream path.
+             * @example /h264_stream
+             */
+            streamPath: string;
+            /** @description Camera detection tuning, including ROI. Passwords are never stored here. */
+            tuning: Record<string, never> | null;
+            /**
+             * @description IP camera username. Password is intentionally not persisted.
+             * @example admin
+             */
+            username: string;
+        };
         DocumentSignedUrlDto: {
             /**
              * @description Seconds the signed URL remains valid.
@@ -2498,6 +3017,8 @@ export interface components {
              * @example 30123456789
              */
             cuit: string | null;
+            /** @description Desktop camera configuration owned by the entity, excluding the camera password. */
+            desktopCameraConfig: components["schemas"]["DesktopCameraConfigDto"] | null;
             /**
              * Format: email
              * @description Contact email, or `null` if not provided.
@@ -2551,6 +3072,8 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "maintenance";
+            /** @description Ticket template owned by the entity. Null means clients should use their built-in default or a local fallback. */
+            ticketTemplate: components["schemas"]["TicketTemplateDto"] | null;
         };
         EntitySummaryDto: {
             /** @description Street address of the entity, or `null` if not provided. */
@@ -2597,6 +3120,8 @@ export interface components {
             id: string;
             /** Format: date-time */
             leftAt?: string;
+            /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
+            manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
             notes?: string;
             /** @example ABC123 */
@@ -2695,6 +3220,107 @@ export interface components {
              */
             uptime: number;
         };
+        InvoiceBatchItemDto: {
+            /** Format: uuid */
+            entryId: string;
+            /** @description Por qué no salió: el `errorCode` de la factura o el del conflicto (INVOICE_ALREADY_ISSUED, INVOICE_NOT_INVOICEABLE, …). null si se emitió. */
+            errorCode?: string | null;
+            /** @description La factura como quedó; null si ni se intentó. */
+            invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
+        };
+        InvoiceBatchResponseDto: {
+            results: components["schemas"]["InvoiceBatchItemDto"][];
+        };
+        InvoiceChangesResponseDto: {
+            items: components["schemas"]["InvoiceDto"][];
+            /** @description Highest sync sequence included in this page. */
+            maxSeq: number;
+        };
+        InvoiceDto: {
+            /** @example 86380920935994 */
+            cae?: string | null;
+            /**
+             * Format: date
+             * @description Vencimiento del CAE (AAAA-MM-DD).
+             */
+            caeVto?: string | null;
+            /** Format: date */
+            cbteFch?: string | null;
+            cbteNro?: number | null;
+            /** @description Código de ARCA: 1 = A, 6 = B, 11 = C. */
+            cbteTipo?: number | null;
+            /** Format: uuid */
+            entryId: string;
+            /** @description Código estable (`ARCA_*` / `INVOICE_*`) del último problema. */
+            errorCode?: string | null;
+            /** @description Detalle, por ejemplo las observaciones de ARCA al rechazar. */
+            errorMessage?: string | null;
+            /** Format: uuid */
+            id: string;
+            impIva?: number | null;
+            impNeto?: number | null;
+            impTotal: number;
+            /** Format: date-time */
+            issuedAt?: string | null;
+            ptoVta?: number | null;
+            /** @description CUIT del receptor, o `0` a consumidor final. */
+            receptorDocNro?: string | null;
+            /** @description DocTipo de ARCA: 80 = CUIT (Factura A), 99 = consumidor final. */
+            receptorDocTipo?: number | null;
+            /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
+            receptorNombre?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
+        InvoiceReceiverDto: {
+            condicionIvaReceptorId: number | null;
+            /** @example 30712345671 */
+            cuit: string;
+            /** Format: date-time */
+            lastUsedAt: string;
+            /** @example EMPRESA SA */
+            razonSocial: string | null;
+        };
+        /** @enum {string} */
+        InvoiceStatus: "not_required" | "pending" | "issuing" | "issued" | "error";
+        InvoiceSummaryDto: {
+            /** @example 86380920935994 */
+            cae?: string | null;
+            /**
+             * Format: date
+             * @description Vencimiento del CAE (AAAA-MM-DD).
+             */
+            caeVto?: string | null;
+            cbteNro?: number | null;
+            /** @description Código de ARCA: 1 = A, 6 = B, 11 = C. */
+            cbteTipo?: number | null;
+            /** @description Código estable (`ARCA_*` / `INVOICE_*`) del último problema. */
+            errorCode?: string | null;
+            /** @description Detalle, por ejemplo las observaciones de ARCA al rechazar. */
+            errorMessage?: string | null;
+            /** Format: uuid */
+            id: string;
+            ptoVta?: number | null;
+            /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
+            receptorNombre?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+        };
+        IssueInvoiceBatchDto: {
+            /** @description Estadías cobradas a facturar a consumidor final (1 a 50). */
+            entryIds: string[];
+        };
+        IssueInvoiceDto: {
+            /**
+             * @description CUIT del cliente, con o sin guiones. La letra la decide el padrón: A si el emisor es RI y el receptor RI o monotributista; si no, B o C identificada con el CUIT. Sin él se emite a consumidor final.
+             * @example 30-71234567-1
+             */
+            receiverCuit?: string;
+        };
         LoginDto: {
             /**
              * Format: email
@@ -2742,6 +3368,7 @@ export interface components {
             lastSeenAt: string;
             location: string;
             normalizedText?: string | null;
+            plateBbox?: components["schemas"]["PlateBboxDto"] | null;
             /** @enum {string} */
             qualityStatus: "valid_high" | "valid_low" | "invalid_format" | "low_confidence";
             rawText?: string | null;
@@ -2815,6 +3442,12 @@ export interface components {
              */
             role: "admin" | "user";
         };
+        MetricsProjectionsDto: {
+            monthHistoricalForecast: components["schemas"]["RevenueProjectionDto"];
+            monthWithOpenEntries: components["schemas"]["RevenueProjectionDto"];
+            todayHistoricalForecast: components["schemas"]["RevenueProjectionDto"];
+            todayWithOpenEntries: components["schemas"]["RevenueProjectionDto"];
+        };
         MetricsSummaryDto: {
             alerts: components["schemas"]["SummaryAlertsDto"];
             comparison: components["schemas"]["SummaryComparisonDto"];
@@ -2830,6 +3463,7 @@ export interface components {
             generatedAt: string;
             /** @description Live occupancy at `generatedAt`. */
             occupancy: components["schemas"]["OccupancyDto"];
+            projections: components["schemas"]["MetricsProjectionsDto"];
             /** @description Totals from the start of the current civil day up to `generatedAt`. */
             today: components["schemas"]["DayTotalsDto"];
             /**
@@ -3078,6 +3712,17 @@ export interface components {
              * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
              */
             tenantId: string | null;
+        };
+        OpenEntriesByRateDto: {
+            counts: components["schemas"]["OpenEntriesForRateDto"][];
+            /** @description Autos adentro SIN tarifa asignada — los que creó la cámara. No los alcanza ninguna propagación porque no tienen precio congelado. */
+            withoutRate: number;
+        };
+        OpenEntriesForRateDto: {
+            /** @description Autos adentro con esta tarifa. */
+            openEntries: number;
+            /** Format: uuid */
+            rateId: string;
         };
         PaginatedAuditDto: {
             /** @description Events on this page, most recent first. */
@@ -3359,6 +4004,11 @@ export interface components {
             /** @description Highest syncSeq in the returned batch. Pass as afterSeq on the next poll. */
             maxSeq: number;
         };
+        /**
+         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+         * @enum {string}
+         */
+        PaymentMethodInvoiceMode: "none" | "auto" | "manual";
         PaymentMethodSliceDto: {
             /**
              * @description Total collected, in ARS.
@@ -3388,6 +4038,11 @@ export interface components {
              */
             createdAt: string;
             /**
+             * Format: date-time
+             * @description Baja lógica. No nulo = este medio se borró; el feed de cambios lo manda igual para que los equipos offline se enteren y lo saquen de su copia local.
+             */
+            deletedAt?: string | null;
+            /**
              * @description Whether the method is currently enabled for the entity.
              * @example true
              */
@@ -3398,6 +4053,11 @@ export interface components {
              * @example 2a1b3c4d-5e6f-4a1b-8c9d-0e1f2a3b4c5d
              */
             id: string;
+            /**
+             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+             * @example none
+             */
+            invoiceMode: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this is the default payment method of the entity.
              * @example false
@@ -3463,6 +4123,12 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             version: number;
+        };
+        PlateBboxDto: {
+            h: number;
+            w: number;
+            x: number;
+            y: number;
         };
         ProblemDetailsDto: {
             /**
@@ -3566,6 +4232,13 @@ export interface components {
              */
             token: string;
         };
+        ReuseArcaCertificateDto: {
+            /**
+             * Format: uuid
+             * @description La otra playa del mismo dueño, ya vinculada con este CUIT.
+             */
+            fromTenantId: string;
+        };
         RevenueBucketDto: {
             /**
              * Format: date-time
@@ -3597,6 +4270,29 @@ export interface components {
              * @example 19
              */
             vehiclesOut: number;
+        };
+        RevenueProjectionDto: {
+            /**
+             * @description Confidence level based on the amount of historical data.
+             * @example medium
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            /**
+             * @description Historical days used by the trend model.
+             * @example 6
+             */
+            historicalDays: number;
+            /**
+             * @description Open entries included in the projection.
+             * @example 8
+             */
+            openEntries: number;
+            /**
+             * @description Projected revenue in ARS. Orientative, not an accounting total.
+             * @example 245000
+             */
+            value: number;
         };
         RevenueResponseDto: {
             /** @description Chronological buckets covering the window with no gaps or overlaps. First and last are clipped to the requested instants. */
@@ -3709,6 +4405,16 @@ export interface components {
              */
             tokenType: string;
         };
+        SetArcaSalesPointDto: {
+            /**
+             * Format: date
+             * @description Fecha de inicio de actividades: va impresa en la factura (RG 1415). Obligatoria si la cuenta todavía no la tiene.
+             * @example 2020-01-01
+             */
+            inicioActividad?: string;
+            /** @example 3 */
+            ptoVta: number;
+        };
         StaffMemberDto: {
             /**
              * Format: date-time
@@ -3815,12 +4521,85 @@ export interface components {
             /** @description Same weekday one week back, truncated to the same elapsed offset. Weekday-aligned because parking demand swings hard between weekdays and weekends. */
             previousWeek: components["schemas"]["DayComparisonDto"];
         };
+        TaxpayerDto: {
+            /** @description Homologación: ARCA no tiene datos de prueba de este CUIT y se tomó como Responsable Inscripto para poder probar la Factura A. */
+            assumed: boolean;
+            /** @example IVA Responsable Inscripto */
+            condicionIva: string | null;
+            /** @description `CondicionIVAReceptorId` de ARCA. `null` si no se identifica. */
+            condicionIvaReceptorId: number | null;
+            /**
+             * @description Sólo dígitos.
+             * @example 30712345671
+             */
+            cuit: string;
+            /** @description Si la factura sale identificada con este CUIT. `false` = ARCA no tiene datos del CUIT (producción): la factura va a consumidor final. */
+            identified: boolean;
+            /**
+             * @description La letra que sale: A si el emisor es RI y el receptor RI o monotributista; C siempre para un emisor monotributista o exento.
+             * @enum {string}
+             */
+            letter: "A" | "B" | "C";
+            /** @example EMPRESA SA */
+            razonSocial: string | null;
+        };
+        TicketTemplateDto: {
+            /**
+             * @description Optional CUIT override printed on the ticket.
+             * @example 30-12345678-9
+             */
+            cuitOverride: string;
+            /** @description Ordered ticket fields. */
+            fields: components["schemas"]["TicketTemplateFieldDto"][];
+            /**
+             * @description Gross income registration text printed on the ticket.
+             * @example IIBB: 1027025-06
+             */
+            grossIncomeText: string;
+            /**
+             * @description Non-fiscal control legend printed on the ticket.
+             * @example Control no fiscal
+             */
+            nonFiscalControlText: string;
+            /**
+             * @description Template schema version.
+             * @example 1
+             * @enum {integer}
+             */
+            version: 1;
+        };
+        TicketTemplateFieldDto: {
+            /**
+             * @description Text emphasis.
+             * @example bold
+             * @enum {string}
+             */
+            emphasis: "normal" | "bold";
+            /**
+             * @description Font size in points.
+             * @example 13
+             */
+            fontSizePt: number;
+            /**
+             * @description Stable ticket field identifier.
+             * @example plate
+             * @enum {string}
+             */
+            id: "parkingName" | "parkingAddress" | "parkingCuit" | "grossIncome" | "nonFiscalControl" | "ticketNumber" | "plate" | "vehicleBrand" | "vehicleModel" | "color" | "rate" | "entryDate" | "entryTime" | "cochera" | "notes";
+            /**
+             * @description Whether the field is printed.
+             * @example true
+             */
+            visible: boolean;
+        };
         TogglePaymentMethodDto: {
             /**
              * @description Whether the payment method should be enabled (true) or disabled (false).
              * @example true
              */
             enabled?: boolean;
+            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial. */
+            invoiceMode?: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this method becomes the default for the entity.
              * @example true
@@ -3926,9 +4705,70 @@ export interface components {
              */
             totalSpots?: number;
         };
+        UpdateArcaAccountDto: {
+            /** @description Sólo homologación (`fiscalDataEditable`). */
+            condicionIva?: components["schemas"]["ArcaTaxCondition"];
+            /** @description Sólo homologación (`fiscalDataEditable`). */
+            domicilioFiscal?: string;
+            /**
+             * @description Número de inscripción en Ingresos Brutos, o «No contribuyente» si la actividad no está alcanzada (RG 1415, Anexo II). Va impreso en la factura. «Exento» no reemplaza al número: un exento está inscripto.
+             * @example 901-123456-7
+             */
+            iibb?: string;
+            /**
+             * Format: date
+             * @description Va impresa en la factura. Editable en cualquier entorno.
+             * @example 2020-01-01
+             */
+            inicioActividad?: string;
+            /** @example 21 */
+            ivaRate?: number;
+            /** @description Sólo homologación (`fiscalDataEditable`). */
+            razonSocial?: string;
+        };
         UpdateCashSessionDto: {
             /** @description Shift notes. Send an empty string to clear them. Omitting the field leaves them untouched. */
             notes?: string;
+        };
+        UpdateDesktopCameraConfigDto: {
+            /** @description Stable camera identifier sent with LPR detections. */
+            cameraId?: string;
+            /**
+             * @description OpenCV webcam index.
+             * @example 0
+             */
+            deviceIndex?: number;
+            /**
+             * @description IP camera host. Empty for webcam mode.
+             * @example 192.168.1.26
+             */
+            host?: string;
+            /**
+             * @description Camera location.
+             * @example entrada
+             * @enum {string}
+             */
+            location?: "entrada" | "salida";
+            /**
+             * @description Video source mode.
+             * @example ip
+             * @enum {string}
+             */
+            mode?: "webcam" | "ip";
+            /**
+             * @description IP camera RTSP port.
+             * @example 554
+             */
+            port?: number;
+            /**
+             * @description IP camera stream path.
+             * @example /h264_stream
+             */
+            streamPath?: string;
+            /** @description Camera detection tuning, including ROI. Passwords are never stored here. */
+            tuning?: Record<string, never> | null;
+            /** @description IP camera username. Password is intentionally not persisted. */
+            username?: string;
         };
         UpdateEntityAddressDto: {
             /**
@@ -4009,6 +4849,8 @@ export interface components {
              * @example 30123456789
              */
             cuit?: string;
+            /** @description Desktop camera configuration owned by this entity, excluding the password. */
+            desktopCameraConfig?: components["schemas"]["UpdateDesktopCameraConfigDto"];
             /**
              * Format: email
              * @description New contact email of the entity.
@@ -4054,6 +4896,8 @@ export interface components {
              * @enum {string}
              */
             status?: "active" | "maintenance";
+            /** @description Ticket template owned by this entity. Owner-only; local printer/device settings remain client-side. */
+            ticketTemplate?: components["schemas"]["UpdateTicketTemplateDto"];
         };
         UpdateLprDetectionEventDto: {
             /**
@@ -4102,6 +4946,11 @@ export interface components {
             status: "active" | "maintenance";
         };
         UpdateRateDto: {
+            /**
+             * @description Si los autos que están adentro con esta tarifa pasan a los precios nuevos. Ausente o false = se quedan con el precio que tenían al entrar, que es el comportamiento histórico. Sólo aplica si el body trae algún precio: mandarlo con un cambio de nombre no hace nada.
+             * @example false
+             */
+            applyToOpenEntries?: boolean;
             /**
              * @description Si la fracción se deriva de hora / 12 en el formulario. Preferencia de UI: el valor derivado se guarda igual en fractionPriceArs.
              * @example false
@@ -4176,6 +5025,46 @@ export interface components {
              */
             tenantId?: string;
         };
+        UpdateTicketTemplateDto: {
+            /** @description Optional CUIT override printed on the ticket. */
+            cuitOverride?: string;
+            /** @description Ordered ticket fields. */
+            fields?: components["schemas"]["UpdateTicketTemplateFieldDto"][];
+            /** @description Gross income registration text printed on the ticket. */
+            grossIncomeText?: string;
+            /** @description Non-fiscal control legend printed on the ticket. */
+            nonFiscalControlText?: string;
+            /**
+             * @description Template schema version.
+             * @example 1
+             * @enum {integer}
+             */
+            version?: 1;
+        };
+        UpdateTicketTemplateFieldDto: {
+            /**
+             * @description Text emphasis.
+             * @example bold
+             * @enum {string}
+             */
+            emphasis?: "normal" | "bold";
+            /**
+             * @description Font size in points.
+             * @example 13
+             */
+            fontSizePt?: number;
+            /**
+             * @description Stable ticket field identifier.
+             * @example plate
+             * @enum {string}
+             */
+            id?: "parkingName" | "parkingAddress" | "parkingCuit" | "grossIncome" | "nonFiscalControl" | "ticketNumber" | "plate" | "vehicleBrand" | "vehicleModel" | "color" | "rate" | "entryDate" | "entryTime" | "cochera" | "notes";
+            /**
+             * @description Whether the field is printed.
+             * @example true
+             */
+            visible?: boolean;
+        };
         UpdateVehicleDto: {
             /** @example Toyota */
             brand?: string;
@@ -4191,6 +5080,10 @@ export interface components {
             accepted?: boolean;
             /** @example Utilitario */
             name?: string;
+        };
+        UploadArcaCertificateDto: {
+            /** @description Contenido del `.crt` que devolvió ARCA (PEM, con las líneas BEGIN/END CERTIFICATE). */
+            certificate: string;
         };
         UpsertLprDetectionEventDto: {
             bestCaptureId?: string;
@@ -4211,6 +5104,7 @@ export interface components {
             lastSeenAt: string;
             location: string;
             normalizedText?: string;
+            plateBbox?: components["schemas"]["PlateBboxDto"];
             /** @enum {string} */
             qualityStatus: "valid_high" | "valid_low" | "invalid_format" | "low_confidence";
             rawText?: string;
@@ -6194,11 +7088,678 @@ export interface operations {
             };
         };
     };
+    arcaGetAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaCreateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateArcaAccountDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_ALREADY_LINKED. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_CUIT_INVALID. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE: invoicing is off in this environment. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUnlinkAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUpdateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateArcaAccountDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUploadCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCertificateResultDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_CERT_INVALID, ARCA_CERT_CUIT_MISMATCH, ARCA_CERT_KEY_MISMATCH, ARCA_CERT_EXPIRED, ARCA_CERT_NOT_AUTHORIZED, ARCA_PADRON_NOT_FOUND. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaGetCsr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCsrDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaUploadRenewalCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_CERT_INVALID, ARCA_CERT_CUIT_MISMATCH, ARCA_CERT_KEY_MISMATCH, ARCA_CERT_EXPIRED, ARCA_CERT_NOT_AUTHORIZED. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaGetRenewalCsr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCsrDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID: the account is not linked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaListReusableCertificates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaReusableCertificateDto"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaReuseCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReuseArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    arcaSetSalesPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ID of the entity (parking lot / tenant). */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetArcaSalesPointDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Not a member of the entity, or not an `owner` for a write operation. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_LINK_STEP_INVALID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_POS_NOT_FOUND, ARCA_POS_DISABLED, ARCA_PADRON_NOT_FOUND. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description ARCA_UNAVAILABLE. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_taxpayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Con o sin guiones */
+                cuit: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxpayerDto"];
+                };
+            };
+        };
+    };
     entitiesListAudit: {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
@@ -6499,7 +8060,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EntryDto"];
+                    "application/json": components["schemas"]["CloseEntryResponseDto"];
                 };
             };
         };
@@ -6530,6 +8091,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueInvoiceDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceSummaryDto"];
                 };
             };
         };
@@ -6583,6 +8171,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_receivers: {
+        parameters: {
+            query?: {
+                limit?: components["schemas"]["Object"];
+                /** @description Con dígitos busca por el principio del CUIT; con letras, dentro de la razón social. Vacío: los más recientes. */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceReceiverDto"][];
+                };
+            };
+        };
+    };
+    InvoicesController_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+        };
+    };
+    InvoicesController_issueBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueInvoiceBatchDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceBatchResponseDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_pullChanges: {
+        parameters: {
+            query?: {
+                /** @description Return rows with syncSeq greater than this value. */
+                afterSeq?: components["schemas"]["Object"];
+                /** @description Max items per page. */
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceChangesResponseDto"];
                 };
             };
         };
@@ -8021,6 +9711,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateChangesResponseDto"];
+                };
+            };
+        };
+    };
+    RatesController_openEntriesByRate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenEntriesByRateDto"];
                 };
             };
         };

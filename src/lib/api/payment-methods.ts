@@ -20,6 +20,24 @@ interface PaymentMethodChangesResponse {
   maxSeq: number;
 }
 
+/**
+ * Los medios de pago que el servidor reconoce ahora mismo.
+ *
+ * No lo usa el pull incremental —para eso está `pullPaymentMethodChanges`—
+ * sino la reconciliación, que necesita la lista completa para poder saber qué
+ * sobra del lado local. Son ~5 filas.
+ */
+export function listPaymentMethods(params: {
+  tenantId: string;
+  bearer: string;
+}): Promise<PaymentMethodDto[]> {
+  return apiRequest({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(params.tenantId)}/payment-methods`,
+    bearer: params.bearer,
+  });
+}
+
 export function pullPaymentMethodChanges(params: {
   tenantId: string;
   bearer: string;

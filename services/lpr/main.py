@@ -6,6 +6,7 @@ Usage:
 
 import base64
 import hmac
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -19,8 +20,26 @@ from pydantic import BaseModel
 
 from recognizer import PlateRecognizer
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+def _port_from_argv() -> int:
+    """El puerto sale del primer argumento, si es que ese argumento es un puerto.
+
+    Mismo arreglo que en el servicio de cámara: con `int(sys.argv[1])` pelado,
+    `python main.py --reload` moría con un `ValueError` sin contexto, y el
+    módulo no se podía ni importar desde un test, porque pytest deja la ruta
+    del test en `sys.argv[1]`.
+    """
+    if len(sys.argv) > 1:
+        try:
+            return int(sys.argv[1])
+        except ValueError:
+            pass
+    return 8765
+
+
+PORT = _port_from_argv()
 SHUTDOWN_TOKEN = os.environ.get("PARKIT_SHUTDOWN_TOKEN")
+
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 _recognizer: PlateRecognizer | None = None
 _server: uvicorn.Server | None = None
@@ -116,6 +135,8 @@ def process_image(req: ProcessRequest):
 
 
 if __name__ == "__main__":
-    _config = uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info")
+    _config = uvicorn.Config(
+        app, host="127.0.0.1", port=PORT, log_level="info", access_log=False
+    )
     _server = uvicorn.Server(_config)
     _server.run()

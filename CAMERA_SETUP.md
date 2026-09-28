@@ -129,13 +129,24 @@ requiere reiniciar: se aplica al guardar.
 Arrastrá un rectángulo sobre el video para marcar **la boca del portón**. Fuera
 de esa zona no se analiza nada.
 
-No es un detalle de rendimiento, es lo que evita registrar ingresos falsos. Si
-enfrente hay autos estacionados o pasa tránsito, sus patentes entran en cuadro y
-son perfectamente legibles — y el reconocimiento se queda con **la patente de
-mayor confianza del cuadro**, que bien puede ser la de un auto estacionado y
-quieto en vez de la del que está entrando.
+En una cámara de 4 MP no es opcional: **sin la zona marcada casi no detecta**.
+El modelo achica a 384 px de lado todo lo que recibe, así que de un cuadro de
+2560×1440 una patente de 320 px le llega con 48 px y no la ve. Recortar es lo
+único que la agranda — bajar la resolución de la cámara no sirve, porque lo que
+decide es qué _fracción_ del cuadro ocupa la patente, y eso no cambia al achicar.
 
-El botón "Usar todo el cuadro" la borra.
+Así se ve cuando falta: no falla del todo, **tarda**. Sólo detecta cuando el auto
+ya está encima y la patente es enorme. El video se ve perfecto y el servicio
+parece sano, que es lo que lo hace difícil de diagnosticar.
+
+Lo segundo que resuelve es registrar ingresos falsos. Si enfrente hay autos
+estacionados o pasa tránsito, sus patentes entran en cuadro y son perfectamente
+legibles — y el reconocimiento se queda con **la patente de mayor confianza del
+cuadro**, que bien puede ser la de un auto estacionado y quieto en vez de la del
+que está entrando.
+
+El botón "Usar todo el cuadro" la borra. En una cámara de alta resolución eso
+deja la detección casi ciega; el servicio lo avisa en el log cuando pasa.
 
 ### Los ajustes de detección
 

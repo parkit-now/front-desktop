@@ -7,6 +7,7 @@ import type { VehicleTypeDto } from '../api/vehicle-types';
 import type { VehicleDto } from '../api/vehicles';
 import type {
   LocalEntry,
+  LocalInvoice,
   LocalLprDetectionEvent,
   LocalPaymentMethod,
   LocalRate,
@@ -47,6 +48,28 @@ const h = vi.hoisted(() => {
       bulkGet(ids: string[]): Promise<(T | undefined)[]> {
         return Promise.resolve(ids.map((id) => rows.get(id)));
       },
+      put(row: T): Promise<void> {
+        rows.set(row.id, row);
+        return Promise.resolve();
+      },
+      // `where('tenantId').equals(...).filter(...).toArray()`, que es como
+      // `pushLprDetectionEventImages` elige qué imágenes faltan subir.
+      where(field: keyof T & string) {
+        return {
+          equals(value: unknown) {
+            const matching = () =>
+              [...rows.values()].filter((row) => row[field] === value);
+            return {
+              toArray: () => Promise.resolve(matching()),
+              filter(predicate: (row: T) => boolean) {
+                return {
+                  toArray: () => Promise.resolve(matching().filter(predicate)),
+                };
+              },
+            };
+          },
+        };
+      },
     };
   }
 
@@ -58,6 +81,7 @@ const h = vi.hoisted(() => {
   const vehicleTypes = makeTable<LocalVehicleType>();
   const paymentMethods = makeTable<LocalPaymentMethod>();
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
+  const invoices = makeTable<LocalInvoice>();
 
   const localDb = {
     entries: {
@@ -71,6 +95,7 @@ const h = vi.hoisted(() => {
     vehicleTypes,
     paymentMethods,
     lprDetectionEvents,
+    invoices,
     syncState: {
       get(key: string): Promise<SyncState | undefined> {
         return Promise.resolve(syncState.get(key));
@@ -139,15 +164,28 @@ const h = vi.hoisted(() => {
     vehicleTypes,
     paymentMethods,
     lprDetectionEvents,
+    invoices,
     localDb,
     pullEntryChanges,
+    pullInvoiceChanges: vi.fn(
+      (input: {
+        afterSeq: number;
+      }): Promise<{ items: LocalInvoice[]; maxSeq: number }> =>
+        Promise.resolve({ items: [], maxSeq: input.afterSeq }),
+    ),
     pullRateChanges: changesMock<RateDto>(),
+    listRates: vi.fn(),
+    listVehicleTypes: vi.fn(),
+    listPaymentMethods: vi.fn(),
     pullVehicleChanges: changesMock<VehicleDto>(),
     pullVehicleTypeChanges: changesMock<VehicleTypeDto>(),
     pullPaymentMethodChanges: changesMock<PaymentMethodDto>(),
     pullLprDetectionEventChanges: changesMock<LprDetectionEventDto>(),
+    uploadLprDetectionEventImage: vi.fn(),
   };
 });
+
+import { ApiError } from '../api/client';
 
 vi.mock('../db/localDb', () => ({ localDb: h.localDb }));
 vi.mock('../api/entries', () => ({
@@ -162,6 +200,7 @@ vi.mock('../api/entries', () => ({
 vi.mock('../api/rates', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/rates')>()),
   pullRateChanges: h.pullRateChanges,
+  listRates: h.listRates,
 }));
 vi.mock('../api/vehicles', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/vehicles')>()),
@@ -170,14 +209,21 @@ vi.mock('../api/vehicles', async (importOriginal) => ({
 vi.mock('../api/vehicle-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/vehicle-types')>()),
   pullVehicleTypeChanges: h.pullVehicleTypeChanges,
+  listVehicleTypes: h.listVehicleTypes,
 }));
 vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
   pullPaymentMethodChanges: h.pullPaymentMethodChanges,
+  listPaymentMethods: h.listPaymentMethods,
+}));
+vi.mock('../api/arca', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/arca')>()),
+  pullInvoiceChanges: h.pullInvoiceChanges,
 }));
 vi.mock('../api/lpr-events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/lpr-events')>()),
   pullLprDetectionEventChanges: h.pullLprDetectionEventChanges,
+  uploadLprDetectionEventImage: h.uploadLprDetectionEventImage,
 }));
 
 const { syncService } = await import('./SyncService');
@@ -191,6 +237,7 @@ function serverEntry(id: string, overrides: Partial<EntryDto> = {}): EntryDto {
     tenantId: TENANT,
     plate: 'ABC123',
     source: 'manual',
+    manuallyInvoiced: false,
     enteredAt: ENTERED_AT,
     version: 1,
     syncSeq: 1,
@@ -270,6 +317,10 @@ beforeEach(() => {
   h.pullVehicleTypeChanges.mockReset();
   h.pullPaymentMethodChanges.mockReset();
   h.pullLprDetectionEventChanges.mockReset();
+  h.listRates.mockReset();
+  h.listVehicleTypes.mockReset();
+  h.listPaymentMethods.mockReset();
+  h.uploadLprDetectionEventImage.mockReset();
   syncService.setCredentials(TENANT, TOKEN);
 });
 
@@ -570,6 +621,7 @@ function serverPaymentMethod(
     enabled: true,
     isDefault: false,
     isSystem: false,
+    invoiceMode: 'none',
     version: 1,
     syncSeq: 1,
     createdAt: ENTERED_AT,
@@ -899,5 +951,355 @@ describe('pullLprDetectionEvents y los cambios locales sin sincronizar', () => {
     await syncService.pullLprDetectionEvents();
 
     expect(h.lprDetectionEvents.rows.get('lpr-2')?.bestCaptureId).toBe('cap-2');
+  });
+});
+
+describe('pullInvoices', () => {
+  function invoice(id: string, syncSeq: number): LocalInvoice {
+    return {
+      id,
+      tenantId: TENANT,
+      entryId: `entry-${id}`,
+      status: 'issued',
+      impTotal: 1210,
+      syncSeq,
+      version: 1,
+      updatedAt: ENTERED_AT,
+    };
+  }
+
+  beforeEach(() => {
+    h.invoices.rows.clear();
+    h.syncState.clear();
+    h.pullInvoiceChanges.mockClear();
+    syncService.setCredentials(TENANT, TOKEN);
+  });
+
+  it('pagina hasta la última página y guarda el cursor', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => invoice(`a${i}`, i + 1));
+    h.pullInvoiceChanges
+      .mockResolvedValueOnce({ items: full, maxSeq: 500 })
+      .mockResolvedValueOnce({ items: [invoice('b', 501)], maxSeq: 501 });
+
+    await syncService.pullInvoices();
+
+    expect(h.pullInvoiceChanges).toHaveBeenCalledTimes(2);
+    expect(h.invoices.rows.size).toBe(501);
+    expect(h.syncState.get(`invoices:${TENANT}`)?.lastSeq).toBe(501);
+  });
+
+  it('la fila del servidor pisa la local (el desktop sólo la lee)', async () => {
+    h.invoices.rows.set('x', { ...invoice('x', 1), status: 'pending' });
+    h.pullInvoiceChanges.mockResolvedValueOnce({
+      items: [invoice('x', 2)],
+      maxSeq: 2,
+    });
+
+    await syncService.pullInvoices();
+
+    expect(h.invoices.rows.get('x')?.status).toBe('issued');
+  });
+});
+
+describe('pushLprDetectionEventImages', () => {
+  const CAPTURE = 'cap-1';
+
+  function armarDeteccionSinImagen() {
+    h.lprDetectionEvents.rows.set(
+      'lpr-1',
+      localLprEvent('lpr-1', { bestCaptureId: CAPTURE }),
+    );
+  }
+
+  it('pide la foto COMPLETA comprimida, no el recorte de la patente', async () => {
+    // El recorte no deja ver marca, modelo ni color, que es justo para lo que
+    // el dueño mira la evidencia. Y va comprimida porque una vez leída la
+    // patente la imagen sólo se audita a ojo.
+    armarDeteccionSinImagen();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['jpeg'])),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    h.uploadLprDetectionEventImage.mockResolvedValue(
+      serverLprEvent('lpr-1', { imageStoragePath: 't/lpr-1.jpg' }),
+    );
+
+    await syncService.pushLprDetectionEventImages();
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain(`/capture/${CAPTURE}/image.jpg`);
+    expect(url).not.toContain('plate.jpg');
+    expect(url).toContain('maxWidth=1280');
+    expect(url).toContain('quality=55');
+    vi.unstubAllGlobals();
+  });
+
+  it('no reintenta cuando el backend rechaza el payload', async () => {
+    // Un 4xx no se arregla solo: el payload va a ser el mismo. Como la fila
+    // queda sin `imageStoragePath`, volvería a elegirse en cada ciclo de sync
+    // para siempre. Antes el catch pelado se lo tragaba sin dejar rastro.
+    armarDeteccionSinImagen();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(['jpeg'])),
+      }),
+    );
+    h.uploadLprDetectionEventImage.mockRejectedValue(
+      new ApiError(413, 'Payload Too Large', null),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(warn).toHaveBeenCalled();
+    expect(h.lprDetectionEvents.rows.get('lpr-1')?.imageStoragePath).toBe(
+      undefined,
+    );
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('un 5xx sí se reintenta: es transitorio', async () => {
+    armarDeteccionSinImagen();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(['jpeg'])),
+      }),
+    );
+    h.uploadLprDetectionEventImage.mockRejectedValue(
+      new ApiError(503, 'Service Unavailable', null),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('no sube nada si el servicio de cámara no tiene la captura', async () => {
+    armarDeteccionSinImagen();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(h.uploadLprDetectionEventImage.mock.calls).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('saltea una detección cuya imagen ya purgó la retención', async () => {
+    h.lprDetectionEvents.rows.set(
+      'lpr-1',
+      localLprEvent('lpr-1', {
+        bestCaptureId: CAPTURE,
+        imageDeletedAt: LEFT_AT,
+      }),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(fetchMock.mock.calls).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('reconcileCatalogs', () => {
+  function tarifaLocal(id: string) {
+    h.rates.rows.set(id, localRate(id));
+  }
+
+  function servidorDevuelve(ids: string[]) {
+    h.listRates.mockResolvedValue(ids.map((id) => ({ id })));
+    h.listVehicleTypes.mockResolvedValue([]);
+    h.listPaymentMethods.mockResolvedValue([]);
+  }
+
+  it('poda la tarifa que el servidor ya no conoce', async () => {
+    // El caso del reporte: una tarifa borrada físicamente durante la ventana de
+    // bug, que el feed incremental no va a mencionar nunca más.
+    tarifaLocal('viva');
+    tarifaLocal('fantasma');
+    servidorDevuelve(['viva']);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.rates.rows.has('fantasma')).toBe(false);
+    expect(h.rates.rows.has('viva')).toBe(true);
+  });
+
+  it('pide las inactivas, o borraría toda tarifa desactivada pero viva', async () => {
+    // Sin `includeInactive` el backend filtra `isActive: true`. Es el error más
+    // caro posible acá: le borraría al dueño tarifas que puede reactivar.
+    tarifaLocal('viva');
+    servidorDevuelve(['viva']);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.listRates).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { includeInactive: true } }),
+    );
+  });
+
+  it('NO poda una tarifa con una operación encolada', async () => {
+    tarifaLocal('recien-creada');
+    queueOp('rate', 'recien-creada');
+    servidorDevuelve([]);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.rates.rows.has('recien-creada')).toBe(true);
+  });
+
+  it('no poda nada si el servidor devuelve vacío y hay filas locales', async () => {
+    tarifaLocal('a');
+    tarifaLocal('b');
+    servidorDevuelve([]);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.rates.rows.size).toBe(2);
+  });
+
+  it('no sella el timestamp cuando el listado falla, así reintenta', async () => {
+    tarifaLocal('a');
+    h.listRates.mockRejectedValue(new Error('sin red'));
+    h.listVehicleTypes.mockResolvedValue([]);
+    h.listPaymentMethods.mockResolvedValue([]);
+
+    await expect(syncService.reconcileCatalogs(true)).rejects.toThrow();
+
+    expect(h.syncState.get(`reconcile:rate:${TENANT}`)).toBeUndefined();
+    expect(h.rates.rows.has('a')).toBe(true);
+  });
+
+  it('una entidad que falla no impide que las otras reconcilien', async () => {
+    h.listRates.mockRejectedValue(new Error('sin red'));
+    h.listVehicleTypes.mockResolvedValue([]);
+    h.listPaymentMethods.mockResolvedValue([]);
+
+    await expect(syncService.reconcileCatalogs(true)).rejects.toThrow();
+
+    expect(h.listVehicleTypes).toHaveBeenCalled();
+    expect(h.listPaymentMethods).toHaveBeenCalled();
+  });
+
+  it('respeta la cadencia: no vuelve a pedir la lista enseguida', async () => {
+    tarifaLocal('viva');
+    servidorDevuelve(['viva']);
+
+    await syncService.reconcileCatalogs(true);
+    expect(h.listRates).toHaveBeenCalledTimes(1);
+
+    await syncService.reconcileCatalogs(false);
+    expect(h.listRates).toHaveBeenCalledTimes(1);
+
+    // Pero el botón manual fuerza igual.
+    await syncService.reconcileCatalogs(true);
+    expect(h.listRates).toHaveBeenCalledTimes(2);
+  });
+
+  it('corre DESPUÉS del push, o leería como fantasmas las altas offline', async () => {
+    servidorDevuelve([]);
+    const push = vi.spyOn(syncService, 'pushPendingOps');
+
+    // `fullSync` acumula los fallos de las etapas que el doble de Dexie no
+    // soporta y tira al final; el orden de invocación se mide igual.
+    await expect(
+      syncService.fullSync({ forceReconcile: true }),
+    ).rejects.toThrow();
+
+    expect(push.mock.invocationCallOrder[0]).toBeLessThan(
+      h.listRates.mock.invocationCallOrder[0],
+    );
+    push.mockRestore();
+  });
+});
+
+describe('pullPaymentMethods y las bajas', () => {
+  it('borra el medio de pago que el servidor dio de baja', async () => {
+    // Antes el borrado era físico y no viajaba: el medio quedaba en los otros
+    // equipos para siempre, seleccionable al cobrar.
+    h.paymentMethods.rows.set('pm-1', {
+      id: 'pm-1',
+      tenantId: TENANT,
+      type: 'other',
+      name: 'Naranja X',
+      enabled: true,
+      isDefault: false,
+      syncSeq: 1,
+      version: 1,
+    } as unknown as LocalPaymentMethod);
+
+    h.pullPaymentMethodChanges.mockResolvedValue({
+      items: [
+        {
+          id: 'pm-1',
+          type: 'other',
+          name: 'Naranja X',
+          enabled: true,
+          isDefault: false,
+          isSystem: false,
+          invoiceMode: 'none',
+          syncSeq: 2,
+          version: 2,
+          createdAt: ENTERED_AT,
+          updatedAt: ENTERED_AT,
+          deletedAt: ENTERED_AT,
+        },
+      ],
+      maxSeq: 2,
+    });
+
+    await syncService.pullPaymentMethods();
+
+    expect(h.paymentMethods.rows.has('pm-1')).toBe(false);
+  });
+
+  it('la baja se aplica aunque el medio tenga una op encolada', async () => {
+    // Una baja es una afirmación del servidor, no una foto vieja: dejar vivo
+    // un medio que allá no existe es peor, porque se le sigue cobrando.
+    h.paymentMethods.rows.set('pm-1', {
+      id: 'pm-1',
+      tenantId: TENANT,
+      type: 'other',
+      name: 'Naranja X',
+      enabled: true,
+      isDefault: false,
+      syncSeq: 1,
+      version: 1,
+    } as unknown as LocalPaymentMethod);
+    queueOp('paymentMethod', 'pm-1');
+
+    h.pullPaymentMethodChanges.mockResolvedValue({
+      items: [
+        {
+          id: 'pm-1',
+          type: 'other',
+          name: 'Naranja X',
+          enabled: true,
+          isDefault: false,
+          isSystem: false,
+          invoiceMode: 'none',
+          syncSeq: 2,
+          version: 2,
+          createdAt: ENTERED_AT,
+          updatedAt: ENTERED_AT,
+          deletedAt: ENTERED_AT,
+        },
+      ],
+      maxSeq: 2,
+    });
+
+    await syncService.pullPaymentMethods();
+
+    expect(h.paymentMethods.rows.has('pm-1')).toBe(false);
   });
 });

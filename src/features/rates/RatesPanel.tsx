@@ -184,6 +184,17 @@ function generateUuidV7(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+import {
+  hasPriceChange,
+  nextSnapshotFromRate,
+  openEntriesForRate,
+  priceDiffRows,
+} from './rateDiff';
+import {
+  RatePropagationDialog,
+  type PriceDiffRow,
+} from './RatePropagationDialog';
+
 export function RatesPanel({
   accessToken,
   userId,
@@ -197,6 +208,19 @@ export function RatesPanel({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<EditorMode>('create');
   const [editingRate, setEditingRate] = useState<RateDto | null>(null);
+  /**
+   * La pregunta pendiente sobre los autos que están adentro.
+   *
+   * El guardado se corta acá y se retoma cuando el dueño contesta: no hay
+   * forma de `await` un diálogo de React, así que se guarda lo necesario para
+   * poder seguir.
+   */
+  const [propagation, setPropagation] = useState<{
+    rate: RateDto;
+    body: UpdateRateDto;
+    openEntries: number;
+    rows: PriceDiffRow[];
+  } | null>(null);
   const [confirmAction, setConfirmAction] = useState<RateConfirmAction | null>(
     null,
   );
@@ -483,62 +507,150 @@ export function RatesPanel({
           return;
         }
 
-        if (isOnline) {
-          const result = await updateRate({
-            tenantId,
-            rateId: editingRate.id,
-            expectedVersion: editingRate.version,
-            bearer: accessToken,
-            body,
-          });
-          await localDb.rates.put(apiToLocal(result));
-        } else {
-          await localDb.transaction(
-            'rw',
-            localDb.rates,
-            localDb.pendingOps,
-            async () => {
-              await localDb.rates.update(editingRate.id, {
-                ...body,
-                hourPriceArs:
-                  body.hourPriceArs !== undefined
-                    ? String(body.hourPriceArs)
-                    : undefined,
-                stayPriceArs:
-                  body.stayPriceArs !== undefined
-                    ? String(body.stayPriceArs)
-                    : undefined,
-                fractionPriceArs:
-                  body.fractionPriceArs !== undefined
-                    ? String(body.fractionPriceArs)
-                    : undefined,
-                mediaEstadiaPriceArs:
-                  body.mediaEstadiaPriceArs !== undefined
-                    ? String(body.mediaEstadiaPriceArs)
-                    : undefined,
-                shortcutNumber: body.shortcutNumber,
-                updatedAt: new Date().toISOString(),
-              });
-              await enqueuePendingOp({
-                entityType: 'rate',
-                operation: 'update',
-                tenantId,
-                entityId: editingRate.id,
-                payload: { expectedVersion: editingRate.version, body },
-                status: 'pending',
-              });
-            },
+        // ¿Hay autos adentro a los que esto les cambiaría el precio?
+        //
+        // Se lee acá, en el submit, y no con un `useLiveQuery` en el panel:
+        // `entries` no tiene índice por `leftAt`, así que una suscripción viva
+        // escanearía todo el historial del estacionamiento en cada egreso.
+        if (hasPriceChange(body)) {
+          const abiertas = openEntriesForRate(
+            await localDb.entries.where('tenantId').equals(tenantId).toArray(),
+            editingRate.id,
           );
+
+          if (abiertas.length > 0) {
+            // La decisión la toma una persona. Se guarda lo necesario para
+            // retomar el guardado cuando conteste, y se corta acá.
+            setPropagation({
+              rate: editingRate,
+              body,
+              openEntries: abiertas.length,
+              rows: priceDiffRows(body, editingRate),
+            });
+            setSaving(false);
+            return;
+          }
         }
 
-        showToast({
-          message: isOnline
-            ? 'Tasa actualizada.'
-            : 'Cambios guardados localmente.',
-          kind: 'success',
-        });
+        await persistRateUpdate(editingRate, body, false);
       }
 
+      setEditorOpen(false);
+      resetEditor();
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * Guarda la edición de una tarifa, con o sin propagación a los autos
+   * adentro.
+   *
+   * Sale del handler de submit porque hay dos caminos que llegan acá: el
+   * guardado directo (sin autos adentro, o sin cambios de precio) y la
+   * respuesta del diálogo.
+   */
+  async function persistRateUpdate(
+    rate: RateDto,
+    body: UpdateRateDto,
+    applyToOpenEntries: boolean,
+  ): Promise<void> {
+    const finalBody: UpdateRateDto = applyToOpenEntries
+      ? { ...body, applyToOpenEntries: true }
+      : body;
+
+    if (isOnline) {
+      const result = await updateRate({
+        tenantId,
+        rateId: rate.id,
+        expectedVersion: rate.version,
+        bearer: accessToken,
+        body: finalBody,
+      });
+      await localDb.rates.put(apiToLocal(result));
+
+      if (applyToOpenEntries) {
+        // El servidor ya reescribió los snapshots, pero la copia local recién
+        // se entera en el próximo pull. Se aplica también acá para que el
+        // operador vea el precio nuevo al instante en la pantalla de cobro.
+        await applySnapshotLocally(rate, finalBody);
+      }
+    } else {
+      await localDb.transaction(
+        'rw',
+        localDb.rates,
+        localDb.entries,
+        localDb.pendingOps,
+        async () => {
+          if (applyToOpenEntries) {
+            await applySnapshotLocally(rate, finalBody);
+          }
+          await localDb.rates.update(rate.id, {
+            ...body,
+            hourPriceArs:
+              body.hourPriceArs !== undefined
+                ? String(body.hourPriceArs)
+                : undefined,
+            stayPriceArs:
+              body.stayPriceArs !== undefined
+                ? String(body.stayPriceArs)
+                : undefined,
+            fractionPriceArs:
+              body.fractionPriceArs !== undefined
+                ? String(body.fractionPriceArs)
+                : undefined,
+            mediaEstadiaPriceArs:
+              body.mediaEstadiaPriceArs !== undefined
+                ? String(body.mediaEstadiaPriceArs)
+                : undefined,
+            shortcutNumber: finalBody.shortcutNumber,
+            updatedAt: new Date().toISOString(),
+          });
+          await enqueuePendingOp({
+            entityType: 'rate',
+            operation: 'update',
+            tenantId,
+            entityId: rate.id,
+            // La decisión viaja DENTRO del body que ya se encolaba: el
+            // backend la aplica cuando la operación se pushea. No hace falta
+            // una op por estadía, que multiplicaría la cola por la cantidad
+            // de autos adentro y sería un 409 potencial en cada barrera.
+            payload: { expectedVersion: rate.version, body: finalBody },
+            status: 'pending',
+          });
+        },
+      );
+    }
+
+    showToast({
+      message: isOnline ? 'Tasa actualizada.' : 'Cambios guardados localmente.',
+      kind: 'success',
+    });
+  }
+
+  /** Reescribe los cuatro precios del snapshot en las estadías abiertas. */
+  async function applySnapshotLocally(
+    rate: RateDto,
+    body: UpdateRateDto,
+  ): Promise<void> {
+    const snapshot = nextSnapshotFromRate(rate, body);
+    await localDb.entries
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((entry) => !entry.leftAt && entry.rateId === rate.id)
+      // No se tocan `version` ni `syncSeq`: son del servidor, y el próximo
+      // pull trae la fila autoritativa.
+      .modify({ ...snapshot, updatedAt: new Date().toISOString() });
+  }
+
+  async function handlePropagationAnswer(apply: boolean): Promise<void> {
+    if (!propagation) return;
+    setSaving(true);
+    try {
+      await persistRateUpdate(propagation.rate, propagation.body, apply);
+      setPropagation(null);
       setEditorOpen(false);
       resetEditor();
     } catch (error) {
@@ -1120,6 +1232,21 @@ export function RatesPanel({
             </form>
           </section>
         </div>
+      ) : null}
+
+      {propagation ? (
+        <RatePropagationDialog
+          rateName={propagation.rate.name}
+          openEntries={propagation.openEntries}
+          rows={propagation.rows}
+          isOffline={!isOnline}
+          isPending={saving}
+          // Cancelar NO guarda nada: el editor queda abierto con los cambios
+          // sin aplicar, para que el dueño pueda revisarlos.
+          onCancel={() => setPropagation(null)}
+          onKeepSnapshot={() => void handlePropagationAnswer(false)}
+          onApply={() => void handlePropagationAnswer(true)}
+        />
       ) : null}
 
       {confirmDialogCopy ? (

@@ -216,6 +216,91 @@ describe('ServiceManager — startup wait', () => {
   });
 });
 
+describe('ServiceManager — manual control', () => {
+  it('starts a stopped service using its launcher', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        mockSpawn.mock.calls.length === 0
+          ? Promise.reject(new Error('down'))
+          : Promise.resolve({ ok: true } as Response),
+      ),
+    );
+
+    const manager = new ServiceManager([config()]);
+    const status = await manager.startService('lpr-service');
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(status).toMatchObject({
+      state: 'running',
+      healthy: true,
+      pid: 1234,
+    });
+  });
+
+  it('restarts a managed service with cooperative shutdown and respawn', async () => {
+    const procs: FakeProcess[] = [];
+    mockSpawn.mockImplementation(() => {
+      const p = new FakeProcess();
+      procs.push(p);
+      return p;
+    });
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/health')) {
+        return mockSpawn.mock.calls.length === 0
+          ? Promise.reject(new Error('down'))
+          : Promise.resolve({ ok: true } as Response);
+      }
+      queueMicrotask(() => {
+        procs[0].exitCode = 0;
+        procs[0].emit('exit', 0, null);
+      });
+      return Promise.resolve({ ok: true } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const manager = new ServiceManager([config()], 'test-token');
+    await manager.spawnAll();
+    await manager.waitAllHealthy();
+
+    const status = await manager.restartService('lpr-service');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8765/shutdown', {
+      method: 'POST',
+      headers: { 'X-Parkit-Shutdown-Token': 'test-token' },
+    });
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(status).toMatchObject({ state: 'running', healthy: true });
+  });
+
+  it('does not restart an adopted external service', async () => {
+    stubFetch({ health: 'ok' });
+
+    const manager = new ServiceManager([config()]);
+    await manager.spawnAll();
+
+    const status = await manager.restartService('lpr-service');
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(status).toMatchObject({ state: 'adopted', healthy: true });
+  });
+
+  it('reports a health timeout when manual start never becomes healthy', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
+
+    const manager = new ServiceManager([config()]);
+    const done = manager.startService('lpr-service');
+    await vi.runAllTimersAsync();
+
+    await expect(done).resolves.toMatchObject({
+      state: 'failed',
+      healthy: false,
+      pid: 1234,
+      lastError: 'health_timeout',
+    });
+  });
+});
+
 describe('ServiceManager — shutdown', () => {
   it('passes a per-run shutdown token to spawned services', async () => {
     stubFetch();

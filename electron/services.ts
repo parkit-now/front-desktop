@@ -19,6 +19,22 @@ export interface ServiceConfig {
   logPath?: string;
 }
 
+export type ManagedServiceState =
+  | 'managed'
+  | 'adopted'
+  | 'unavailable'
+  | 'running'
+  | 'stopped'
+  | 'failed';
+
+export interface ManagedServiceStatus {
+  name: string;
+  state: ManagedServiceState;
+  healthy: boolean;
+  pid: number | null;
+  lastError?: string;
+}
+
 // A PyInstaller onefile binary (numpy + opencv + onnxruntime, ~100 MB)
 // unpacks to a temp dir on first launch — cold start can take a minute. Give
 // startup a long grace window (like a k8s startupProbe) and never kill a
@@ -48,6 +64,7 @@ export class ServiceManager {
   private readonly failed = new Set<string>();
   private readonly healthy = new Set<string>();
   private readonly spawnErrors = new Set<string>();
+  private readonly lastErrors = new Map<string, string>();
   /** Services already listening when we started — not ours to spawn or stop. */
   private readonly adopted = new Set<string>();
   private readonly shutdownToken: string;
@@ -84,6 +101,106 @@ export class ServiceManager {
         this.spawnOne(svc);
       }),
     );
+  }
+
+  getServiceStatus(name: string): ManagedServiceStatus {
+    const svc = this.serviceByName(name);
+    if (!svc) {
+      return {
+        name,
+        state: 'unavailable',
+        healthy: false,
+        pid: null,
+        lastError: 'service_not_configured',
+      };
+    }
+
+    const proc = this.processes.get(name);
+    const alive = Boolean(proc && proc.exitCode === null && !proc.killed);
+    const healthy = this.healthy.has(name);
+
+    if (this.adopted.has(name)) {
+      return {
+        name,
+        state: 'adopted',
+        healthy,
+        pid: null,
+        lastError: this.lastErrors.get(name),
+      };
+    }
+
+    if (alive) {
+      return {
+        name,
+        state: this.failed.has(name)
+          ? 'failed'
+          : healthy
+            ? 'running'
+            : 'managed',
+        healthy,
+        pid: proc?.pid ?? null,
+        lastError: this.lastErrors.get(name),
+      };
+    }
+
+    return {
+      name,
+      state: this.failed.has(name) ? 'failed' : 'stopped',
+      healthy: false,
+      pid: null,
+      lastError: this.lastErrors.get(name),
+    };
+  }
+
+  async startService(name: string): Promise<ManagedServiceStatus> {
+    const svc = this.serviceByName(name);
+    if (!svc) return this.getServiceStatus(name);
+    if (this.adopted.has(name)) return this.getServiceStatus(name);
+
+    const proc = this.processes.get(name);
+    if (proc && proc.exitCode === null && !proc.killed) {
+      await this.awaitHealthy(svc, { allowRespawn: false });
+      return this.getServiceStatus(name);
+    }
+
+    this.clearRuntimeState(name);
+    if (await this.pingHealth(svc.port)) {
+      this.adopted.add(name);
+      this.healthy.add(name);
+      return this.getServiceStatus(name);
+    }
+
+    this.spawnOne(svc);
+    await this.awaitHealthy(svc, { allowRespawn: false });
+    return this.getServiceStatus(name);
+  }
+
+  async restartService(name: string): Promise<ManagedServiceStatus> {
+    const svc = this.serviceByName(name);
+    if (!svc) return this.getServiceStatus(name);
+    if (this.adopted.has(name)) return this.getServiceStatus(name);
+
+    const proc = this.processes.get(name);
+    if (proc && proc.exitCode === null && !proc.killed) {
+      await this.stopOne(svc, proc);
+    }
+
+    this.processes.delete(name);
+    this.clearRuntimeState(name);
+    this.spawnOne(svc);
+    await this.awaitHealthy(svc, { allowRespawn: false });
+    return this.getServiceStatus(name);
+  }
+
+  private serviceByName(name: string): ServiceConfig | undefined {
+    return this.services.find((svc) => svc.name === name);
+  }
+
+  private clearRuntimeState(name: string): void {
+    this.failed.delete(name);
+    this.healthy.delete(name);
+    this.spawnErrors.delete(name);
+    this.lastErrors.delete(name);
   }
 
   private async pingHealth(port: number): Promise<boolean> {
@@ -140,18 +257,23 @@ export class ServiceManager {
       const message = `[${svc.name}] spawn error: ${err.message}`;
       this.spawnErrors.add(svc.name);
       this.failed.add(svc.name);
+      this.lastErrors.set(svc.name, err.message);
       console.error(message);
       logStream?.write(`${message}\n`);
     });
 
     proc.on('exit', (code) => {
+      const wasHealthy = this.healthy.has(svc.name);
+      this.healthy.delete(svc.name);
       if (code !== 0 && code !== null) {
         const message = `[${svc.name}] exited unexpectedly with code ${code}`;
         console.error(message);
         logStream?.write(`${message}\n`);
+        this.failed.add(svc.name);
+        this.lastErrors.set(svc.name, `exited_${code}`);
         // Only notify the renderer for services that were previously healthy —
         // startup failures are already surfaced via waitAllHealthy / services:failed.
-        if (this.healthy.has(svc.name)) {
+        if (wasHealthy) {
           BrowserWindow.getAllWindows().forEach((win) =>
             win.webContents.send('services:crashed', svc.name),
           );
@@ -200,12 +322,16 @@ export class ServiceManager {
     return [...this.failed];
   }
 
-  private async awaitHealthy(svc: ServiceConfig): Promise<void> {
+  private async awaitHealthy(
+    svc: ServiceConfig,
+    options: { allowRespawn?: boolean } = {},
+  ): Promise<void> {
     // Adopted (or otherwise already-verified) services need no polling.
     if (this.healthy.has(svc.name)) return;
 
     let respawns = 0;
     const deadline = Date.now() + STARTUP_GRACE_MS;
+    const allowRespawn = options.allowRespawn ?? true;
 
     while (Date.now() < deadline) {
       if (this.spawnErrors.has(svc.name)) break;
@@ -214,7 +340,7 @@ export class ServiceManager {
 
       if (proc && proc.exitCode !== null) {
         // Actually crashed while starting — respawn, bounded.
-        if (respawns >= MAX_RESPAWNS) break;
+        if (!allowRespawn || respawns >= MAX_RESPAWNS) break;
         respawns += 1;
         console.warn(
           `[${svc.name}] exited during startup — respawn ${respawns}/${MAX_RESPAWNS}`,
@@ -228,6 +354,9 @@ export class ServiceManager {
         const res = await fetch(`http://127.0.0.1:${svc.port}/health`);
         if (res.ok) {
           this.healthy.add(svc.name);
+          this.failed.delete(svc.name);
+          this.spawnErrors.delete(svc.name);
+          this.lastErrors.delete(svc.name);
           return;
         }
       } catch {
@@ -240,6 +369,7 @@ export class ServiceManager {
       `[${svc.name}] not healthy after ${Math.round(STARTUP_GRACE_MS / 1000)}s`,
     );
     this.failed.add(svc.name);
+    this.lastErrors.set(svc.name, 'health_timeout');
   }
 
   async stopAll(): Promise<void> {

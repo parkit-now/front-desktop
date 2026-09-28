@@ -167,6 +167,36 @@ const CODE_MESSAGES: Record<string, string> = {
   UNAUTHORIZED: 'No tenés autorización para esta acción.',
   FORBIDDEN: 'No tenés permiso para esta acción.',
   NOT_FOUND: 'No encontramos lo que buscabas.',
+  // Facturación electrónica (ARCA). Mismo tono que Mercado Pago: el operario
+  // está despachando un auto. Un problema de factura NUNCA frena el cobro, así
+  // que el mensaje dice qué pasó con la factura, no con el egreso.
+  ARCA_NOT_LINKED:
+    'Esta playa no tiene la facturación electrónica vinculada. El dueño la vincula desde el panel web.',
+  ARCA_UNAVAILABLE: 'ARCA no responde. Intentalo más tarde.',
+  ARCA_CERT_EXPIRED:
+    'Venció el certificado de ARCA. Avisale al dueño para que lo renueve.',
+  ARCA_CERT_NOT_AUTHORIZED:
+    'El certificado de ARCA no tiene habilitada la facturación. Avisale al dueño.',
+  INVOICE_ALREADY_ISSUED: 'Esta estadía ya tiene una factura emitida.',
+  INVOICE_IN_PROGRESS:
+    'La factura se está emitiendo en este momento. Esperá unos segundos.',
+  INVOICE_REJECTED: 'ARCA rechazó la factura.',
+  INVOICE_RECEIVER_REQUIRED:
+    'Por el monto, la factura necesita identificar al cliente (CUIT o DNI).',
+  INVOICE_NOT_INVOICEABLE:
+    'Esta estadía no se puede facturar: sigue abierta o se cobró $0.',
+  INVOICE_RECEIVER_NOT_FOUND:
+    'ARCA no tiene datos de ese CUIT. Revisalo o emití la factura a consumidor final.',
+  // Ya no lo emite el backend (desde la Etapa 5 un CUIT sin A sale B
+  // identificada); queda para las facturas viejas que lo tienen guardado.
+  INVOICE_RECEIVER_NOT_A:
+    'Ese CUIT no puede recibir Factura A (no es Responsable Inscripto ni Monotributista). Emitila de nuevo.',
+  INVOICE_NOT_ISSUED: 'La factura todavía no se emitió: no tiene PDF.',
+  INVOICE_PDF_FAILED: 'No se pudo generar el PDF. Probá de nuevo en un rato.',
+  ARCA_FISCAL_DATA_INCOMPLETE:
+    'Faltan Ingresos Brutos o la fecha de inicio de actividades: van impresos en la factura.',
+  ARCA_CUIT_INVALID: 'El CUIT del cliente no es válido.',
+
   ENTRY_DUPLICATE_ACTIVE_STAY: 'El vehículo ya tiene un ingreso activo.',
   CONFLICT: 'Conflicto con el estado actual.',
   UNPROCESSABLE_ENTITY: 'Algunos datos no son válidos.',
@@ -211,6 +241,16 @@ const STATUS_MESSAGES: Record<number, string> = {
 function readProblemCode(error: ApiError): string | undefined {
   const code = (error.problem as { code?: unknown } | null)?.code;
   return typeof code === 'string' && code.length > 0 ? code : undefined;
+}
+
+/**
+ * Mensaje para un `code` suelto, cuando no viene dentro de un error HTTP: por
+ * ejemplo el `errorCode` de una factura que el cierre devolvió con 200.
+ */
+export function translateErrorCode(
+  code: string | null | undefined,
+): string | undefined {
+  return code ? CODE_MESSAGES[code] : undefined;
 }
 
 export function translateApiError(

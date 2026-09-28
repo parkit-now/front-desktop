@@ -31,7 +31,13 @@ def recognize(frame_bgr: np.ndarray) -> dict | None:
         r = httpx.post(f"{LPR_URL}/process", json={"image": b64}, timeout=5.0)
         if r.status_code == 200:
             return r.json()
-        # 404 = no plate detected; anything else = unexpected error.
+        if r.status_code == 404:
+            logger.debug("lpr_no_plate", extra={"url": LPR_URL})
+            return None
+        logger.warning(
+            "lpr_unexpected_status",
+            extra={"url": LPR_URL, "status_code": r.status_code},
+        )
         return None
     except Exception as exc:
         logger.warning("lpr_unreachable", extra={"url": LPR_URL, "error": str(exc)})

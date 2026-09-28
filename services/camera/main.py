@@ -12,13 +12,15 @@ Environment variables (all optional):
     CAMERA_TENANT_ID           Tenant ID for storage path           (default: default)
     CAMERA_LOCATION            "entrada" | "salida"                 (default: entrada)
     CAMERA_MOTION_THRESHOLD    Mean pixel diff [0–255] to trigger   (default: 1.5)
-    CAMERA_MOTION_COOLDOWN     Seconds between motion triggers      (default: 3.0)
+    CAMERA_MOTION_COOLDOWN     Seconds between motion triggers      (default: 1.5)
     CAMERA_ROI                 "x1,y1,x2,y2" px, empty=full frame  (default: "")
     CAMERA_FALLBACK_INTERVAL   Seconds between fallback LPR scans  (default: 300)
     CAMERA_MIN_CONFIDENCE      Minimum confidence to save [0–1]     (default: 0.60)
-    CAMERA_COOLDOWN            Seconds before saving same plate again (default: 5)
+    CAMERA_COOLDOWN            Seconds before saving same plate again (default: 60)
     CAMERA_CLUSTER_WINDOW      Seconds to merge similar detections  (default: 5)
     CAMERA_CLUSTER_SETTLE      Quiet time before saving a cluster   (default: 1.2)
+    CAMERA_PLATE_MERGE_DISTANCE  Letras que pueden diferir y ser la misma (default: 3)
+    CAMERA_MOVE_MAX_RATIO      Movimiento máx entre lecturas, de la diagonal (default: 0.15)
     CAMERA_DB_PATH             SQLite database path                 (default: ./camera.db)
     CAMERA_IMAGES_DIR          Base directory for images            (default: ./images)
     CAMERA_WATCHDOG_TIMEOUT    Seconds without frames before reconnect (default: 5)
@@ -27,8 +29,10 @@ Environment variables (all optional):
 
 import asyncio
 import hmac
+import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -39,13 +43,13 @@ from datetime import datetime, timezone
 
 import cv2
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 import lpr_client
 from capture import CameraCapture, redact_source
-from motion import MotionDetector
+from motion import MotionDetector, roi_crop
 from storage import LocalStorage
 from watchdog import CameraWatchdog
 
@@ -55,10 +59,35 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-PORT             = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
+
+def _port_from_argv() -> int:
+    """El puerto sale del primer argumento, si es que ese argumento es un puerto.
+
+    Antes esto era `int(sys.argv[1])` pelado, y rompía de dos formas:
+
+      * Bajo pytest, `sys.argv[1]` es la ruta de un test. El `ValueError`
+        saltaba AL IMPORTAR el módulo, así que no se podía escribir un solo
+        test de este archivo.
+      * `python main.py --reload` moría con un `ValueError` sin contexto.
+
+    Un argumento que no es un número no es un puerto: se ignora y se usa el
+    default, que es lo que el que escribió `--reload` esperaba.
+    """
+    if len(sys.argv) > 1:
+        try:
+            return int(sys.argv[1])
+        except ValueError:
+            pass
+    return 8766
+
+
+PORT             = _port_from_argv()
 SHUTDOWN_TOKEN   = os.environ.get("PARKIT_SHUTDOWN_TOKEN")
 CAMERA_SOURCE    = os.environ.get("CAMERA_SOURCE", "0")
 CAMERA_FPS       = int(os.environ.get("CAMERA_FPS", "10"))
@@ -68,16 +97,40 @@ CAMERA_ID        = os.environ.get("CAMERA_ID", "cam-01")
 CAMERA_TENANT_ID = os.environ.get("CAMERA_TENANT_ID", "default")
 CAMERA_LOCATION  = os.environ.get("CAMERA_LOCATION", "entrada")
 MIN_CONFIDENCE   = float(os.environ.get("CAMERA_MIN_CONFIDENCE", "0.60"))
-COOLDOWN         = float(os.environ.get("CAMERA_COOLDOWN", "5.0"))
+# Cuánto espera antes de volver a guardar la MISMA patente, en memoria.
+#
+# Es la red que cubre el viaje de ida y vuelta al renderer: entre que este
+# servicio persiste un evento y el renderer lo ve (poll de 2 s) y lo devuelve
+# en la lista de patentes conocidas (cada 10 s) pasan hasta ~12 s, y en ese
+# hueco una segunda lectura del mismo auto generaría una tarjeta duplicada.
+#
+# Vive en memoria a propósito: muere con el proceso y por eso NO PUEDE quedar
+# desactualizada, que es justamente lo que rompió la versión anterior de esta
+# supresión cuando la leía de la base.
+COOLDOWN         = float(os.environ.get("CAMERA_COOLDOWN", "60.0"))
 CLUSTER_WINDOW   = float(os.environ.get("CAMERA_CLUSTER_WINDOW", "5.0"))
 CLUSTER_SETTLE   = float(os.environ.get("CAMERA_CLUSTER_SETTLE", "1.2"))
-BBOX_CLOSE_RATIO = float(os.environ.get("CAMERA_BBOX_CLOSE_RATIO", "0.35"))
+# Cuántas letras puede errar el OCR y seguir siendo la misma patente, y cuánto
+# puede moverse esa patente entre dos lecturas (fracción de la diagonal del
+# cuadro analizado). Ver `_plates_similar` y `_bbox_close`.
+PLATE_MERGE_DISTANCE = int(os.environ.get("CAMERA_PLATE_MERGE_DISTANCE", "3"))
+MOVE_MAX_RATIO   = float(os.environ.get("CAMERA_MOVE_MAX_RATIO", "0.15"))
 DB_PATH          = os.environ.get("CAMERA_DB_PATH", "./camera.db")
 IMAGES_DIR       = os.environ.get("CAMERA_IMAGES_DIR", "./images")
 WATCHDOG_TIMEOUT = int(os.environ.get("CAMERA_WATCHDOG_TIMEOUT", "5"))
+# Cuántos días se conservan las capturas en el disco de ESTE equipo. La copia
+# que se audita vive en la nube con la retención que configura el dueño; acá
+# sólo hace falta aguantar un corte de conexión largo. Ver
+# `LocalStorage.purge_images_older_than`: nunca borra algo sin subir.
+IMAGE_RETENTION_DAYS = int(os.environ.get("CAMERA_IMAGE_RETENTION_DAYS", "14"))
 
 MOTION_THRESHOLD  = float(os.environ.get("CAMERA_MOTION_THRESHOLD", "1.5"))
-MOTION_COOLDOWN   = float(os.environ.get("CAMERA_MOTION_COOLDOWN", "3.0"))
+# 1,5 s y no 3,0: con 3,0 un auto que entra daba UNA sola lectura, así que no
+# había con qué comparar y el agrupamiento no tenía material. Además fija el
+# piso de CLUSTER_SETTLE (ver `_coherent_cluster_timing`), y con 3,0 la tarjeta
+# tardaba hasta 8,5 s en aparecer. El costo es el doble de inferencias: medido,
+# la inferencia tarda 0,02-0,07 s, o sea ~5 % de un núcleo.
+MOTION_COOLDOWN   = float(os.environ.get("CAMERA_MOTION_COOLDOWN", "1.5"))
 FALLBACK_INTERVAL = float(os.environ.get("CAMERA_FALLBACK_INTERVAL", "300.0"))
 
 STREAM_FPS     = max(1, min(CAMERA_FPS, int(os.environ.get("CAMERA_STREAM_FPS", "12"))))
@@ -130,7 +183,12 @@ def _print_banner() -> None:
     print(f"  motion   : threshold={MOTION_THRESHOLD}  cooldown={MOTION_COOLDOWN}s  roi={roi_label}")
     print(f"  fallback : every {FALLBACK_INTERVAL:.0f}s")
     print(f"  filter   : min_conf={MIN_CONFIDENCE:.0%}  plate_cooldown={COOLDOWN}s")
-    print(f"  cluster  : window={CLUSTER_WINDOW:.1f}s  settle={CLUSTER_SETTLE:.1f}s")
+    # Los valores EFECTIVOS, ya clampeados: si el banner mostrara lo pedido y
+    # el servicio corriera con otra cosa, no habría forma de darse cuenta.
+    print(
+        f"  cluster  : window={CLUSTER_WINDOW:.1f}s  settle={CLUSTER_SETTLE:.1f}s"
+        f"  merge_dist={PLATE_MERGE_DISTANCE}  move_max={MOVE_MAX_RATIO}"
+    )
     print(f"  API      : http://127.0.0.1:{PORT}")
     print(sep)
     print()
@@ -143,6 +201,33 @@ _storage:      LocalStorage   | None = None
 _watchdog:     CameraWatchdog | None = None
 _motion:       MotionDetector | None = None
 _lpr_executor: ThreadPoolExecutor | None = None
+
+# Patentes que YA están adentro del estacionamiento, según el renderer.
+#
+# El servicio de cámara no tiene forma de saberlo solo: eso vive en Dexie, del
+# otro lado. El renderer lo empuja con POST /known-plates aprovechando el poll
+# que ya hace cada 2 s.
+#
+# Tiene vencimiento a propósito. Si el renderer se cae o se queda colgado, el
+# conjunto se vacía y se vuelve al comportamiento de antes —guardar de más—, en
+# vez de quedarse suprimiendo para siempre contra una lista congelada, que
+# sería un auto que nunca se registra y nadie sabe por qué.
+_KNOWN_PLATES_TTL = 30.0
+_known_plates_value: set[str] = set()
+_known_plates_at: float = 0.0
+
+
+def _known_plates() -> set[str]:
+    if not _known_plates_value:
+        return set()
+    if time.monotonic() - _known_plates_at > _KNOWN_PLATES_TTL:
+        return set()
+    return _known_plates_value
+
+
+# Ya se avisó que esta cámara corre sin zona de detección. Se rearma al cambiar
+# el ROI desde la config, para que el aviso vuelva si lo borran.
+_warned_no_roi = False
 _server:       uvicorn.Server | None = None
 _shutting_down = False
 
@@ -158,6 +243,39 @@ def _require_shutdown_token(token: str | None) -> None:
 # Last successful detection — read by GET /detection/latest.
 _last_detection: dict | None = None
 _clusters: list[dict] = []
+
+
+def _sse_message(event: str, data: dict) -> str:
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+class DetectionEventBroadcaster:
+    """Tiny in-memory fan-out for local renderer SSE clients."""
+
+    def __init__(self):
+        self._subscribers: set[asyncio.Queue[dict]] = set()
+
+    def subscribe(self) -> asyncio.Queue[dict]:
+        queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=100)
+        self._subscribers.add(queue)
+        return queue
+
+    def unsubscribe(self, queue: asyncio.Queue[dict]) -> None:
+        self._subscribers.discard(queue)
+
+    def publish(self, event: dict) -> None:
+        stale: list[asyncio.Queue[dict]] = []
+        for queue in list(self._subscribers):
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                stale.append(queue)
+        for queue in stale:
+            self.unsubscribe(queue)
+
+
+_detection_events = DetectionEventBroadcaster()
 
 # Plate-level deduplication state.
 _last_saved_by_plate: dict[str, float] = {}
@@ -217,33 +335,85 @@ def _bbox_tuple(result: dict) -> tuple[int, int, int, int] | None:
     return x1, y1, x2, y2
 
 
-def _plates_similar(a: str, b: str) -> bool:
+def _distance_limit_for(shortest: int, max_distance: int) -> int:
+    """Cuántas letras distintas se toleran, según lo larga que sea la patente.
+
+    No es lo mismo tolerar 3 errores en una Mercosur de 7 caracteres que en una
+    vieja de 6. Probabilidad de que DOS patentes distintas queden a esa
+    distancia (Monte Carlo, 400k pares):
+
+        formato              lev<=1     lev<=2     lev<=3
+        Mercosur AA000AA          0    7,5e-06    4,0e-04
+        vieja    ABC123     5,0e-06    2,6e-04    5,4e-03
+
+    Con un límite plano de 3, las viejas serían 13 veces más colisionables que
+    las Mercosur. Escalando por longitud las dos quedan en el mismo orden.
+
+    No es un caso hipotético: 37 de las 132 lecturas de la base de prueba
+    (28 %) tienen 6 caracteres. Por debajo de 6 la lectura ya es un fragmento y
+    relajar es apostar, así que ahí se vuelve al límite original de 1.
+    """
+    if shortest >= 7:
+        return max_distance
+    if shortest == 6:
+        return min(max_distance, 2)
+    return min(max_distance, 1)
+
+
+def _plates_similar(a: str, b: str, max_distance: int = 1) -> bool:
+    """Si dos lecturas pueden ser la misma patente leída distinto.
+
+    `max_distance` es el tope PEDIDO; el que se aplica sale de
+    `_distance_limit_for`, que lo baja para patentes cortas.
+    """
     if not a or not b:
         return False
     if a == b:
         return True
-    if abs(len(a) - len(b)) > 1:
+    limit = _distance_limit_for(min(len(a), len(b)), max_distance)
+    # Corto barato: levenshtein nunca es menor que la diferencia de longitudes,
+    # así que si ya se pasa no hace falta calcularlo. Ojo que la constante es
+    # `limit` y no un 1 fijo — con un 1 fijo, "AB123" y "AB123CD" se descartaban
+    # sin mirar aunque el límite pedido fuera 3.
+    if abs(len(a) - len(b)) > limit:
         return False
-    return _levenshtein(a, b) <= 1
+    return _levenshtein(a, b) <= limit
 
 
 def _bbox_close(
     a: tuple[int, int, int, int] | None,
     b: tuple[int, int, int, int] | None,
+    frame_size: tuple[int, int] | None,
+    max_ratio: float,
 ) -> bool:
-    if a is None or b is None:
+    """Si las dos lecturas están donde estaría UN MISMO auto avanzando.
+
+    LA ESCALA ES LA DIAGONAL DEL CUADRO ANALIZADO, NO EL TAMAÑO DE LA PATENTE
+
+    Antes se dividía por el lado mayor de la patente, y eso hacía que el umbral
+    dependiera de cuán CERCA estaba el auto en vez de cuánto se MOVIÓ. El
+    resultado era que invertía el orden de los dos casos que hay que separar
+    (medido sobre detecciones reales):
+
+        par                                  escala patente   escala diagonal
+        AB174CU -> AB123CD  (el mismo auto)           0,646             0,122
+        AE622RW -> AF692RK  (autos distintos)         0,326             0,189
+
+    O sea que el par bueno "parecía" el doble de lejos que el malo, porque una
+    patente medía 853 px y la otra 258. Ningún umbral sobre esa escala separa
+    los casos. Sobre la diagonal sí, y con margen a los dos lados.
+
+    El frame de referencia es el que se analizó, que ya viene recortado al ROI.
+    """
+    if a is None or b is None or frame_size is None:
         return False
-    ax = (a[0] + a[2]) / 2
-    ay = (a[1] + a[3]) / 2
-    bx = (b[0] + b[2]) / 2
-    by = (b[1] + b[3]) / 2
-    aw = max(1, a[2] - a[0])
-    ah = max(1, a[3] - a[1])
-    bw = max(1, b[2] - b[0])
-    bh = max(1, b[3] - b[1])
-    scale = max(aw, ah, bw, bh, 1)
-    distance = ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
-    return (distance / scale) <= BBOX_CLOSE_RATIO
+    fw, fh = frame_size
+    diagonal = (fw * fw + fh * fh) ** 0.5
+    if diagonal <= 0:
+        return False
+    dx = (a[0] + a[2]) / 2 - (b[0] + b[2]) / 2
+    dy = (a[1] + a[3]) / 2 - (b[1] + b[3]) / 2
+    return ((dx * dx + dy * dy) ** 0.5 / diagonal) <= max_ratio
 
 
 def _quality_score(candidate: dict) -> float:
@@ -258,6 +428,44 @@ def _quality_score(candidate: dict) -> float:
     return ranks.get(status, 0) + float(result.get("confidence") or 0)
 
 
+# El panel repite este número para poder avisar antes de guardar
+# (`CAMERA_CLUSTER_SETTLE_MARGIN` en `src/features/camera/cameraSettingsUtils.ts`).
+# La autoridad es esta: allá sólo se usa para el texto del aviso.
+SETTLE_MARGIN = 0.5
+
+
+def _coherent_cluster_timing(
+    motion_cooldown: float, settle: float, window: float
+) -> tuple[float, float]:
+    """Sube settle y ventana hasta que agrupar sea POSIBLE.
+
+    EL BUG QUE ESTO ARREGLA
+
+    Un cluster se cierra tras `CLUSTER_SETTLE` de silencio. Pero entre dos
+    análisis del mismo auto pasa como mínimo `MOTION_COOLDOWN`, que lo impone
+    el detector de movimiento. Con settle (1,2 s) < cooldown (3,0 s) el cluster
+    se cerraba SIEMPRE antes de que pudiera llegar un segundo candidato:
+    agrupar era imposible por construcción, no por calibración.
+
+    No es teoría. Sobre la base de prueba, de 132 eventos guardados, los que
+    tenían más de un candidato eran CERO.
+
+    El margen de 0,5 s sale de los datos: los intervalos reales entre análisis
+    tocan piso en 3,0-3,1 s con un cooldown de 3,0, o sea que el tick del loop
+    y la inferencia aportan ~0,1 s.
+
+    Se CLAMPEA en vez de devolver 400, igual que STREAM_FPS contra CAMERA_FPS:
+    son valores individualmente válidos pero incoherentes entre sí, y el panel
+    manda el objeto de ajustes entero. Rechazarlo obligaría al operador a
+    resolver a mano una dependencia que el servicio conoce mejor que él.
+    """
+    settle = max(settle, motion_cooldown + SETTLE_MARGIN)
+    # La ventana tiene que alcanzar para dos análisis más el settle del último,
+    # o expiraría antes de que el segundo candidato llegue a sumarse.
+    window = max(window, 2.0 * motion_cooldown + SETTLE_MARGIN, settle + motion_cooldown)
+    return settle, window
+
+
 def _candidate_snapshot(candidate: dict) -> dict:
     result = candidate["result"]
     return {
@@ -270,16 +478,72 @@ def _candidate_snapshot(candidate: dict) -> dict:
         "formatType": result.get("formatType") or "unknown",
         "qualityStatus": result.get("qualityStatus") or "low_confidence",
         "bbox": list(candidate["bbox"]) if candidate["bbox"] else None,
+        # Sin esto, el bbox de arriba no se puede normalizar después: para
+        # recalibrar MOVE_MAX_RATIO hubo que abrir los JPEG del disco uno por
+        # uno y leerles el tamaño.
+        "frameSize": list(candidate["frame_size"]),
     }
 
 
-def _cluster_matches(cluster: dict, candidate: dict, now: float) -> bool:
+def _candidate_distance(a: dict, b: dict) -> float:
+    """Distancia entre dos lecturas, en fracciones de la diagonal del cuadro."""
+    fw, fh = a["frame_size"]
+    diagonal = (fw * fw + fh * fh) ** 0.5
+    if diagonal <= 0:
+        return float("inf")
+    ab, bb = a["bbox"], b["bbox"]
+    dx = (ab[0] + ab[2]) / 2 - (bb[0] + bb[2]) / 2
+    dy = (ab[1] + ab[3]) / 2 - (bb[1] + bb[3]) / 2
+    return ((dx * dx + dy * dy) ** 0.5) / diagonal
+
+
+def _cluster_matches(cluster: dict, candidate: dict, now: float) -> float | None:
+    """Distancia al cluster si el candidato es el mismo auto, o None.
+
+    EL ANCLA ES EL ÚLTIMO CANDIDATO, NO EL MEJOR
+
+    Un auto que avanza se aleja monótonamente. Si el ancla quedara clavada en
+    `best` —que puede ser la primera lectura— la tercera lectura estaría a DOS
+    pasos de ella y superaría cualquier umbral calibrado sobre UN paso. El
+    0,15 de `MOVE_MAX_RATIO` es un límite por paso, así que encadenar contra el
+    último es lo único consistente con ese número.
+
+    EL CRITERIO ES «Y», NO «O» — Y ESTO ES LO QUE MÁS IMPORTA DE ACÁ
+
+    Antes era `_plates_similar(...) or _bbox_close(...)`. No se notaba porque el
+    agrupamiento estaba muerto (ver `_coherent_cluster_timing`), pero en cuanto
+    empieza a correr, ese `or` fusiona patentes sin ninguna relación por sola
+    cercanía. Medido sobre detecciones reales separadas por 3 segundos:
+
+        AH000BO vs AB174CU   levenshtein 6   pero a 0,042 de diagonal  -> UNÍA
+
+    Se perdía una patente entera. Con `and`, el texto tiene que dar el visto
+    bueno primero y la posición actúa de VETO, no de evidencia: en estos datos
+    la posición sola fusionaba casi todo, porque todos los autos cruzan por la
+    misma boca del portón.
+
+    Hasta 1 carácter de diferencia el texto alcanza solo: una relectura de la
+    misma patente puede pasar mientras el auto se mueve bastante, y a esa
+    distancia la probabilidad de que sean dos patentes distintas es ~0.
+    """
     if now - cluster["first_seen"] > CLUSTER_WINDOW:
-        return False
-    best = cluster["best"]
-    a = _normalised(best["result"])
+        return None
+    anchor = cluster["candidates"][-1]
+    # Cambió la fuente a mitad del cluster: las coordenadas de un frame no
+    # significan nada en el otro.
+    if anchor["frame_size"] != candidate["frame_size"]:
+        return None
+    a = _normalised(anchor["result"])
     b = _normalised(candidate["result"])
-    return _plates_similar(a, b) or _bbox_close(best["bbox"], candidate["bbox"])
+    if _plates_similar(a, b, max_distance=1):
+        return _candidate_distance(anchor, candidate)
+    if not _plates_similar(a, b, max_distance=PLATE_MERGE_DISTANCE):
+        return None
+    if not _bbox_close(
+        anchor["bbox"], candidate["bbox"], candidate["frame_size"], MOVE_MAX_RATIO
+    ):
+        return None
+    return _candidate_distance(anchor, candidate)
 
 
 def _add_cluster_candidate(result: dict, frame, now: float) -> None:
@@ -287,17 +551,26 @@ def _add_cluster_candidate(result: dict, frame, now: float) -> None:
         "result": result,
         "frame": frame.copy(),
         "bbox": _bbox_tuple(result),
+        "frame_size": (frame.shape[1], frame.shape[0]),
         "seen_at": now,
     }
     if candidate["bbox"] is None:
         return
+    # El MEJOR match, no el primero. Con varios clusters abiertos —que ahora
+    # pasa seguido— quedarse con el primero de la lista es una lotería: el
+    # orden es de inserción, no de parecido.
+    best_cluster = None
+    best_distance = float("inf")
     for cluster in _clusters:
-        if _cluster_matches(cluster, candidate, now):
-            cluster["last_seen"] = now
-            cluster["candidates"].append(candidate)
-            if _quality_score(candidate) > _quality_score(cluster["best"]):
-                cluster["best"] = candidate
-            return
+        distance = _cluster_matches(cluster, candidate, now)
+        if distance is not None and distance < best_distance:
+            best_cluster, best_distance = cluster, distance
+    if best_cluster is not None:
+        best_cluster["last_seen"] = now
+        best_cluster["candidates"].append(candidate)
+        if _quality_score(candidate) > _quality_score(best_cluster["best"]):
+            best_cluster["best"] = candidate
+        return
     _clusters.append(
         {
             "first_seen": now,
@@ -322,13 +595,51 @@ def _persist_cluster(cluster: dict) -> dict | None:
         return None
 
     now = time.monotonic()
+
+    # ── Un auto que ya conocemos no genera otra imagen ────────────────────────
+    #
+    # Antes esto sólo miraba un cooldown por tiempo, y el resto lo tapaba el
+    # renderer DESPUÉS de que acá ya se hubiera escrito el JPEG y creado el
+    # evento. Por eso un auto quieto en la entrada dejaba una imagen cada 6-10
+    # segundos: quedaban marcadas `suppressed_pending_event`, pero el gasto de
+    # disco y de subida ya estaba hecho.
+    #
+    # LA AUTORIDAD ES EL RENDERER, NO LA BASE DE ESTE SERVICIO
+    #
+    # La primera versión de esto preguntaba a la base local "¿hay un evento
+    # `pending` con esta patente?". Parecía lo natural y estuvo MAL: las dos
+    # bases derivan. Cuando el operador descarta una tarjeta, el renderer avisa
+    # con un PATCH best-effort, y si el servicio está reiniciándose ese aviso se
+    # pierde y no lo reintenta nadie. La fila se queda `pending` para siempre.
+    #
+    # Con la base como autoridad, una fila así deja esa patente CIEGA para
+    # siempre. Pasó: un `AB123CD` de hacía un mes bloqueaba todas las
+    # detecciones nuevas de ese auto, y el servicio se veía perfectamente sano.
+    # Había 69 filas zombi de ese tipo.
+    #
+    # Ahora la lista la manda el renderer, que no puede derivar porque es el
+    # mismo que le muestra las tarjetas al operador, y encima VENCE: si el
+    # renderer se cae, la lista se vacía sola y se vuelve a guardar de más, que
+    # es el error seguro.
+    #
+    # La comparación es por texto EXACTO, no por parecido: el renderer también
+    # suprime por texto exacto, así que esto no cambia nada de lo que ve el
+    # operador, sólo evita el gasto. Por parecido, un auto distinto con patente
+    # similar a una tarjeta abierta desaparecería sin que nadie se entere.
+    if normalized and normalized in _known_plates():
+        print(
+            f"[{_ts()}]  DUPLICATE {normalized:<12}  reason=known-by-operator",
+            flush=True,
+        )
+        return None
+
     if normalized:
         last_saved = _last_saved_by_plate.get(normalized, 0)
         remaining = COOLDOWN - (now - last_saved)
         if remaining > 0:
             print(
-                f"\r[{_ts()}]  ~  {normalized:<12}  cooldown {remaining:.0f}s              ",
-                end="",
+                f"[{_ts()}]  DUPLICATE {normalized:<12}  "
+            f"reason=cooldown remaining={remaining:.0f}s",
                 flush=True,
             )
             return None
@@ -371,6 +682,7 @@ def _persist_cluster(cluster: dict) -> dict | None:
             "image_url": None,
             "best_capture_id": capture_id,
             "candidates": [_candidate_snapshot(c) for c in cluster["candidates"]],
+            "plate_bbox": _normalized_bbox(bbox, best["frame"].shape),
         }
     )
 
@@ -389,11 +701,35 @@ def _flush_settled_clusters(now: float) -> list[dict]:
         if settled or expired:
             event = _persist_cluster(cluster)
             if event is not None:
+                _detection_events.publish(event)
                 flushed.append(event)
         else:
             remaining.append(cluster)
     _clusters[:] = remaining
     return flushed
+
+
+async def _purge_loop() -> None:
+    """Borrar capturas viejas ya respaldadas, una vez por día.
+
+    Va en su propia tarea y no en el loop de detección: ese corre a 10 Hz y no
+    tiene por qué cargar con una pasada de I/O sobre el disco.
+
+    La primera corrida se demora un minuto para no competir con el arranque,
+    que es cuando el equipo está abriendo la cámara y levantando el modelo.
+    """
+    await asyncio.sleep(60)
+    while not _shutting_down:
+        try:
+            if _storage is not None:
+                await asyncio.to_thread(
+                    _storage.purge_images_older_than, IMAGE_RETENTION_DAYS
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("purge_failed")
+        await asyncio.sleep(24 * 60 * 60)
 
 
 async def _process_loop() -> None:
@@ -469,14 +805,55 @@ async def _process_loop() -> None:
             if _shutting_down or not triggered or lpr_busy:
                 continue
 
+            # EL ROI SE APLICA ACÁ, NO SOLO AL MOVIMIENTO.
+            #
+            # El detector es `yolo-v9-t-384`: reescala a 384x384 lo que sea que
+            # reciba. Mandarle el cuadro completo de una cámara de 2560x1440
+            # significa achicar 6,7 veces, y una patente de 320 px llega al
+            # modelo con 48 px: no la ve. Medido sobre un frame real de la
+            # Hikvision, con la patente nítida y centrada:
+            #
+            #     frame completo 2560x1440  -> SIN DETECCION
+            #     reescalado a 1280x720     -> SIN DETECCION   (no es el tamaño
+            #     reescalado a 640x360      -> SIN DETECCION    del JPEG, es la
+            #     recorte al ROI 1131x762   -> 'GIL 322' 0.945  proporción)
+            #
+            # Reescalar antes no arregla nada, porque lo que decide es qué
+            # FRACCIÓN del cuadro ocupa la patente, y eso no cambia al achicar.
+            # Lo único que la agranda es recortar.
+            #
+            # Así se veía el síntoma: no fallaba del todo, "tardaba". Detectaba
+            # sólo cuando el auto ya estaba encima y la patente era enorme, y
+            # mientras tanto el log mostraba scans saliendo con 404 (que en el
+            # LPR es "no hay patente", no un error).
+            #
+            # El recorte reemplaza al snapshot y no se queda sólo para la
+            # inferencia, a propósito: el `bbox` que vuelve del LPR está en
+            # coordenadas de la imagen que se mandó, y esa misma imagen es la
+            # que se guarda como evidencia y sobre la que `_crop_to_plate`
+            # dibuja el recuadro. Si se mandara el recorte y se guardara el
+            # cuadro completo, el recuadro quedaría corrido.
+            #
+            # Sin ROI configurado esto no hace nada (`roi_crop` devuelve el
+            # frame tal cual), que es el comportamiento de siempre.
+            snapshot = roi_crop(snapshot, ROI)
+
+            # Y si no hay ROI y la cámara es de alta resolución, avisar UNA vez:
+            # es exactamente la instalación donde esto falla en silencio, porque
+            # el servicio se ve perfecto —video fluido, scans saliendo— y lo
+            # único que pasa es que casi nunca detecta.
+            if ROI is None and snapshot.shape[1] >= 1600 and not _warned_no_roi:
+                globals()["_warned_no_roi"] = True
+                logger.warning(
+                    "sin zona de detección con una cámara de %dx%d: la patente le "
+                    "llega al modelo demasiado chica y se van a perder detecciones. "
+                    "Marcá la zona en Configurar cámara.",
+                    snapshot.shape[1], snapshot.shape[0],
+                )
+
             # Reset fallback clock on every actual LPR call (motion or fallback).
             last_fallback = time.monotonic()
             lpr_calls += 1
-            print(
-                f"\r[{_ts()}]  motion → scanning...  (calls={lpr_calls}, saved={saved})",
-                end="",
-                flush=True,
-            )
 
             # LPR is a blocking HTTP call; run in a single-worker executor so at
             # most one inference is in flight at a time. Subsequent motion triggers
@@ -489,6 +866,7 @@ async def _process_loop() -> None:
                 lpr_busy = False
 
             if result is None:
+                logger.debug("lpr_no_plate", extra={"calls": lpr_calls})
                 continue
 
             plate = _display_plate(result)
@@ -525,10 +903,19 @@ async def lifespan(app: FastAPI):
     _watchdog = CameraWatchdog(_capture, WATCHDOG_TIMEOUT)
     _motion   = MotionDetector(MOTION_THRESHOLD, MOTION_COOLDOWN, ROI)
 
+    # ANTES de snapshotear los defaults: si no, `/config/reset` restauraría una
+    # combinación incoherente, y un CAMERA_CLUSTER_SETTLE por variable de
+    # entorno dejaría el bug intacto.
+    g = globals()
+    g["CLUSTER_SETTLE"], g["CLUSTER_WINDOW"] = _coherent_cluster_timing(
+        MOTION_COOLDOWN, CLUSTER_SETTLE, CLUSTER_WINDOW
+    )
+
     _snapshot_defaults()
     _capture.start()
     _watchdog.start()
     task = asyncio.create_task(_process_loop())
+    purge_task = asyncio.create_task(_purge_loop())
 
     _print_banner()
     logger.info(
@@ -539,8 +926,11 @@ async def lifespan(app: FastAPI):
 
     _shutting_down = True
     task.cancel()
+    purge_task.cancel()
     with suppress(asyncio.CancelledError, asyncio.TimeoutError):
         await asyncio.wait_for(task, timeout=PROCESS_LOOP_SHUTDOWN_TIMEOUT)
+    with suppress(asyncio.CancelledError, asyncio.TimeoutError):
+        await asyncio.wait_for(purge_task, timeout=PROCESS_LOOP_SHUTDOWN_TIMEOUT)
     _watchdog.stop()
     _capture.stop()
     _lpr_executor.shutdown(wait=True, cancel_futures=True)
@@ -677,10 +1067,15 @@ _TUNABLES: dict[str, tuple[type, float, float]] = {
     "minConfidence": (float, 0.0, 1.0),
     "plateCooldown": (float, 0.0, 300.0),
     "fallbackInterval": (float, 10.0, 3600.0),
-    # Agrupamiento de lecturas de un mismo auto
-    "clusterWindow": (float, 0.5, 60.0),
-    "clusterSettle": (float, 0.1, 30.0),
-    "bboxCloseRatio": (float, 0.05, 1.0),
+    # Agrupamiento de lecturas de un mismo auto.
+    # Los topes de clusterWindow/clusterSettle son holgados a propósito: el
+    # piso que les calcula `_coherent_cluster_timing` crece con motionCooldown
+    # (hasta 60 s), y si el tope fuera más bajo el panel terminaría mostrando
+    # un valor fuera de su propio rango.
+    "clusterWindow": (float, 0.5, 150.0),
+    "clusterSettle": (float, 0.1, 70.0),
+    "moveMaxRatio": (float, 0.01, 1.0),
+    "plateMergeDistance": (int, 0, 4),
     # Captura (width/height/fps solo aplican a webcam: una cámara IP manda lo suyo)
     "fps": (int, 1, 60),
     "width": (int, 160, 7680),
@@ -699,7 +1094,15 @@ _GLOBAL_BY_KEY = {
     "fallbackInterval": "FALLBACK_INTERVAL",
     "clusterWindow": "CLUSTER_WINDOW",
     "clusterSettle": "CLUSTER_SETTLE",
-    "bboxCloseRatio": "BBOX_CLOSE_RATIO",
+    # `bboxCloseRatio` se RENOMBRÓ, no se reinterpretó. Cambió de escala (lado
+    # de la patente -> diagonal del cuadro) y de default (0,35 -> 0,15). Como
+    # la calibración se persiste en el backend y se reinyecta al arrancar,
+    # reusar la clave le habría dejado a una instalación vieja un umbral de
+    # 0,35 DE LA DIAGONAL, que acepta casi cualquier cosa. Los valores viejos
+    # que sigan en el JSON guardado se ignoran solos: esto itera sobre las
+    # claves conocidas, no sobre el payload.
+    "moveMaxRatio": "MOVE_MAX_RATIO",
+    "plateMergeDistance": "PLATE_MERGE_DISTANCE",
     "fps": "CAMERA_FPS",
     "width": "CAMERA_WIDTH",
     "height": "CAMERA_HEIGHT",
@@ -781,11 +1184,19 @@ def set_config(payload: dict):
         g[_GLOBAL_BY_KEY[key]] = value
     if roi_given:
         g["ROI"] = roi
+        g["_warned_no_roi"] = False
 
     # STREAM_FPS nunca puede superar el FPS de captura: pedir más cuadros de los
     # que entran solo hace que el generador duerma de más.
     g["STREAM_FPS"] = max(1, min(CAMERA_FPS, STREAM_FPS))
     g["_STREAM_JPEG"] = [cv2.IMWRITE_JPEG_QUALITY, STREAM_QUALITY]
+
+    # El settle y la ventana tienen que ser coherentes con la cadencia real de
+    # análisis, o agrupar es imposible. Mismo criterio que el clamp de
+    # STREAM_FPS de acá arriba. Ver `_coherent_cluster_timing`.
+    g["CLUSTER_SETTLE"], g["CLUSTER_WINDOW"] = _coherent_cluster_timing(
+        MOTION_COOLDOWN, CLUSTER_SETTLE, CLUSTER_WINDOW
+    )
 
     if _motion is not None:
         _motion.configure(
@@ -852,6 +1263,13 @@ def reset_config():
     g["ROI"] = _DEFAULT_ROI
     g["_STREAM_JPEG"] = [cv2.IMWRITE_JPEG_QUALITY, STREAM_QUALITY]
 
+    # El settle y la ventana tienen que ser coherentes con la cadencia real de
+    # análisis, o agrupar es imposible. Mismo criterio que el clamp de
+    # STREAM_FPS de acá arriba. Ver `_coherent_cluster_timing`.
+    g["CLUSTER_SETTLE"], g["CLUSTER_WINDOW"] = _coherent_cluster_timing(
+        MOTION_COOLDOWN, CLUSTER_SETTLE, CLUSTER_WINDOW
+    )
+
     if _motion is not None:
         _motion.configure(
             threshold=MOTION_THRESHOLD,
@@ -882,12 +1300,94 @@ def detection_latest():
     return _last_detection
 
 
+@app.post("/known-plates")
+def set_known_plates(payload: dict):
+    """Las patentes que ya están adentro, según el renderer.
+
+    El servicio no puede averiguarlo solo —las estadías viven en Dexie— y sin
+    este dato un auto estacionado frente a la cámara genera una imagen por
+    ciclo aunque ya esté registrado.
+
+    Se normaliza acá además de del otro lado para que la comparación sea
+    exactamente la misma que la de `_persist_cluster`. La regla tiene que
+    coincidir con `normalisePlate` del renderer (`useCameraDetections.ts`):
+    fuera espacios, guiones y guiones bajos, y todo a mayúsculas. Si las dos
+    divergen, la supresión no matchea nunca y el síntoma es silencioso —sigue
+    guardando de más— así que conviene que estén escritas igual.
+    """
+    raw = payload.get("plates")
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="plates: se esperaba una lista")
+    plates = {
+        normalized
+        for normalized in (
+            re.sub(r"[\s_-]", "", p).upper()
+            for p in raw
+            if isinstance(p, str)
+        )
+        if normalized
+    }
+    g = globals()
+    g["_known_plates_value"] = plates
+    g["_known_plates_at"] = time.monotonic()
+    return {"count": len(plates)}
+
+
+@app.post("/detections/{event_id}/uploaded")
+def detections_mark_uploaded(event_id: str, body: dict):
+    """El renderer avisa que ya subió la imagen de este evento a la nube.
+
+    Es lo único que habilita a la purga local a borrar ese archivo: este
+    servicio no habla con el backend, así que por su cuenta no puede saber qué
+    está respaldado y qué no.
+    """
+    if _storage is None:
+        raise HTTPException(status_code=503, detail="Storage not ready")
+    storage_path = body.get("storagePath")
+    if not isinstance(storage_path, str) or not storage_path:
+        raise HTTPException(status_code=400, detail="storagePath: falta o es inválido")
+    if not _storage.mark_lpr_event_uploaded(event_id, storage_path):
+        raise HTTPException(status_code=404, detail="Detection event not found")
+    return {"ok": True}
+
+
 @app.get("/detections/pending")
 def detections_pending():
     """Plates detected but not yet registered/dismissed by the operator."""
     if _storage is None:
         return []
     return _storage.list_pending_lpr_events()
+
+
+@app.get("/detections/events")
+async def detections_events(request: Request):
+    """Server-Sent Events for new local LPR detections."""
+
+    async def stream():
+        queue = _detection_events.subscribe()
+        try:
+            yield _sse_message("ping", {"ts": datetime.now(timezone.utc).isoformat()})
+            while not await request.is_disconnected():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield _sse_message(
+                        "ping", {"ts": datetime.now(timezone.utc).isoformat()}
+                    )
+                    continue
+                yield _sse_message("detection", event)
+        finally:
+            _detection_events.unsubscribe(queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.patch("/detections/{event_id}")
@@ -924,6 +1424,56 @@ def detections_pending_clear(plate: str):
         _storage.update_lpr_event_status(plate, "dismissed")
 
 
+def _normalized_bbox(
+    bbox: tuple[int, int, int, int] | None, frame_shape
+) -> dict | None:
+    """El recuadro de la patente en fracciones de la imagen, no en píxeles.
+
+    Es lo que viaja a la nube, y tiene que ser relativo a LA IMAGEN GUARDADA
+    porque esa imagen se reescala antes de subirse: un bbox en píxeles no
+    correspondería a ningún píxel del archivo que termina en el bucket, y
+    obligaría a guardar también sus dimensiones.
+
+    De paso sobrevive a que el instalador recalibre el ROI: es relativo a la
+    imagen de ESTE evento, no a la zona de detección vigente.
+
+    Devuelve None si la caja es degenerada. Ese None viaja tal cual y del otro
+    lado significa "no recortes", que es el comportamiento seguro.
+    """
+    if bbox is None or frame_shape is None:
+        return None
+    h, w = frame_shape[0], frame_shape[1]
+    if w <= 0 or h <= 0:
+        return None
+    x1, y1, x2, y2 = bbox
+    x = min(max(x1 / w, 0.0), 1.0)
+    y = min(max(y1 / h, 0.0), 1.0)
+    bw = min(max((x2 - x1) / w, 0.0), 1.0 - x)
+    bh = min(max((y2 - y1) / h, 0.0), 1.0 - y)
+    if bw <= 0 or bh <= 0:
+        return None
+    # 6 decimales: sobre 2560 px eso es 0,0026 px, muy por debajo del error del
+    # detector, y evita que el JSON se llene de ruido de punto flotante.
+    return {
+        "x": round(x, 6),
+        "y": round(y, 6),
+        "w": round(bw, 6),
+        "h": round(bh, 6),
+    }
+
+
+# Cuánto contexto se deja alrededor de la patente al recortar.
+#
+# ESTE PAR DE NÚMEROS ESTÁ ESCRITO DOS VECES
+#
+# Acá, y en `front-web/src/features/owner/sections/auditoria/lprImage.ts`, que
+# recorta por CSS a partir del bbox normalizado. Si divergen, el operador y el
+# dueño ven encuadres distintos del MISMO evento y no hay forma de darse
+# cuenta mirando una sola pantalla. Si tocás uno, tocá el otro.
+PLATE_CROP_PAD_X = 0.4
+PLATE_CROP_PAD_Y = 0.6
+
+
 def _crop_to_plate(image, bbox_str: str | None):
     """Crop around the plate bbox (with padding) and draw a frame on it.
 
@@ -936,13 +1486,70 @@ def _crop_to_plate(image, bbox_str: str | None):
     except ValueError:
         return image
     h, w = image.shape[:2]
-    pad_x = int((x2 - x1) * 0.4)
-    pad_y = int((y2 - y1) * 0.6)
+    pad_x = int((x2 - x1) * PLATE_CROP_PAD_X)
+    pad_y = int((y2 - y1) * PLATE_CROP_PAD_Y)
     cx1, cy1 = max(0, x1 - pad_x), max(0, y1 - pad_y)
     cx2, cy2 = min(w, x2 + pad_x), min(h, y2 + pad_y)
     crop = image[cy1:cy2, cx1:cx2].copy()
     cv2.rectangle(crop, (x1 - cx1, y1 - cy1), (x2 - cx1, y2 - cy1), (0, 200, 0), 2)
     return crop
+
+
+@app.get("/capture/{capture_id}/image.jpg")
+def capture_full_image(capture_id: str, maxWidth: int | None = None, quality: int | None = None):
+    """La foto completa del área vigilada, sin recortar y sin recuadro dibujado.
+
+    Es lo que deja ver QUÉ vehículo entró —marca, modelo, color—, que del
+    recorte de la patente no se puede sacar.
+
+    RUTA APARTE Y NO UN PARÁMETRO DE `plate.jpg`
+
+    El contrato de aquélla incluye dibujar el recuadro verde encima. Estos
+    mismos bytes son los que se suben al bucket, y un recuadro quemado quedaría
+    fuera de lugar en cualquier recorte que se haga después del lado del
+    cliente. Además, sin parámetros esta ruta devuelve el archivo tal cual, sin
+    decodificar ni recomprimir, en un equipo que además está corriendo el loop
+    de captura.
+
+    Con `maxWidth`/`quality` devuelve una versión liviana. Se usa para subir a
+    la nube: una vez que el LPR leyó la patente, la imagen sólo sirve para
+    auditar a ojo, así que la calidad original no aporta nada. La política
+    (cuánto achicar) la decide quien llama, no este servicio.
+    """
+    if _storage is None:
+        raise HTTPException(status_code=503, detail="Storage not ready")
+    # El path sale SIEMPRE de la base, nunca de la URL: es lo que evita que
+    # alguien pida un archivo arbitrario del disco.
+    row = _storage.get(capture_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    if not os.path.exists(row["path"]):
+        raise HTTPException(status_code=404, detail="Image file missing")
+
+    if maxWidth is None and quality is None:
+        return FileResponse(row["path"], media_type="image/jpeg")
+
+    if maxWidth is not None and not (160 <= maxWidth <= 4096):
+        raise HTTPException(status_code=400, detail="maxWidth fuera de rango")
+    if quality is not None and not (1 <= quality <= 95):
+        raise HTTPException(status_code=400, detail="quality fuera de rango")
+
+    image = cv2.imread(row["path"])
+    if image is None:
+        raise HTTPException(status_code=404, detail="Image file missing")
+    if maxWidth is not None and image.shape[1] > maxWidth:
+        scale = maxWidth / image.shape[1]
+        # INTER_AREA es la interpolación correcta para achicar; las otras
+        # dejan aliasing justo en los caracteres de la patente.
+        image = cv2.resize(
+            image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA
+        )
+    ok, buf = cv2.imencode(
+        ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality if quality else 85]
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Encode failed")
+    return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
 @app.get("/capture/{capture_id}/plate.jpg")
@@ -971,6 +1578,8 @@ def detection_latest_clear():
 
 
 if __name__ == "__main__":
-    _config = uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info")
+    _config = uvicorn.Config(
+        app, host="127.0.0.1", port=PORT, log_level="info", access_log=False
+    )
     _server = uvicorn.Server(_config)
     _server.run()

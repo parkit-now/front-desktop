@@ -16,6 +16,29 @@ import numpy as np
 _ROI_T = tuple[int, int, int, int]
 
 
+def roi_crop(frame: np.ndarray, roi: _ROI_T | None) -> np.ndarray:
+    """Recorta `frame` al ROI, clampeado contra el tamaño real del frame.
+
+    Si el ROI no intersecta al frame devuelve el cuadro entero. Eso pasa de
+    verdad: el ROI se calibra sobre una cámara y queda guardado, y al cambiar a
+    otra de menor resolución el rectángulo puede caer entero afuera. Con el
+    slicing pelado numpy devuelve un array VACÍO, y sobre eso tanto `cvtColor`
+    como el encode a JPEG tiran excepción — dentro del loop de detección, o sea
+    una excepción por cada frame. Un ROI que no aplica tiene que degradar a "sin
+    ROI", que es el comportamiento por defecto, no romper la detección.
+    """
+    if roi is None:
+        return frame
+    h, w = frame.shape[:2]
+    x1 = max(0, min(roi[0], w))
+    y1 = max(0, min(roi[1], h))
+    x2 = max(0, min(roi[2], w))
+    y2 = max(0, min(roi[3], h))
+    if x2 - x1 < 1 or y2 - y1 < 1:
+        return frame
+    return frame[y1:y2, x1:x2]
+
+
 class MotionDetector:
 
     def __init__(
@@ -33,8 +56,9 @@ class MotionDetector:
                            a single vehicle crossing the frame from spawning
                            many LPR calls.
             roi:           (x1, y1, x2, y2) pixel box to analyse, or None for
-                           the full frame. Only this region is compared; LPR
-                           still receives the full-resolution snapshot.
+                           the full frame. El recorte no es sólo para el
+                           movimiento: es también lo que se le manda al LPR
+                           (ver `roi_crop` y el loop de `main.py`).
             warmup_frames: Frames to skip at startup while the camera
                            auto-exposure settles. Default covers ~1 s at 10 FPS.
         """
@@ -132,7 +156,4 @@ class MotionDetector:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _to_gray_roi(self, frame: np.ndarray) -> np.ndarray:
-        if self._roi is not None:
-            x1, y1, x2, y2 = self._roi
-            frame = frame[y1:y2, x1:x2]
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return cv2.cvtColor(roi_crop(frame, self._roi), cv2.COLOR_BGR2GRAY)

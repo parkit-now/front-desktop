@@ -33,6 +33,26 @@ function withQuery(
   return encoded.length > 0 ? `${path}?${encoded}` : path;
 }
 
+/**
+ * Los tipos vivos del estacionamiento.
+ *
+ * Lo usa la reconciliación, que necesita la lista completa para saber qué sobra
+ * del lado local; el pull incremental va por `pullVehicleTypeChanges`. El
+ * backend filtra sólo `deletedAt: null`, así que lo que vuelve es exactamente
+ * el conjunto vivo, sin trampas de "activo/inactivo" como las que sí tiene el
+ * listado de tarifas.
+ */
+export function listVehicleTypes(input: {
+  tenantId: string;
+  bearer: string;
+}): Promise<VehicleTypeListItemDto[]> {
+  return apiRequest({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/vehicle-types`,
+    bearer: input.bearer,
+  });
+}
+
 /** Feed de sync de tipos. Incluye los borrados, como tombstones. */
 export function pullVehicleTypeChanges(input: {
   tenantId: string;
