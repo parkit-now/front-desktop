@@ -299,6 +299,26 @@ if (!gotTheLock) {
     // usuario la escribe de nuevo; si no la manda, se conserva la guardada.
     const CAMERA_PORT = ports['camera-service'];
 
+    async function refreshCameraServiceConfig() {
+      const status = services.getServiceStatus('camera-service');
+      if (status.healthy) await applyStoredCameraConfig(CAMERA_PORT);
+      return services.getServiceStatus('camera-service');
+    }
+
+    ipcMain.handle('camera:getServiceStatus', () =>
+      services.getServiceStatus('camera-service'),
+    );
+
+    ipcMain.handle('camera:startService', async () => {
+      await services.startService('camera-service');
+      return refreshCameraServiceConfig();
+    });
+
+    ipcMain.handle('camera:restartService', async () => {
+      await services.restartService('camera-service');
+      return refreshCameraServiceConfig();
+    });
+
     ipcMain.handle('camera:getConfig', () => readCameraConfig());
 
     // Los ajustes vigentes salen del SERVICIO, no del archivo: el archivo solo

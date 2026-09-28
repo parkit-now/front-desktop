@@ -70,7 +70,10 @@ declare global {
     fallbackInterval: number;
     clusterWindow: number;
     clusterSettle: number;
-    bboxCloseRatio: number;
+    /** Letras que pueden diferir y seguir siendo la misma patente. */
+    plateMergeDistance: number;
+    /** Cuánto puede moverse la patente entre dos lecturas, de 0 a 1. */
+    moveMaxRatio: number;
     fps: number;
     width: number;
     height: number;
@@ -92,6 +95,22 @@ declare global {
           | 'servicio_no_disponible';
       };
 
+  type DesktopCameraServiceState =
+    | 'managed'
+    | 'adopted'
+    | 'unavailable'
+    | 'running'
+    | 'stopped'
+    | 'failed';
+
+  interface DesktopCameraServiceStatus {
+    name: string;
+    state: DesktopCameraServiceState;
+    healthy: boolean;
+    pid: number | null;
+    lastError?: string;
+  }
+
   interface Window {
     parkitDesktop?: {
       platform: string;
@@ -112,6 +131,9 @@ declare global {
         defaultName: string;
         data: Uint8Array;
       }) => Promise<DesktopSaveFileResult>;
+      getCameraServiceStatus: () => Promise<DesktopCameraServiceStatus>;
+      startCameraService: () => Promise<DesktopCameraServiceStatus>;
+      restartCameraService: () => Promise<DesktopCameraServiceStatus>;
       getCameraConfig: () => Promise<DesktopCameraConfigRead>;
       probeCamera: (
         config: DesktopCameraConfigInput,

@@ -48,6 +48,28 @@ const h = vi.hoisted(() => {
       bulkGet(ids: string[]): Promise<(T | undefined)[]> {
         return Promise.resolve(ids.map((id) => rows.get(id)));
       },
+      put(row: T): Promise<void> {
+        rows.set(row.id, row);
+        return Promise.resolve();
+      },
+      // `where('tenantId').equals(...).filter(...).toArray()`, que es como
+      // `pushLprDetectionEventImages` elige qué imágenes faltan subir.
+      where(field: keyof T & string) {
+        return {
+          equals(value: unknown) {
+            const matching = () =>
+              [...rows.values()].filter((row) => row[field] === value);
+            return {
+              toArray: () => Promise.resolve(matching()),
+              filter(predicate: (row: T) => boolean) {
+                return {
+                  toArray: () => Promise.resolve(matching().filter(predicate)),
+                };
+              },
+            };
+          },
+        };
+      },
     };
   }
 
@@ -156,8 +178,11 @@ const h = vi.hoisted(() => {
     pullVehicleTypeChanges: changesMock<VehicleTypeDto>(),
     pullPaymentMethodChanges: changesMock<PaymentMethodDto>(),
     pullLprDetectionEventChanges: changesMock<LprDetectionEventDto>(),
+    uploadLprDetectionEventImage: vi.fn(),
   };
 });
+
+import { ApiError } from '../api/client';
 
 vi.mock('../db/localDb', () => ({ localDb: h.localDb }));
 vi.mock('../api/entries', () => ({
@@ -192,6 +217,7 @@ vi.mock('../api/arca', async (importOriginal) => ({
 vi.mock('../api/lpr-events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/lpr-events')>()),
   pullLprDetectionEventChanges: h.pullLprDetectionEventChanges,
+  uploadLprDetectionEventImage: h.uploadLprDetectionEventImage,
 }));
 
 const { syncService } = await import('./SyncService');
@@ -285,6 +311,7 @@ beforeEach(() => {
   h.pullVehicleTypeChanges.mockReset();
   h.pullPaymentMethodChanges.mockReset();
   h.pullLprDetectionEventChanges.mockReset();
+  h.uploadLprDetectionEventImage.mockReset();
   syncService.setCredentials(TENANT, TOKEN);
 });
 
@@ -962,5 +989,115 @@ describe('pullInvoices', () => {
     await syncService.pullInvoices();
 
     expect(h.invoices.rows.get('x')?.status).toBe('issued');
+  });
+});
+
+describe('pushLprDetectionEventImages', () => {
+  const CAPTURE = 'cap-1';
+
+  function armarDeteccionSinImagen() {
+    h.lprDetectionEvents.rows.set(
+      'lpr-1',
+      localLprEvent('lpr-1', { bestCaptureId: CAPTURE }),
+    );
+  }
+
+  it('pide la foto COMPLETA comprimida, no el recorte de la patente', async () => {
+    // El recorte no deja ver marca, modelo ni color, que es justo para lo que
+    // el dueño mira la evidencia. Y va comprimida porque una vez leída la
+    // patente la imagen sólo se audita a ojo.
+    armarDeteccionSinImagen();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['jpeg'])),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    h.uploadLprDetectionEventImage.mockResolvedValue(
+      serverLprEvent('lpr-1', { imageStoragePath: 't/lpr-1.jpg' }),
+    );
+
+    await syncService.pushLprDetectionEventImages();
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain(`/capture/${CAPTURE}/image.jpg`);
+    expect(url).not.toContain('plate.jpg');
+    expect(url).toContain('maxWidth=1280');
+    expect(url).toContain('quality=55');
+    vi.unstubAllGlobals();
+  });
+
+  it('no reintenta cuando el backend rechaza el payload', async () => {
+    // Un 4xx no se arregla solo: el payload va a ser el mismo. Como la fila
+    // queda sin `imageStoragePath`, volvería a elegirse en cada ciclo de sync
+    // para siempre. Antes el catch pelado se lo tragaba sin dejar rastro.
+    armarDeteccionSinImagen();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(['jpeg'])),
+      }),
+    );
+    h.uploadLprDetectionEventImage.mockRejectedValue(
+      new ApiError(413, 'Payload Too Large', null),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(warn).toHaveBeenCalled();
+    expect(h.lprDetectionEvents.rows.get('lpr-1')?.imageStoragePath).toBe(
+      undefined,
+    );
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('un 5xx sí se reintenta: es transitorio', async () => {
+    armarDeteccionSinImagen();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(['jpeg'])),
+      }),
+    );
+    h.uploadLprDetectionEventImage.mockRejectedValue(
+      new ApiError(503, 'Service Unavailable', null),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('no sube nada si el servicio de cámara no tiene la captura', async () => {
+    armarDeteccionSinImagen();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(h.uploadLprDetectionEventImage.mock.calls).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('saltea una detección cuya imagen ya purgó la retención', async () => {
+    h.lprDetectionEvents.rows.set(
+      'lpr-1',
+      localLprEvent('lpr-1', {
+        bestCaptureId: CAPTURE,
+        imageDeletedAt: LEFT_AT,
+      }),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await syncService.pushLprDetectionEventImages();
+
+    expect(fetchMock.mock.calls).toHaveLength(0);
+    vi.unstubAllGlobals();
   });
 });

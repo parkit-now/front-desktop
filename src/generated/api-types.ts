@@ -3348,6 +3348,7 @@ export interface components {
             lastSeenAt: string;
             location: string;
             normalizedText?: string | null;
+            plateBbox?: components["schemas"]["PlateBboxDto"] | null;
             /** @enum {string} */
             qualityStatus: "valid_high" | "valid_low" | "invalid_format" | "low_confidence";
             rawText?: string | null;
@@ -4086,6 +4087,12 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             version: number;
+        };
+        PlateBboxDto: {
+            h: number;
+            w: number;
+            x: number;
+            y: number;
         };
         ProblemDetailsDto: {
             /**
@@ -5056,6 +5063,7 @@ export interface components {
             lastSeenAt: string;
             location: string;
             normalizedText?: string;
+            plateBbox?: components["schemas"]["PlateBboxDto"];
             /** @enum {string} */
             qualityStatus: "valid_high" | "valid_low" | "invalid_format" | "low_confidence";
             rawText?: string;

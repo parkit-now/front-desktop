@@ -1,6 +1,7 @@
-import { AlertTriangle, Cctv, X } from 'lucide-react';
+import { AlertTriangle, Cctv, Maximize2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { EntryFormCore } from '../entries/EntryFormCore';
+import { DetectionImageDialog } from './DetectionImageDialog';
 import { CAMERA_BASE_URL, type PendingDetection } from './useCameraDetections';
 
 interface Props {
@@ -20,6 +21,7 @@ export function AutoEntryCard({
 }: Props) {
   const [imgError, setImgError] = useState(false);
   const [imageRetry, setImageRetry] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const confidencePct = Math.round(detection.confidence * 100);
   const detectedAtLabel = new Date(detection.firstSeenAt).toLocaleTimeString(
     'es-AR',
@@ -61,13 +63,24 @@ export function AutoEntryCard({
             <span>{displayPlate}</span>
           </div>
         ) : (
-          <img
-            key={`${detection.bestCaptureId}:${imageRetry}`}
-            className="auto-entry-card__image"
-            src={`${CAMERA_BASE_URL}/capture/${encodeURIComponent(detection.bestCaptureId)}/plate.jpg?r=${imageRetry}`}
-            alt={`Patente detectada ${displayPlate}`}
-            onError={() => setImgError(true)}
-          />
+          <button
+            type="button"
+            className="auto-entry-card__image-button"
+            onClick={() => setViewerOpen(true)}
+            aria-label={`Ver el vehículo de la detección ${displayPlate}`}
+          >
+            <img
+              key={`${detection.bestCaptureId}:${imageRetry}`}
+              className="auto-entry-card__image"
+              src={`${CAMERA_BASE_URL}/capture/${encodeURIComponent(detection.bestCaptureId)}/plate.jpg?r=${imageRetry}`}
+              alt={`Patente detectada ${displayPlate}`}
+              onError={() => setImgError(true)}
+            />
+            <span className="auto-entry-card__expand">
+              <Maximize2 size={13} aria-hidden="true" />
+              Ver vehículo
+            </span>
+          </button>
         )}
         <span className="auto-entry-card__time" title="Hora de detección">
           {detectedAtLabel}
@@ -105,6 +118,13 @@ export function AutoEntryCard({
           </button>
         }
       />
+
+      {viewerOpen ? (
+        <DetectionImageDialog
+          detection={detection}
+          onClose={() => setViewerOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

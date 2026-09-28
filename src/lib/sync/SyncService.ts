@@ -65,7 +65,12 @@ import {
   type LprDetectionEventDto,
 } from '../api/lpr-events';
 import { pullInvoiceChanges } from '../api/arca';
-import { CAMERA_BASE_URL } from '../camera/constants';
+import { ApiError } from '../api/client';
+import {
+  CAMERA_BASE_URL,
+  LPR_CLOUD_IMAGE_MAX_WIDTH,
+  LPR_CLOUD_IMAGE_QUALITY,
+} from '../camera/constants';
 
 /** Facturas por página del feed; se pagina hasta alcanzar el `maxSeq`. */
 const INVOICE_PAGE_SIZE = 500;
@@ -219,6 +224,24 @@ function paymentMethodToLocal(pm: PaymentMethodDto): LocalPaymentMethod {
   };
 }
 
+/**
+ * Si este fallo de subida no tiene sentido reintentar.
+ *
+ * Un 4xx significa que el servidor rechazó ESTE payload: el próximo ciclo de
+ * sync le va a mandar exactamente lo mismo. Como la fila queda sin
+ * `imageStoragePath`, volvería a elegirse como candidata para siempre.
+ *
+ * El 429 queda afuera a propósito: es «ahora no», no «esto nunca va a andar».
+ */
+function isPermanentUploadFailure(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 429
+  );
+}
+
 function lprDetectionEventToLocal(
   event: LprDetectionEventDto,
   existing?: LocalLprDetectionEvent,
@@ -251,6 +274,11 @@ function lprDetectionEventToLocal(
       event.candidates.length > 0
         ? event.candidates
         : (existing?.candidates ?? []),
+    // Cae al valor local, NO es server-authoritative como los campos de
+    // imagen de arriba: el bbox lo conoce primero el equipo que capturó, y la
+    // subida de la imagen ocurre después del upsert. Ningún job del servidor
+    // lo limpia, así que un `null` acá sólo puede ser «todavía no llegó».
+    plateBbox: event.plateBbox ?? existing?.plateBbox,
     version: event.version,
     syncSeq: event.syncSeq,
     createdAt: event.createdAt,
@@ -825,7 +853,9 @@ class SyncService {
     for (const event of candidates) {
       try {
         const captureResponse = await fetch(
-          `${CAMERA_BASE_URL}/capture/${encodeURIComponent(event.bestCaptureId!)}/plate.jpg`,
+          `${CAMERA_BASE_URL}/capture/${encodeURIComponent(event.bestCaptureId!)}` +
+            `/image.jpg?maxWidth=${LPR_CLOUD_IMAGE_MAX_WIDTH}` +
+            `&quality=${LPR_CLOUD_IMAGE_QUALITY}`,
         );
         if (!captureResponse.ok) continue;
         const image = await captureResponse.blob();
@@ -839,9 +869,39 @@ class SyncService {
         await localDb.lprDetectionEvents.put(
           lprDetectionEventToLocal(updated, event),
         );
-      } catch {
-        // Offline, or the local camera service isn't running — retried on
-        // the next sync cycle since the row still has no imageStoragePath.
+
+        // Avisarle al servicio de cámara que este archivo ya está respaldado.
+        // Es lo único que lo habilita a borrarlo cuando pase la retención
+        // local: no habla con el backend, así que por su cuenta no puede
+        // distinguir una captura sincronizada de una que se perdería.
+        //
+        // Best-effort a propósito: si falla, la única consecuencia es que el
+        // archivo se queda en disco de más. Nunca al revés.
+        if (updated.imageStoragePath) {
+          void fetch(
+            `${CAMERA_BASE_URL}/detections/${encodeURIComponent(event.id)}/uploaded`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storagePath: updated.imageStoragePath }),
+            },
+          ).catch(() => undefined);
+        }
+      } catch (error) {
+        // Un 4xx del servidor no se arregla solo: el payload va a ser el mismo
+        // la próxima vez. Como la fila queda sin `imageStoragePath`, seguiría
+        // eligiéndose como candidata en cada ciclo de sync, para siempre, y el
+        // catch pelado que había antes no dejaba ni rastro de por qué.
+        //
+        // El resto —sin red, servicio de cámara apagado, 5xx— sí se reintenta:
+        // es transitorio y la fila vuelve sola en el próximo ciclo.
+        if (isPermanentUploadFailure(error)) {
+          console.warn(
+            `[sync] el backend rechazó la imagen de la detección ${event.id}; no se reintenta`,
+            error,
+          );
+          continue;
+        }
       }
     }
   }

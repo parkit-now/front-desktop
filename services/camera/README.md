@@ -85,7 +85,8 @@ Python ni ningún setup adicional.
 | `make camera-up`      | Levanta el servicio en background (PID en `.camera.pid`). |
 | `make camera-down`    | Detiene el servicio levantado con `camera-up`.            |
 | `make camera-logs`    | Sigue los logs del servicio en background (`tail -f`).    |
-| `make camera-test`    | Verifica `/health` y `/stream/status`.                    |
+| `make camera-unit`    | Tests unitarios del agrupamiento (no necesita cámara).    |
+| `make camera-test`    | Verifica `/health` y `/stream/status` (servicio arriba).  |
 | `make camera-build`   | Empaqueta el binario standalone con PyInstaller.          |
 | `make clean`          | Borra `.venv`, `.build`, `dist` y `__pycache__`.          |
 
@@ -152,25 +153,30 @@ Fallback (cada FALLBACK_INTERVAL = 300 s)
 
 ### Variables de entorno
 
-| Variable                   | Default                 | Descripción                                                                                      |
-| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| `CAMERA_SOURCE`            | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP. En la app la setea Electron desde `userData/camera.json`. |
-| `CAMERA_FPS`               | `10`                    | FPS objetivo de captura.                                                                         |
-| `CAMERA_WIDTH`             | `1280`                  | Ancho del frame en píxeles.                                                                      |
-| `CAMERA_HEIGHT`            | `720`                   | Alto del frame en píxeles.                                                                       |
-| `CAMERA_ID`                | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).                                        |
-| `CAMERA_TENANT_ID`         | `default`               | ID del tenant para el path de imágenes y la DB.                                                  |
-| `CAMERA_LOCATION`          | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura.                                     |
-| `CAMERA_MOTION_THRESHOLD`  | `1.5`                   | Diferencia media de píxeles `[0–255]` para detectar movimiento.                                  |
-| `CAMERA_MOTION_COOLDOWN`   | `3.0`                   | Segundos mínimos entre disparos de LPR por movimiento.                                           |
-| `CAMERA_ROI`               | `""`                    | Región de interés `"x1,y1,x2,y2"`. Vacío = frame completo.                                       |
-| `CAMERA_FALLBACK_INTERVAL` | `300`                   | Segundos entre scans de respaldo (captura vehículos sin movimiento).                             |
-| `CAMERA_MIN_CONFIDENCE`    | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.                                             |
-| `CAMERA_COOLDOWN`          | `5`                     | Segundos entre guardados de la misma patente (dedup a nivel de patente).                         |
-| `CAMERA_DB_PATH`           | `./camera.db`           | Path del archivo SQLite local.                                                                   |
-| `CAMERA_IMAGES_DIR`        | `./images`              | Directorio base para las imágenes.                                                               |
-| `CAMERA_WATCHDOG_TIMEOUT`  | `5`                     | Segundos sin frames antes de declarar la cámara caída.                                           |
-| `LPR_URL`                  | `http://127.0.0.1:8765` | URL base del LPR service.                                                                        |
+| Variable                      | Default                 | Descripción                                                                                          |
+| ----------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| `CAMERA_SOURCE`               | `0`                     | Índice USB (`0`, `1`, ...) o URL RTSP. En la app la setea Electron desde `userData/camera.json`.     |
+| `CAMERA_FPS`                  | `10`                    | FPS objetivo de captura.                                                                             |
+| `CAMERA_WIDTH`                | `1280`                  | Ancho del frame en píxeles.                                                                          |
+| `CAMERA_HEIGHT`               | `720`                   | Alto del frame en píxeles.                                                                           |
+| `CAMERA_ID`                   | `cam-01`                | Identificador lógico de la cámara (guardado en metadata).                                            |
+| `CAMERA_TENANT_ID`            | `default`               | ID del tenant para el path de imágenes y la DB.                                                      |
+| `CAMERA_LOCATION`             | `entrada`               | `entrada` o `salida` — guardado en metadata de cada captura.                                         |
+| `CAMERA_MOTION_THRESHOLD`     | `1.5`                   | Diferencia media de píxeles `[0–255]` para detectar movimiento.                                      |
+| `CAMERA_MOTION_COOLDOWN`      | `1.5`                   | Segundos mínimos entre disparos de LPR. También fija el piso de `CAMERA_CLUSTER_SETTLE`.             |
+| `CAMERA_ROI`                  | `""`                    | Región de interés `"x1,y1,x2,y2"`. Vacío = frame completo.                                           |
+| `CAMERA_FALLBACK_INTERVAL`    | `300`                   | Segundos entre scans de respaldo (captura vehículos sin movimiento).                                 |
+| `CAMERA_MIN_CONFIDENCE`       | `0.60`                  | Confianza mínima `[0–1]` para guardar una detección.                                                 |
+| `CAMERA_COOLDOWN`             | `60`                    | Segundos entre guardados de la misma patente. Cubre el viaje al renderer (ver `POST /known-plates`). |
+| `CAMERA_DB_PATH`              | `./camera.db`           | Path del archivo SQLite local.                                                                       |
+| `CAMERA_IMAGES_DIR`           | `./images`              | Directorio base para las imágenes.                                                                   |
+| `CAMERA_WATCHDOG_TIMEOUT`     | `5`                     | Segundos sin frames antes de declarar la cámara caída.                                               |
+| `CAMERA_CLUSTER_WINDOW`       | `5.0`                   | Ventana máxima de un grupo de lecturas del mismo auto. Se sube sola si es incoherente.               |
+| `CAMERA_CLUSTER_SETTLE`       | `1.2`                   | Silencio antes de cerrar un grupo. **Se sube a `motionCooldown + 0,5` si queda por debajo.**         |
+| `CAMERA_PLATE_MERGE_DISTANCE` | `3`                     | Letras que pueden diferir entre dos lecturas y seguir siendo el mismo auto.                          |
+| `CAMERA_MOVE_MAX_RATIO`       | `0.15`                  | Cuánto puede moverse la patente entre lecturas, como fracción de la diagonal del cuadro.             |
+| `CAMERA_IMAGE_RETENTION_DAYS` | `14`                    | Días que se conservan las capturas en disco. Nunca borra una que no se haya subido.                  |
+| `LPR_URL`                     | `http://127.0.0.1:8765` | URL base del LPR service.                                                                            |
 
 ### Cámaras IP (RTSP)
 
@@ -238,6 +244,52 @@ Apunta a otra cámara sin reiniciar el proceso.
 ```json
 { "source": "rtsp://...", "cameraId": "cam-entrada", "location": "entrada" }
 ```
+
+#### `GET /capture/{capture_id}/image.jpg`
+
+La foto completa del área vigilada, sin recortar y **sin el recuadro dibujado**.
+Es la que deja ver qué vehículo entró: marca, modelo y color.
+
+```
+GET /capture/{id}/image.jpg                           → el archivo tal cual
+GET /capture/{id}/image.jpg?maxWidth=1280&quality=55  → versión liviana
+```
+
+Sin parámetros devuelve los bytes del disco sin recomprimir. Con parámetros
+reescala (nunca agranda) y recomprime: es lo que usa el sync para subir a la
+nube, porque una vez que el LPR leyó la patente la imagen sólo se audita a ojo.
+Sobre una captura real de 2560×1440, `1280/55` la lleva de 488 KB a 76 KB con
+la patente igual de legible.
+
+Es una ruta aparte de `plate.jpg`, y no un parámetro suyo, porque aquélla
+dibuja el recuadro verde encima y estos mismos bytes son los que van al bucket.
+
+#### `POST /detections/{event_id}/uploaded`
+
+El renderer avisa que ya subió la imagen de ese evento.
+
+```json
+{ "storagePath": "<tenantId>/<eventId>.jpg" }
+```
+
+Es lo único que habilita a la purga local a borrar ese archivo: el servicio no
+habla con el backend, así que por su cuenta no puede distinguir una captura
+respaldada de una que se perdería para siempre.
+
+#### `POST /known-plates`
+
+Las patentes que ya están adentro del estacionamiento. Lo manda el renderer,
+que es el único que lo sabe: las estadías viven en Dexie.
+
+```json
+{ "plates": ["AB123CD", "NVZ087"] }
+```
+
+Sin esto, un auto estacionado frente a la cámara genera una imagen en disco y
+una subida al bucket cada vez que algo se mueve en cuadro, aunque ya esté
+registrado. La lista **vence a los 30 segundos**: si el renderer se cae, el
+servicio vuelve a guardar de más en vez de quedarse suprimiendo contra una
+lista congelada. Por eso hay que reenviarla periódicamente aunque no cambie.
 
 #### `GET /detections?limit=20`
 

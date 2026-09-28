@@ -1,6 +1,9 @@
 import {
   Camera,
   Cctv,
+  Cog,
+  Info,
+  Play,
   PlugZap,
   RefreshCcw,
   RotateCcw,
@@ -27,6 +30,7 @@ import {
   cameraSourceSignature,
   deriveCameraId,
   shouldAutoReplaceCameraId,
+  validateCameraTuning,
   type CameraAdvancedField,
 } from './cameraSettingsUtils';
 
@@ -40,7 +44,7 @@ const CAMPOS_BASICOS: {
     key: 'motionCooldown',
     label: 'Segundos entre análisis',
     step: 0.5,
-    hint: 'Más bajo = más intentos por auto. Útil si entran rápido.',
+    hint: 'Más bajo = más intentos por auto, y la tarjeta aparece antes. También fija el mínimo de "Quietud antes de guardar".',
   },
   {
     key: 'motionThreshold',
@@ -58,21 +62,80 @@ const CAMPOS_BASICOS: {
     key: 'plateCooldown',
     label: 'Segundos antes de repetir patente',
     step: 1,
-    hint: 'Evita duplicados mientras el mismo auto sigue en cuadro.',
+    hint: 'Red de seguridad. Los duplicados los corta antes el agrupamiento, y un auto ya registrado no vuelve a generar tarjeta.',
   },
 ];
 
 const CAMPOS_AVANZADOS: CameraAdvancedField[] = [
-  { key: 'clusterWindow', label: 'Ventana de agrupamiento (s)', step: 0.5 },
-  { key: 'clusterSettle', label: 'Quietud antes de guardar (s)', step: 0.1 },
-  { key: 'bboxCloseRatio', label: 'Cercanía de recuadros', step: 0.05 },
-  { key: 'fallbackInterval', label: 'Análisis forzado cada (s)', step: 30 },
-  { key: 'watchdogTimeout', label: 'Segundos sin video = caída', step: 1 },
-  { key: 'fps', label: 'FPS de captura', step: 1, modes: ['webcam'] },
-  { key: 'width', label: 'Ancho de captura', step: 160, modes: ['webcam'] },
-  { key: 'height', label: 'Alto de captura', step: 120, modes: ['webcam'] },
-  { key: 'streamFps', label: 'FPS del preview', step: 1 },
-  { key: 'streamQuality', label: 'Calidad del preview', step: 5 },
+  {
+    key: 'clusterWindow',
+    label: 'Ventana de agrupamiento (s)',
+    step: 0.5,
+    hint: 'Tiempo máximo durante el que se juntan lecturas parecidas del mismo vehículo antes de guardar una tarjeta.',
+  },
+  {
+    key: 'clusterSettle',
+    label: 'Quietud antes de guardar (s)',
+    step: 0.1,
+    hint: 'Tiempo sin nuevas lecturas antes de cerrar el grupo y crear la tarjeta. Debe superar los segundos entre análisis.',
+  },
+  {
+    key: 'plateMergeDistance',
+    label: 'Letras distintas que se toleran',
+    step: 1,
+    hint: 'Cantidad de caracteres que pueden diferir entre dos lecturas para tratarlas como el mismo vehículo.',
+  },
+  {
+    key: 'moveMaxRatio',
+    label: 'Movimiento máximo entre lecturas',
+    step: 0.05,
+    hint: 'Distancia máxima que puede moverse la patente entre lecturas para seguir agrupándolas.',
+  },
+  {
+    key: 'fallbackInterval',
+    label: 'Análisis forzado cada (s)',
+    step: 30,
+    hint: 'Cada cuánto se analiza un cuadro aunque no se detecte movimiento. Sirve como respaldo.',
+  },
+  {
+    key: 'watchdogTimeout',
+    label: 'Segundos sin video = caída',
+    step: 1,
+    hint: 'Tiempo sin recibir cuadros antes de considerar caída la cámara e intentar recuperar.',
+  },
+  {
+    key: 'fps',
+    label: 'FPS de captura',
+    step: 1,
+    modes: ['webcam'],
+    hint: 'Cuadros por segundo que se le piden a la webcam para captura y detección.',
+  },
+  {
+    key: 'width',
+    label: 'Ancho de captura',
+    step: 160,
+    modes: ['webcam'],
+    hint: 'Ancho en píxeles solicitado a la webcam. Más resolución ayuda, pero consume más CPU.',
+  },
+  {
+    key: 'height',
+    label: 'Alto de captura',
+    step: 120,
+    modes: ['webcam'],
+    hint: 'Alto en píxeles solicitado a la webcam. Más resolución ayuda, pero consume más CPU.',
+  },
+  {
+    key: 'streamFps',
+    label: 'FPS del preview',
+    step: 1,
+    hint: 'Cuadros por segundo del video de vista previa. No puede superar los FPS de captura.',
+  },
+  {
+    key: 'streamQuality',
+    label: 'Calidad del preview',
+    step: 5,
+    hint: 'Calidad JPEG del video de vista previa. Más alto se ve mejor y pesa más.',
+  },
 ];
 
 const PROBE_ERRORS: Record<string, string> = {
@@ -93,11 +156,81 @@ type ProbeState =
   | { kind: 'error'; message: string };
 
 type ResetTarget = 'source' | 'detection' | null;
+type ServiceAction = 'start' | 'restart';
 
 type Props = {
   tenantId?: string | null;
   accessToken?: string | null;
 };
+
+function serviceStatusCopy(status: DesktopCameraServiceStatus | null) {
+  if (!status) {
+    return {
+      label: 'Revisando servicio',
+      detail: 'Consultando el supervisor local.',
+      canStart: false,
+      canRestart: false,
+    };
+  }
+
+  if (status.state === 'adopted') {
+    return {
+      label: 'Servicio externo',
+      detail: 'Fue iniciado fuera de Parkit; no se reinicia desde acá.',
+      canStart: false,
+      canRestart: false,
+    };
+  }
+
+  if (status.state === 'unavailable') {
+    return {
+      label: 'Servicio no administrado',
+      detail: 'No hay binario local disponible para iniciar desde la app.',
+      canStart: false,
+      canRestart: false,
+    };
+  }
+
+  if (status.healthy) {
+    return {
+      label: 'Servicio activo',
+      detail: status.pid ? `Proceso ${status.pid}` : 'Responde correctamente.',
+      canStart: false,
+      canRestart: true,
+    };
+  }
+
+  if (status.state === 'managed') {
+    return {
+      label: 'Iniciando servicio',
+      detail: 'El proceso está levantando o esperando healthcheck.',
+      canStart: false,
+      canRestart: true,
+    };
+  }
+
+  if (status.state === 'failed' && status.pid) {
+    return {
+      label: 'Servicio sin respuesta',
+      detail:
+        status.lastError === 'health_timeout'
+          ? 'Arrancó pero no respondió a tiempo.'
+          : 'El proceso quedó vivo pero no está saludable.',
+      canStart: false,
+      canRestart: true,
+    };
+  }
+
+  return {
+    label: status.state === 'failed' ? 'Servicio detenido' : 'Servicio cerrado',
+    detail:
+      status.lastError === 'health_timeout'
+        ? 'Arrancó pero no respondió a tiempo.'
+        : 'Podés iniciarlo sin reiniciar la app.',
+    canStart: true,
+    canRestart: false,
+  };
+}
 
 function statusCopy(status: ReturnType<typeof useCameraStatus>) {
   if (!status) {
@@ -162,6 +295,30 @@ function remoteCameraInput(
   };
 }
 
+function TuningFieldLabel({
+  htmlFor,
+  label,
+  hint,
+}: {
+  htmlFor: string;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <label className="form-label camera-field-label" htmlFor={htmlFor}>
+      <span>{label}</span>
+      <span
+        className="camera-field-info"
+        tabIndex={0}
+        aria-label={hint}
+        data-tooltip={hint}
+      >
+        <Info size={14} aria-hidden="true" />
+      </span>
+    </label>
+  );
+}
+
 export function CameraSettingsPanel({
   tenantId = null,
   accessToken = null,
@@ -191,16 +348,51 @@ export function CameraSettingsPanel({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [resetTarget, setResetTarget] = useState<ResetTarget>(null);
   const [resetting, setResetting] = useState(false);
+  const [serviceStatus, setServiceStatus] =
+    useState<DesktopCameraServiceStatus | null>(null);
+  const [serviceAction, setServiceAction] = useState<ServiceAction | null>(
+    null,
+  );
+  const [serviceError, setServiceError] = useState<string | null>(null);
 
   const webcams = useWebcamDevices(useWebcam);
   const advancedFields = useMemo(
     () => advancedFieldsForMode(CAMPOS_AVANZADOS, mode),
     [mode],
   );
+  const tuningIssues = useMemo(
+    () => (tuning ? validateCameraTuning(tuning) : []),
+    [tuning],
+  );
+  // Advierte, no bloquea. El servicio clampea los valores incoherentes por su
+  // cuenta y `saveInput` relee lo que quedó aplicado, así que deshabilitar el
+  // botón sería impedir algo que se resuelve solo — y un botón gris no explica
+  // nada, ni lo anuncian los lectores de pantalla (ver AGENTS.md).
+  const tuningIssueMessage = tuningIssues[0]?.message ?? null;
   const selectedWebcamLabel = useMemo(
     () => webcams.devices.find((device) => device.index === deviceIndex)?.label,
     [deviceIndex, webcams.devices],
   );
+  const serviceInfo = serviceStatusCopy(serviceStatus);
+  const serviceButtonLabel = serviceAction
+    ? serviceAction === 'start'
+      ? 'Iniciando...'
+      : 'Reiniciando...'
+    : serviceInfo.canStart
+      ? 'Abrir servicio'
+      : 'Reiniciar servicio';
+  const serviceButtonDisabled =
+    Boolean(serviceAction) ||
+    (!serviceInfo.canStart && !serviceInfo.canRestart);
+  const cameraDownWithService =
+    status?.camera === 'down' && serviceStatus?.healthy === true;
+
+  const refreshServiceStatus = useCallback(async () => {
+    const bridge = window.parkitDesktop;
+    if (!bridge || typeof bridge.getCameraServiceStatus !== 'function') return;
+    const next = await bridge.getCameraServiceStatus();
+    setServiceStatus(next);
+  }, []);
 
   useEffect(() => {
     const bridge = window.parkitDesktop;
@@ -242,10 +434,11 @@ export function CameraSettingsPanel({
       .then(async (settings) => {
         if (!mounted) return;
         if (!settings.desktopCameraConfig) {
+          const initialInput = buildInput();
           await updateEntityDesktopCameraConfig(
             tenantId,
             accessToken,
-            cameraPayload(buildInput()),
+            cameraPayload(initialInput),
           ).catch(() => undefined);
           return;
         }
@@ -281,6 +474,12 @@ export function CameraSettingsPanel({
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshServiceStatus();
+    const id = setInterval(() => void refreshServiceStatus(), 10_000);
+    return () => clearInterval(id);
+  }, [refreshServiceStatus]);
 
   const buildInputForMode = useCallback(
     (nextMode: DesktopCameraConfig['mode']): DesktopCameraConfigInput => {
@@ -335,10 +534,15 @@ export function CameraSettingsPanel({
     const input = buildInputForMode(nextMode);
     const needsIpConfig = nextMode === 'ip' && input.host.trim().length === 0;
     setSwitchingMode(true);
-    setUseWebcam(nextMode === 'webcam');
     setProbe({ kind: 'idle' });
     try {
-      await saveInput(input, {
+      // El switch se mueve DESPUÉS de que el guardado haya funcionado.
+      //
+      // Al revés —que era como estaba— si el guardado no llegaba a aplicarse,
+      // el switch quedaba mostrando la cámara nueva mientras el servicio
+      // seguía con la vieja. No hay peor estado que ese: la pantalla dice una
+      // cosa, el video muestra otra, y no hay nada que lo explique.
+      const saved = await saveInput(input, {
         kind: needsIpConfig ? 'info' : 'success',
         message: needsIpConfig
           ? 'Cámara IP seleccionada. Completá la dirección para conectar.'
@@ -346,6 +550,7 @@ export function CameraSettingsPanel({
             ? 'Webcam activada.'
             : 'Cámara IP activada.',
       });
+      if (saved) setUseWebcam(nextMode === 'webcam');
     } finally {
       setSwitchingMode(false);
     }
@@ -389,6 +594,48 @@ export function CameraSettingsPanel({
     });
 
     return changed || (nextId !== null && nextId !== cameraId);
+  }
+
+  async function handleServiceAction(): Promise<void> {
+    const bridge = window.parkitDesktop;
+    if (!bridge) return;
+    const action: ServiceAction = serviceInfo.canStart ? 'start' : 'restart';
+    const run =
+      action === 'start'
+        ? bridge.startCameraService
+        : bridge.restartCameraService;
+    if (typeof run !== 'function') return;
+
+    setServiceAction(action);
+    setServiceError(null);
+    try {
+      const next = await run();
+      setServiceStatus(next);
+      await refreshServiceStatus();
+      if (next.healthy) {
+        showToast({
+          message:
+            action === 'start'
+              ? 'Servicio de cámara iniciado.'
+              : 'Servicio de cámara reiniciado.',
+          kind: 'success',
+        });
+      } else {
+        setServiceError('El servicio no respondió al healthcheck.');
+        showToast({
+          message: 'No se pudo dejar activo el servicio de cámara.',
+          kind: 'error',
+        });
+      }
+    } catch {
+      setServiceError('No se pudo contactar el supervisor local.');
+      showToast({
+        message: 'No se pudo controlar el servicio de cámara.',
+        kind: 'error',
+      });
+    } finally {
+      setServiceAction(null);
+    }
   }
 
   async function handleProbe(): Promise<void> {
@@ -436,12 +683,28 @@ export function CameraSettingsPanel({
     });
   }
 
+  /**
+   * Guarda la configuración y devuelve si realmente se aplicó.
+   *
+   * NO valida la calibración acá, y es a propósito. Antes cortaba si
+   * `validateCameraTuning` encontraba algo, y como TODAS las rutas mandan el
+   * `tuning` adjunto —cambiar de webcam a IP, restablecer la cámara— un ajuste
+   * de detección a medio escribir bloqueaba cosas que no tienen nada que ver,
+   * con un cartel hablando de agrupamiento.
+   *
+   * Además no hacía falta: el servicio clampea los valores incoherentes por su
+   * cuenta y acá abajo se relee lo que quedó aplicado. Bloquear era impedirle
+   * al operador algo que el servicio resuelve solo.
+   *
+   * La advertencia sigue existiendo, pero como eso: una advertencia en el
+   * formulario, al lado del campo.
+   */
   async function saveInput(
     input: DesktopCameraConfigInput,
     options?: { message?: string; kind?: 'success' | 'info' },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const bridge = window.parkitDesktop;
-    if (!bridge) return;
+    if (!bridge) return false;
     const result = await bridge.setCameraConfig(input);
     if (tenantId && accessToken) {
       void updateEntityDesktopCameraConfig(
@@ -451,6 +714,16 @@ export function CameraSettingsPanel({
       ).catch(() => undefined);
     }
     loadedSourceSignatureRef.current = cameraSourceSignature(input);
+
+    // Releer lo que el servicio realmente aplicó, que no siempre es lo que se
+    // le mandó: hay ajustes que se clampean entre sí. "Quietud antes de
+    // guardar" no puede ser menor que "Segundos entre análisis", porque si no
+    // el agrupamiento se cierra antes de que llegue la segunda lectura y no
+    // agrupa nunca. Sin esta relectura el panel mostraría el valor pedido
+    // mientras el servicio corre con otro, que es imposible de diagnosticar.
+    const applied = await bridge.getCameraTuning().catch(() => null);
+    if (applied) setTuning(applied);
+
     showToast({
       message:
         options?.message ??
@@ -459,6 +732,7 @@ export function CameraSettingsPanel({
           : 'Cámara guardada. Se va a usar al reiniciar la aplicación.'),
       kind: options?.kind ?? 'success',
     });
+    return true;
   }
 
   async function handleSave(): Promise<void> {
@@ -511,7 +785,7 @@ export function CameraSettingsPanel({
           accessToken,
           cameraPayload({
             ...buildInput(),
-            tuning: (defaults ?? {}) as unknown as DesktopCameraTuning,
+            tuning: defaults ?? ({} as unknown as DesktopCameraTuning),
           }),
         ).catch(() => undefined);
       }
@@ -552,19 +826,49 @@ export function CameraSettingsPanel({
   return (
     <div className="camera-settings-shell">
       <section className="camera-settings-hero">
-        <div>
+        <div className="camera-settings-hero-copy">
           <p className="camera-settings-kicker">Configuración local</p>
           <h2>Cámara de la entrada</h2>
           <p>
-            Ajustá la fuente de video y calibrá qué zona se analiza para la
-            detección automática de patentes.
+            Ajustá la fuente de video y calibrá la detección automática de
+            patentes.
           </p>
         </div>
-        <div className={`camera-status-card ${statusInfo.tone}`}>
-          <span className="camera-status-dot" />
-          <div>
-            <strong>{statusInfo.label}</strong>
-            <span>{statusInfo.detail}</span>
+        <div className="camera-hero-status">
+          <div className={`camera-status-card ${statusInfo.tone}`}>
+            <span className="camera-status-dot" />
+            <div>
+              <span className="camera-settings-kicker">Video</span>
+              <strong>{statusInfo.label}</strong>
+              <span>{statusInfo.detail}</span>
+            </div>
+          </div>
+          <div className="camera-service-card">
+            <span className="camera-service-icon" aria-hidden="true">
+              <Cog size={17} />
+            </span>
+            <div>
+              <span className="camera-settings-kicker">Servicio local</span>
+              <strong>{serviceInfo.label}</strong>
+              <span>{serviceError ?? serviceInfo.detail}</span>
+            </div>
+            <button
+              type="button"
+              className={
+                serviceInfo.canStart
+                  ? 'primary-button compact'
+                  : 'ghost-button compact'
+              }
+              onClick={() => void handleServiceAction()}
+              disabled={serviceButtonDisabled}
+            >
+              {serviceInfo.canStart ? (
+                <Play size={15} aria-hidden="true" />
+              ) : (
+                <RefreshCcw size={15} aria-hidden="true" />
+              )}
+              {serviceButtonLabel}
+            </button>
           </div>
         </div>
       </section>
@@ -776,9 +1080,11 @@ export function CameraSettingsPanel({
                 <div className="camera-settings-grid">
                   {CAMPOS_BASICOS.map((campo) => (
                     <div className="printer-panel-field" key={campo.key}>
-                      <label className="form-label" htmlFor={`t-${campo.key}`}>
-                        {campo.label}
-                      </label>
+                      <TuningFieldLabel
+                        htmlFor={`t-${campo.key}`}
+                        label={campo.label}
+                        hint={campo.hint}
+                      />
                       <input
                         id={`t-${campo.key}`}
                         type="number"
@@ -788,7 +1094,6 @@ export function CameraSettingsPanel({
                           setTuningField(campo.key, event.target.value)
                         }
                       />
-                      <p className="muted printer-panel-hint">{campo.hint}</p>
                     </div>
                   ))}
                 </div>
@@ -808,12 +1113,11 @@ export function CameraSettingsPanel({
                   <div className="camera-settings-grid camera-advanced-grid">
                     {advancedFields.map((campo) => (
                       <div className="printer-panel-field" key={campo.key}>
-                        <label
-                          className="form-label"
+                        <TuningFieldLabel
                           htmlFor={`t-${campo.key}`}
-                        >
-                          {campo.label}
-                        </label>
+                          label={campo.label}
+                          hint={campo.hint}
+                        />
                         <input
                           id={`t-${campo.key}`}
                           type="number"
@@ -847,6 +1151,18 @@ export function CameraSettingsPanel({
               ) : null}
               {probe.kind === 'error' ? (
                 <p className="csd-note csd-note--warning">{probe.message}</p>
+              ) : null}
+              {tuningIssueMessage ? (
+                <p className="csd-note csd-note--warning">
+                  {tuningIssueMessage} Si lo guardás así, el servicio lo va a
+                  ajustar solo y el panel va a mostrar el valor que quedó.
+                </p>
+              ) : null}
+              {cameraDownWithService ? (
+                <p className="csd-note csd-note--warning">
+                  El servicio está activo, pero no recibe video. Revisá usuario,
+                  contraseña, IP o ruta del stream.
+                </p>
               ) : null}
             </div>
             <div className="printer-panel-actions">

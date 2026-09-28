@@ -39,7 +39,7 @@ else
   OPENCV_ENV :=
 endif
 
-.PHONY: help camera-install camera-dev camera-up camera-down camera-logs camera-test camera-build clean
+.PHONY: help camera-install camera-dev camera-up camera-down camera-logs camera-test camera-unit camera-build clean
 
 help: ## Mostrar comandos disponibles
 	@awk 'BEGIN {FS = ":.*?## "} \
@@ -94,6 +94,9 @@ camera-logs: ## Ver los logs del servicio en background (tail -f)
 	@tail -f $(LOGFILE)
 
 # ── Test ──────────────────────────────────────────────────────────────────────
+
+camera-unit: camera-install ## Correr los tests unitarios (no necesita cámara): make camera-unit
+	@$(PYTHON) -m pytest tests -q
 
 camera-test: ## Verificar /health y /stream/status: make camera-test
 	@curl -sf http://127.0.0.1:$(PORT)/health >/dev/null \

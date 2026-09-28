@@ -80,6 +80,15 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
   // `getCameraConfig` devuelve `hasPassword` en vez del valor, así que ni el
   // renderer ni el DevTools de quien abra la app pueden verla.
 
+  getCameraServiceStatus: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:getServiceStatus'),
+
+  startCameraService: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:startService'),
+
+  restartCameraService: (): Promise<unknown> =>
+    ipcRenderer.invoke('camera:restartService'),
+
   getCameraConfig: (): Promise<unknown> =>
     ipcRenderer.invoke('camera:getConfig'),
 

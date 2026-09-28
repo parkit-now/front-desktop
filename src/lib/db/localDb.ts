@@ -210,6 +210,14 @@ export type LprQualityStatus =
   | 'invalid_format'
   | 'low_confidence';
 
+/** Recuadro de la patente en fracciones de la imagen (no en píxeles). */
+export interface PlateBbox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface LocalLprDetectionEvent {
   id: string;
   tenantId: string;
@@ -232,6 +240,7 @@ export interface LocalLprDetectionEvent {
   imageDeletedAt?: string;
   bestCaptureId?: string;
   candidates: unknown[];
+  plateBbox?: PlateBbox;
   version: number;
   syncSeq: number;
   createdAt: string;
@@ -560,6 +569,19 @@ class ParkitLocalDb extends Dexie {
     this.version(15).stores({
       invoices: 'id, [tenantId+syncSeq], tenantId, entryId',
     });
+    this.version(16)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' &&
+              s.key.startsWith('lprDetectionEvents:'),
+          )
+          .delete();
+      });
   }
 }
 

@@ -7,6 +7,7 @@ import {
   cameraDefaultsForMode,
   cameraSourceSignature,
   deriveCameraId,
+  validateCameraTuning,
   shouldAutoReplaceCameraId,
   type CameraAdvancedField,
 } from './cameraSettingsUtils';
@@ -19,7 +20,8 @@ const tuning: DesktopCameraTuning = {
   fallbackInterval: 300,
   clusterWindow: 5,
   clusterSettle: 1.2,
-  bboxCloseRatio: 0.35,
+  plateMergeDistance: 3,
+  moveMaxRatio: 0.15,
   fps: 10,
   width: 1280,
   height: 720,
@@ -101,11 +103,72 @@ describe('camera settings helpers', () => {
 
   it('filters webcam-only advanced fields in IP mode', () => {
     const fields: CameraAdvancedField[] = [
-      { key: 'streamFps', label: 'Preview', step: 1 },
-      { key: 'width', label: 'Ancho', step: 160, modes: ['webcam'] },
+      { key: 'streamFps', label: 'Preview', step: 1, hint: 'Preview' },
+      {
+        key: 'width',
+        label: 'Ancho',
+        step: 160,
+        hint: 'Ancho',
+        modes: ['webcam'],
+      },
     ];
 
     expect(advancedFieldsForMode(fields, 'ip')).toEqual([fields[0]]);
     expect(advancedFieldsForMode(fields, 'webcam')).toEqual(fields);
+  });
+});
+
+describe('validateCameraTuning', () => {
+  it('marca clusterSettle cuando quedaría por debajo de motionCooldown', () => {
+    const issues = validateCameraTuning({
+      ...tuning,
+      motionCooldown: 3,
+      clusterSettle: 1.2,
+      clusterWindow: 8,
+      streamFps: 10,
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.field).toBe('clusterSettle');
+    expect(issues[0]?.message).toContain('3,5 s');
+  });
+
+  it('marca clusterWindow cuando no alcanza para recibir otra lectura', () => {
+    const issues = validateCameraTuning({
+      ...tuning,
+      motionCooldown: 3,
+      clusterSettle: 3.5,
+      clusterWindow: 5,
+      streamFps: 10,
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.field).toBe('clusterWindow');
+  });
+
+  it('no marca valores de agrupamiento que ya son coherentes', () => {
+    expect(
+      validateCameraTuning({
+        ...tuning,
+        motionCooldown: 1.5,
+        clusterSettle: 10,
+        clusterWindow: 30,
+        streamFps: 10,
+      }),
+    ).toEqual([]);
+  });
+
+  it('marca streamFps cuando supera el fps de captura', () => {
+    const issues = validateCameraTuning({
+      ...tuning,
+      motionCooldown: 1.5,
+      clusterSettle: 10,
+      clusterWindow: 30,
+      fps: 10,
+      streamFps: 12,
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.field).toBe('streamFps');
   });
 });
