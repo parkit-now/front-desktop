@@ -1,3 +1,10 @@
+## [1.5.1](https://github.com/parkit-now/front-desktop/compare/v1.5.0...v1.5.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **camara-service:** el servicio de cámara ya no muere al arrancar en Windows ([84e9085](https://github.com/parkit-now/front-desktop/commit/84e9085443b4a364487b5eb6da76eb49bc3a521a))
+
 # [1.5.0](https://github.com/parkit-now/front-desktop/compare/v1.4.0...v1.5.0) (2026-09-28)
 
 
