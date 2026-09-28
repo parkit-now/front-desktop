@@ -39,6 +39,32 @@ def _port_from_argv() -> int:
 PORT = _port_from_argv()
 SHUTDOWN_TOKEN = os.environ.get("PARKIT_SHUTDOWN_TOKEN")
 
+def _force_utf8_stdio(streams) -> None:
+    r"""Escribir en UTF-8 pase lo que pase, sin depender del entorno.
+
+    Hoy este servicio imprime ASCII puro y no lo necesita. Está igual porque el
+    servicio de cámara se moría en Windows por exactamente esto —un `─` del
+    banner contra una consola cp1252, y el proceso no llegaba a arrancar— y la
+    única razón por la que el LPR no se caía era esa: que nadie había escrito
+    todavía un log con un acento.
+
+    Las variables `PYTHONUTF8` / `PYTHONIOENCODING` que pasa Electron NO
+    alcanzan: el binario de PyInstaller arranca el intérprete en modo aislado y
+    las ignora. Tiene que ser código. Ver `services/camera/main.py` para la
+    explicación completa.
+    """
+    for stream in streams:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
+_force_utf8_stdio((sys.stdout, sys.stderr))
+
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 _recognizer: PlateRecognizer | None = None

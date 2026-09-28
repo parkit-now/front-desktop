@@ -73,9 +73,20 @@ function exeExt(): string {
  */
 function baseEnv(name: ServiceName): Record<string, string> | undefined {
   const env: Record<string, string> = {
-    // Windows child processes launched with piped stdio can default to a legacy
-    // code page. The camera service prints a Unicode startup banner; forcing
-    // UTF-8 prevents a UnicodeEncodeError before /health ever becomes ready.
+    // Un proceso hijo lanzado con stdio piped en Windows cae a la code page
+    // heredada (cp1252 en español), y el banner del servicio de cámara tiene
+    // caracteres que ahí no existen.
+    //
+    // OJO: esto NO alcanza para el binario empaquetado, y creer que sí costó
+    // una release entera. PyInstaller arranca el intérprete en modo aislado y
+    // IGNORA estas dos variables, así que en el instalador el servicio de
+    // cámara se moría con un UnicodeEncodeError antes de llegar a /health —
+    // funcionaba en desarrollo, donde `python main.py` sí las lee, y por eso
+    // no se veía local.
+    //
+    // Quien resuelve de verdad es `_force_utf8_stdio()` en el main.py de cada
+    // servicio, que reconfigura los streams en tiempo de ejecución. Esto queda
+    // porque sigue siendo correcto en desarrollo y no cuesta nada.
     PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
   };

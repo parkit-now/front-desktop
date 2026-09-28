@@ -53,6 +53,58 @@ from motion import MotionDetector, roi_crop
 from storage import LocalStorage
 from watchdog import CameraWatchdog
 
+def _force_utf8_stdio(streams) -> None:
+    r"""Escribir en UTF-8 pase lo que pase, sin depender del entorno.
+
+    EL BUG QUE ESTO CIERRA
+
+    En Windows, este servicio arrancaba y se moría en el acto, tres veces
+    seguidas, y en el Administrador de tareas no quedaba nada. El LPR, al lado,
+    andaba perfecto. El log tenía esto:
+
+        File "main.py", line 176, in _print_banner
+        File "encodings\cp1252.py", line 19, in encode
+        UnicodeEncodeError: 'charmap' codec can't encode characters in
+        position 0-59: character maps to <undefined>
+
+    Posición 0-59 son los 60 guiones `─` del separador del banner. La consola
+    de Windows en español usa cp1252, que no los tiene, y la excepción sube por
+    el `lifespan` de Starlette: la aplicación no llega a arrancar y el proceso
+    termina. El LPR sobrevivía sólo porque imprime ASCII puro.
+
+    POR QUÉ NO ALCANZABA CON LAS VARIABLES DE ENTORNO
+
+    Electron ya le pasa `PYTHONUTF8=1` y `PYTHONIOENCODING=utf-8` justamente
+    para esto. **El binario de PyInstaller las ignora**: el bootloader arranca
+    el intérprete en modo aislado, así que no lee esas variables. En desarrollo
+    (`python main.py`) sí funcionan, y por eso esto nunca se vio local — sólo
+    rompía en el instalador.
+
+    La solución tiene que ser código en tiempo de ejecución, no configuración
+    del entorno. Va ANTES de cualquier `print` o `logging`, porque si no el
+    primero que salga se lleva puesto al proceso.
+
+    `errors="replace"` como red: si algo raro igual no se puede codificar, sale
+    un carácter de reemplazo y no una excepción. Perder un acento en un log
+    nunca puede tirar abajo la detección de patentes.
+    """
+    for stream in streams:
+        # En un build "windowed" de PyInstaller no hay consola y `sys.stdout`
+        # puede ser None; y un stream capturado por un test puede no soportar
+        # `reconfigure`.
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            # Un stream ya cerrado o sin buffer de texto. No es motivo para no
+            # arrancar el servicio.
+            pass
+
+
+_force_utf8_stdio((sys.stdout, sys.stderr))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",

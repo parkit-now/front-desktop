@@ -241,7 +241,20 @@ if (!gotTheLock) {
 
     const services = new ServiceManager(serviceConfigs);
     await services.spawnAll();
-    const failed = runtime.manage ? await services.waitAllHealthy() : [];
+
+    let failed: string[] = [];
+
+    const win = createWindow();
+    mainWindow = win;
+
+    const healthCheck: Promise<void> = runtime.manage
+      ? services.waitAllHealthy().then((names) => {
+          failed = names;
+          if (names.length > 0 && !win.isDestroyed()) {
+            win.webContents.send('services:failed', names);
+          }
+        })
+      : Promise.resolve();
 
     // Aplicarle al servicio la cámara guardada, ya arrancado.
     //
@@ -254,10 +267,13 @@ if (!gotTheLock) {
     //
     // Es idempotente: si el servicio ya está en esa cámara, `set_source` corta
     // sin reconectar y el video no se interrumpe.
-    void applyStoredCameraConfig(ports['camera-service']);
+    //
+    // Espera al chequeo de salud: empujar la configuración a un servicio que
+    // todavía no levantó no sirve de nada.
+    void healthCheck.then(() =>
+      applyStoredCameraConfig(ports['camera-service']),
+    );
 
-    const win = createWindow();
-    mainWindow = win;
     let shuttingDownServices = false;
 
     // El panel de configuración necesita `getUserMedia` una vez para que el
@@ -278,11 +294,12 @@ if (!gotTheLock) {
     // Once the renderer is loaded, forward any health failures so the UI can
     // show an actionable error instead of silently operating with broken
     // services.
-    if (failed.length > 0) {
-      win.webContents.once('did-finish-load', () => {
-        win.webContents.send('services:failed', failed);
-      });
-    }
+    // Si el chequeo terminó ANTES de que el renderer cargara, el `send` de
+    // arriba se perdió: no había nadie escuchando. Se reenvía al terminar la
+    // carga. El renderer también puede preguntar con `services:getFailed`.
+    win.webContents.once('did-finish-load', () => {
+      if (failed.length > 0) win.webContents.send('services:failed', failed);
+    });
 
     // Allow the renderer to query health status on demand (e.g. after reload).
     ipcMain.handle('services:getFailed', () => failed);
