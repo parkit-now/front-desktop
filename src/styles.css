@@ -208,6 +208,38 @@ h2 {
   font-family: inherit;
 }
 
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap input {
+  padding-right: 46px;
+}
+
+.password-visibility-button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-visibility-button:hover,
+.password-visibility-button:focus-visible {
+  background: #eef4ff;
+  color: var(--color-brand);
+  outline: none;
+}
+
 .form-field textarea {
   padding-top: 10px;
   padding-bottom: 10px;
