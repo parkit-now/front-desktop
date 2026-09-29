@@ -12,6 +12,9 @@ export type { InvoiceDocumentDto };
  * Chromium en Cloud Run); le pide los datos a
  * `GET /tenants/:id/invoices/:invoiceId/document`.
  *
+ * GEMELO de `front-web/src/features/owner/sections/operacion/invoiceDocument.ts`
+ * (la web lo imprime con el diálogo del navegador): si cambia acá, cambiar allá.
+ *
  * Todo lo que viene de la factura se escapa: la razón social la escribe el
  * dueño y el receptor sale del padrón.
  */
