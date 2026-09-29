@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ServiceManager, type ServiceConfig } from './services.js';
 import { resolveServiceRuntime, type ServiceName } from './serviceRuntime.js';
+import { destroyPdfWindows, renderPdfFromHtml } from './pdf.js';
 import { destroyPrintWindows, listPrinters, printTicketHtml } from './print.js';
 import {
   cameraServiceEnv,
@@ -463,6 +464,12 @@ if (!gotTheLock) {
       },
     );
 
+    // El PDF de una factura: el renderer arma el HTML del comprobante y acá
+    // se imprime a PDF con el Chromium de Electron (el backend ya no lo hace).
+    ipcMain.handle('pdf:fromHtml', (_event, payload: { html: string }) =>
+      renderPdfFromHtml(payload?.html),
+    );
+
     ipcMain.handle('printer:list', () => listPrinters(mainWindow));
     ipcMain.handle(
       'printer:printTicket',
@@ -479,6 +486,7 @@ if (!gotTheLock) {
     app.on('before-quit', (event) => {
       if (shuttingDownServices) return;
       destroyPrintWindows();
+      destroyPdfWindows();
       event.preventDefault();
       shuttingDownServices = true;
       void services.stopAll().finally(() => app.quit());

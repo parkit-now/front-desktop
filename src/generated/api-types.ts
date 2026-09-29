@@ -1103,7 +1103,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenantId}/invoices/{invoiceId}/pdf": {
+    "/tenants/{tenantId}/invoices/{invoiceId}/document": {
         parameters: {
             query?: never;
             header?: never;
@@ -1111,10 +1111,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * PDF de una factura emitida
-         * @description Se genera a demanda con los datos guardados al emitir (la razón social de ese día, no la actual). 409 INVOICE_NOT_ISSUED si todavía no tiene CAE; 503 INVOICE_PDF_FAILED si no se pudo generar.
+         * Datos del comprobante de una factura emitida
+         * @description Todo lo que el desktop necesita para armar el PDF (el backend no lo dibuja), con los datos guardados al emitir: la razón social de ese día, no la actual. 409 INVOICE_NOT_ISSUED si todavía no tiene CAE.
          */
-        get: operations["InvoicesController_pdf"];
+        get: operations["InvoicesController_document"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3235,6 +3235,106 @@ export interface components {
             items: components["schemas"]["InvoiceDto"][];
             /** @description Highest sync sequence included in this page. */
             maxSeq: number;
+        };
+        InvoiceDocumentDto: {
+            /** @example 86390926440543 */
+            cae: string;
+            /** @example 2026-10-04 */
+            caeFechaVencimiento: string;
+            /** @example 2026-09-24 */
+            cbteFecha: string;
+            /** @enum {string} */
+            cbteLetra: "A" | "B" | "C";
+            /** @example 7 */
+            cbteNro: number;
+            /**
+             * @description 1 = A, 6 = B, 11 = C.
+             * @example 6
+             */
+            cbteTipo: number;
+            /** @example Contado */
+            condicionVenta: string;
+            emisor: components["schemas"]["InvoiceDocumentEmisorDto"];
+            /** @example 2026-09-24 */
+            fechaServicioDesde: string | null;
+            /** @example 2026-09-24 */
+            fechaServicioHasta: string | null;
+            /** @example 2026-09-24 */
+            fechaVtoPago: string;
+            /** @example 0 */
+            importeIva: number;
+            /**
+             * @description En la B y la C, el total (la plantilla lo muestra como «Subtotal»).
+             * @example 1210
+             */
+            importeNetoGravado: number;
+            /** @example 1210 */
+            importeTotal: number;
+            items: components["schemas"]["InvoiceDocumentItemDto"][];
+            /** @description Sólo en la Factura A; vacío en la B y la C. */
+            iva: components["schemas"]["InvoiceDocumentIvaDto"][];
+            /** @description En la B, la leyenda del Régimen de Transparencia Fiscal al Consumidor. */
+            observaciones: string | null;
+            /** @example 1 */
+            puntoVenta: number;
+            /**
+             * @description El link del QR de la RG 4892, ya armado.
+             * @example https://www.afip.gob.ar/fe/qr/?p=eyJ2ZXIiOjF9
+             */
+            qrUrl: string;
+            receptor: components["schemas"]["InvoiceDocumentReceptorDto"];
+        };
+        InvoiceDocumentEmisorDto: {
+            /** @example IVA Responsable Inscripto */
+            condicionIva: string;
+            /**
+             * @description Sólo dígitos.
+             * @example 20447275865
+             */
+            cuit: string;
+            /** @example AV SIEMPRE VIVA 742, CABA */
+            domicilioComercial: string;
+            /** @example 2020-01-01 */
+            fechaInicioActividades: string | null;
+            /** @example 901-000000-0 */
+            iibb: string;
+            /** @example DE LA CRUZ JUAN MARTIN */
+            razonSocial: string;
+        };
+        InvoiceDocumentItemDto: {
+            /** @description Sólo en la Factura A, que discrimina IVA. */
+            alicuotaIva: number | null;
+            /** @example 1 */
+            cantidad: number;
+            /** @example Estadía AB123CD – 24/09/2026 10:00 a 24/09/2026 12:30 */
+            descripcion: string;
+            /** @example 1210 */
+            precioUnitario: number;
+            /** @example 1210 */
+            subtotal: number;
+            /** @example unidades */
+            unidadMedida: string;
+        };
+        InvoiceDocumentIvaDto: {
+            /** @example 1000 */
+            baseImponible: number;
+            /** @example 21% */
+            descripcion: string;
+            /** @example 210 */
+            importe: number;
+        };
+        InvoiceDocumentReceptorDto: {
+            /** @example Consumidor Final */
+            condicionIva: string;
+            /**
+             * @description `0` si no se identifica.
+             * @example 0
+             */
+            documentoNro: string;
+            /** @enum {string} */
+            documentoTipo: "CUIT" | "Sin Identificar";
+            /** @example Consumidor Final */
+            razonSocial: string;
         };
         InvoiceDto: {
             /** @example 86380920935994 */
@@ -8201,7 +8301,7 @@ export interface operations {
             };
         };
     };
-    InvoicesController_pdf: {
+    InvoicesController_document: {
         parameters: {
             query?: never;
             header?: never;
@@ -8219,7 +8319,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/pdf": string;
+                    "application/json": components["schemas"]["InvoiceDocumentDto"];
                 };
             };
         };
