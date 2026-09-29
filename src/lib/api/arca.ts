@@ -1,11 +1,12 @@
 import type { components } from '../../generated/api-types';
-import { ApiError, apiRequest, apiRequestBytes } from './client';
+import { ApiError, apiRequest } from './client';
 import type { InvoiceSummaryDto } from './entries';
 
 export type ArcaAccountDto = components['schemas']['ArcaAccountDto'];
 export type ArcaTaxCondition = components['schemas']['ArcaTaxCondition'];
 export type InvoiceDto = components['schemas']['InvoiceDto'];
 export type TaxpayerDto = components['schemas']['TaxpayerDto'];
+export type InvoiceDocumentDto = components['schemas']['InvoiceDocumentDto'];
 export type InvoiceReceiverDto = components['schemas']['InvoiceReceiverDto'];
 type InvoiceChangesResponseDto =
   components['schemas']['InvoiceChangesResponseDto'];
@@ -64,15 +65,18 @@ export function pullInvoiceChanges(input: {
   });
 }
 
-/** PDF de una factura emitida (409 `INVOICE_NOT_ISSUED` si no tiene CAE). */
-export function downloadInvoicePdf(input: {
+/**
+ * Los datos del comprobante de una factura emitida, para armar el PDF acá
+ * (`invoiceDocument.ts`). 409 `INVOICE_NOT_ISSUED` si todavía no tiene CAE.
+ */
+export function getInvoiceDocument(input: {
   tenantId: string;
   invoiceId: string;
   bearer: string;
-}): Promise<Uint8Array> {
-  return apiRequestBytes({
+}): Promise<InvoiceDocumentDto> {
+  return apiRequest<InvoiceDocumentDto>({
     method: 'GET',
-    path: `/tenants/${encodeURIComponent(input.tenantId)}/invoices/${encodeURIComponent(input.invoiceId)}/pdf`,
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/invoices/${encodeURIComponent(input.invoiceId)}/document`,
     bearer: input.bearer,
   });
 }

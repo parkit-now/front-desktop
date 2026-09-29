@@ -25,6 +25,14 @@ declare global {
     | { ok: true; path: string }
     | { ok: false; reason: 'canceled' | 'write-failed'; detail?: string };
 
+  type DesktopRenderPdfResult =
+    | { ok: true; data: Uint8Array }
+    | {
+        ok: false;
+        reason: 'invalid-payload' | 'render-failed';
+        detail?: string;
+      };
+
   /** De dónde sale el video de este equipo. */
   type DesktopCameraMode = 'webcam' | 'ip';
 
@@ -127,6 +135,7 @@ declare global {
         tailFeedMm: number;
         pageWidthMm: number | null;
       }) => Promise<DesktopPrintResult>;
+      renderPdf: (payload: { html: string }) => Promise<DesktopRenderPdfResult>;
       saveFile: (payload: {
         defaultName: string;
         data: Uint8Array;
