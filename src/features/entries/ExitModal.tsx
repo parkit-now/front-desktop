@@ -17,7 +17,11 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
-import { printReceipt, type ReceiptData } from '../../lib/print/receipt';
+import {
+  describeReceiptPrintFailure,
+  printReceipt,
+  type ReceiptData,
+} from '../../lib/print/receipt';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { PaymentMethodSelect } from './PaymentMethodSelect';
 import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
@@ -53,10 +57,21 @@ interface Props {
   entry: LocalEntry;
   tenantId: string;
   accessToken: string;
+  parkingName?: string | null;
+  parkingAddress?: string | null;
+  parkingCuit?: string | null;
   onClose: () => void;
 }
 
-export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
+export function ExitModal({
+  entry,
+  tenantId,
+  accessToken,
+  parkingName = null,
+  parkingAddress = null,
+  parkingCuit = null,
+  onClose,
+}: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
 
@@ -108,6 +123,7 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
   const [invoiceNotice, setInvoiceNotice] = useState<InvoiceNotice | null>(
     null,
   );
@@ -484,6 +500,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         kind: 'success',
       });
       setReceipt({
+        tenantId,
+        parkingName,
+        parkingAddress,
+        parkingCuit,
         plate: entry.plate,
         ticketNumber: entry.ticketNumber ?? undefined,
         amountDue: amountPaid ?? 0,
@@ -492,12 +512,29 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
         paymentMethodName: splitEnabled
           ? 'Varios medios'
           : (effectivePm?.name ?? ''),
+        enteredAt: entry.enteredAt,
         leftAt,
       });
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handlePrintReceipt(): Promise<void> {
+    if (!receipt || printingReceipt) return;
+    setPrintingReceipt(true);
+    try {
+      const outcome = await printReceipt(receipt);
+      if (!outcome.ok) {
+        showToast({
+          message: describeReceiptPrintFailure(outcome),
+          kind: 'error',
+        });
+      }
+    } finally {
+      setPrintingReceipt(false);
     }
   }
 
@@ -653,9 +690,10 @@ export function ExitModal({ entry, tenantId, accessToken, onClose }: Props) {
                 <button
                   type="button"
                   className="ghost-button"
-                  onClick={() => printReceipt(receipt)}
+                  onClick={() => void handlePrintReceipt()}
+                  disabled={printingReceipt}
                 >
-                  Imprimir comprobante
+                  {printingReceipt ? 'Imprimiendo...' : 'Comprobante no fiscal'}
                 </button>
                 {!invoicingPaused && canIssueAfterCharge(lastInvoice) ? (
                   <button

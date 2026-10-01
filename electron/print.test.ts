@@ -29,6 +29,9 @@ describe('print sizing helpers', () => {
     });
 
     expect(css).toContain('@page { size: 80mm 89.375mm; margin: 0; }');
-    expect(css).toContain('html, body { width: 72mm !important; }');
+    expect(css).toContain('html { width: 80mm !important;');
+    expect(css).toContain('body { width: 72mm !important;');
+    expect(css).toContain('margin-left: auto !important;');
+    expect(css).toContain('margin-right: auto !important;');
   });
 });

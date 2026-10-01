@@ -116,7 +116,8 @@ export function buildTicketPageCss(input: {
   const pageHeightMm = input.pageHeightMicrons / MICRONS_PER_MM;
   return `
     @page { size: ${input.mediaWidthMm}mm ${pageHeightMm}mm; margin: 0; }
-    html, body { width: ${input.bodyWidthMm}mm !important; }
+    html { width: ${input.mediaWidthMm}mm !important; margin: 0 !important; padding: 0 !important; }
+    body { width: ${input.bodyWidthMm}mm !important; max-width: ${input.bodyWidthMm}mm !important; margin-left: auto !important; margin-right: auto !important; }
   `;
 }
 
@@ -166,10 +167,14 @@ async function runPrintJob(
       ? null
       : Math.min(Math.max(requestedWidth, MIN_WIDTH_MM), MAX_WIDTH_MM);
   const requestedBodyWidth = Number(payload.bodyWidthMm);
-  const bodyWidthMm =
+  const rawBodyWidthMm =
     payload.bodyWidthMm == null || !Number.isFinite(requestedBodyWidth)
       ? mediaWidthMm
       : Math.min(Math.max(requestedBodyWidth, MIN_WIDTH_MM), MAX_WIDTH_MM);
+  const bodyWidthMm =
+    rawBodyWidthMm !== null && mediaWidthMm !== null
+      ? Math.min(rawBodyWidthMm, mediaWidthMm)
+      : rawBodyWidthMm;
 
   const layoutWidthMm = mediaWidthMm ?? FALLBACK_WIDTH_MM;
 

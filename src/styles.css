@@ -3140,6 +3140,46 @@ h2 {
   white-space: nowrap;
 }
 
+.printer-template-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #f7faff;
+}
+
+.printer-template-tabs--wide {
+  display: flex;
+  margin-top: var(--space-3);
+}
+
+.printer-template-tabs button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.printer-template-tabs button:hover {
+  color: var(--color-brand);
+  background: #eef4ff;
+}
+
+.printer-template-tabs button.active {
+  color: var(--color-brand-strong);
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(37, 99, 235, 0.12);
+}
+
 .printer-template-card.is-readonly .form-input:disabled {
   color: var(--color-text);
   background: #f7f9fc;
@@ -3344,6 +3384,12 @@ h2 {
 
   .printer-panel-title-row .ghost-button {
     justify-self: start;
+  }
+
+  .printer-template-tabs {
+    justify-self: start;
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .ticket-template-controls {
