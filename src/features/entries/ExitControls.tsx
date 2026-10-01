@@ -158,6 +158,9 @@ export function ExitControls({
           entry={exitEntry}
           tenantId={tenantId}
           accessToken={accessToken}
+          parkingName={parkingName}
+          parkingAddress={parkingAddress}
+          parkingCuit={parkingCuit}
           onClose={() => setExitEntry(null)}
         />
       ) : null}

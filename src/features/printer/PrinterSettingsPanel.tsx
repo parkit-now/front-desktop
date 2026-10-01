@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildEntryTicketHtml } from '../../lib/print/entryTicket';
+import { buildPaymentReceiptHtml } from '../../lib/print/receipt';
 import {
   fetchEntityProfileSettings,
   updateEntityTicketTemplate,
@@ -44,6 +45,15 @@ import {
   TAIL_FEED_OPTIONS_MM,
   type PaperSize,
 } from '../../lib/print/printerSettings';
+import {
+  isRequiredReceiptField,
+  readReceiptTemplateSettings,
+  RECEIPT_TEMPLATE_FIELD_LABELS,
+  resetReceiptTemplateSettings,
+  type ReceiptTemplateField,
+  type ReceiptTemplateSettings,
+  writeReceiptTemplateSettings,
+} from '../../lib/print/receiptTemplate';
 import {
   fontSizeToOption,
   normalizeTicketTemplateSettings,
@@ -78,6 +88,9 @@ const FIELD_SIZE_OPTIONS = (
   label: TICKET_TEMPLATE_SIZE_OPTIONS[key].label,
 }));
 
+type TemplateKind = 'entry' | 'receipt';
+type PrintableTemplateField = TicketTemplateField | ReceiptTemplateField;
+
 function testTicketData({
   tenantName,
   tenantAddress,
@@ -104,16 +117,47 @@ function testTicketData({
   };
 }
 
+function testReceiptData({
+  tenantId,
+  tenantName,
+  tenantAddress,
+  tenantCuit,
+}: {
+  tenantId: string | null;
+  tenantName: string | null;
+  tenantAddress: string | null;
+  tenantCuit?: string | null;
+}) {
+  return {
+    tenantId,
+    parkingName: tenantName,
+    parkingAddress: tenantAddress,
+    parkingCuit: tenantCuit ?? null,
+    plate: 'IAG 571',
+    ticketNumber: 10,
+    amountDue: 170000,
+    received: 180000,
+    change: 10000,
+    paymentMethodName: 'Efectivo',
+    enteredAt: '2026-09-17T12:28:00Z',
+    leftAt: '2026-09-18T14:46:00Z',
+  };
+}
+
 function TemplateFieldRow({
   field,
+  label,
   disabled = false,
   readOnly = false,
+  visibilityLocked = false,
   onChange,
 }: {
-  field: TicketTemplateField;
+  field: PrintableTemplateField;
+  label: string;
   disabled?: boolean;
   readOnly?: boolean;
-  onChange: (field: TicketTemplateField) => void;
+  visibilityLocked?: boolean;
+  onChange: (field: PrintableTemplateField) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: field.id, disabled: disabled || readOnly });
@@ -142,12 +186,12 @@ function TemplateFieldRow({
           id={checkboxId}
           type="checkbox"
           checked={field.visible && !disabled}
-          disabled={controlsDisabled}
+          disabled={controlsDisabled || visibilityLocked}
           onChange={(event) =>
             onChange({ ...field, visible: event.target.checked })
           }
         />
-        <span>{TICKET_TEMPLATE_FIELD_LABELS[field.id]}</span>
+        <span>{label}</span>
       </label>
       <div className="ticket-template-controls">
         <AppSelect
@@ -214,6 +258,12 @@ export function PrinterSettingsPanel({
   const [template, setTemplate] = useState<TicketTemplateSettings>(() =>
     readTicketTemplateSettings(templateTenantId),
   );
+  const [receiptTemplate, setReceiptTemplate] =
+    useState<ReceiptTemplateSettings>(() =>
+      readReceiptTemplateSettings(templateTenantId),
+    );
+  const [activeTemplateKind, setActiveTemplateKind] =
+    useState<TemplateKind>('entry');
   const [previewHeight, setPreviewHeight] = useState(180);
   const [testing, setTesting] = useState(false);
   const [testingDialog, setTestingDialog] = useState(false);
@@ -230,6 +280,7 @@ export function PrinterSettingsPanel({
   useEffect(() => {
     const localTemplate = readTicketTemplateSettings(templateTenantId);
     setTemplate(localTemplate);
+    setReceiptTemplate(readReceiptTemplateSettings(templateTenantId));
 
     if (!tenantId || !accessToken) return;
 
@@ -311,6 +362,20 @@ export function PrinterSettingsPanel({
     return true;
   }
 
+  function receiptFieldHasValue(
+    fieldId: ReceiptTemplateField['id'],
+    nextTemplate: ReceiptTemplateSettings = receiptTemplate,
+  ): boolean {
+    if (isRequiredReceiptField(fieldId)) return true;
+    if (fieldId === 'parkingCuit') {
+      return Boolean(tenantCuit?.trim() || nextTemplate.cuitOverride.trim());
+    }
+    if (fieldId === 'grossIncome') {
+      return Boolean(nextTemplate.grossIncomeText.trim());
+    }
+    return true;
+  }
+
   const saveTemplate = useCallback(
     (next: TicketTemplateSettings) => {
       if (!canEditTicketTemplate) return;
@@ -346,6 +411,31 @@ export function PrinterSettingsPanel({
     [accessToken, canEditTicketTemplate, tenantCuit, tenantId],
   );
 
+  const saveReceiptTemplate = useCallback(
+    (next: ReceiptTemplateSettings) => {
+      if (!canEditTicketTemplate) return;
+
+      const normalized: ReceiptTemplateSettings = {
+        ...next,
+        fields: next.fields.map((field) => {
+          const hasValue =
+            field.id === 'parkingCuit'
+              ? Boolean(tenantCuit?.trim() || next.cuitOverride.trim())
+              : field.id === 'grossIncome'
+                ? Boolean(next.grossIncomeText.trim())
+                : true;
+          if (isRequiredReceiptField(field.id)) {
+            return { ...field, visible: true };
+          }
+          return hasValue ? field : { ...field, visible: false };
+        }),
+      };
+      setReceiptTemplate(normalized);
+      writeReceiptTemplateSettings(normalized);
+    },
+    [canEditTicketTemplate, tenantCuit],
+  );
+
   function handleFieldChange(nextField: TicketTemplateField): void {
     if (!canEditTicketTemplate) return;
 
@@ -357,11 +447,39 @@ export function PrinterSettingsPanel({
     });
   }
 
+  function handleReceiptFieldChange(nextField: PrintableTemplateField): void {
+    if (!canEditTicketTemplate) return;
+    const receiptField = nextField as ReceiptTemplateField;
+
+    saveReceiptTemplate({
+      ...receiptTemplate,
+      fields: receiptTemplate.fields.map((field) =>
+        field.id === receiptField.id ? receiptField : field,
+      ),
+    });
+  }
+
   function handleDragEnd(event: DragEndEvent): void {
     if (!canEditTicketTemplate) return;
 
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+
+    if (activeTemplateKind === 'receipt') {
+      const oldIndex = receiptTemplate.fields.findIndex(
+        (field) => field.id === active.id,
+      );
+      const newIndex = receiptTemplate.fields.findIndex(
+        (field) => field.id === over.id,
+      );
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      saveReceiptTemplate({
+        ...receiptTemplate,
+        fields: arrayMove(receiptTemplate.fields, oldIndex, newIndex),
+      });
+      return;
+    }
 
     const oldIndex = template.fields.findIndex(
       (field) => field.id === active.id,
@@ -377,6 +495,16 @@ export function PrinterSettingsPanel({
 
   function handleResetTemplate(): void {
     if (!canEditTicketTemplate) return;
+
+    if (activeTemplateKind === 'receipt') {
+      const next = resetReceiptTemplateSettings(templateTenantId);
+      setReceiptTemplate(next);
+      showToast({
+        message: 'Plantilla no fiscal restaurada.',
+        kind: 'success',
+      });
+      return;
+    }
 
     const next = resetTicketTemplateSettings(templateTenantId);
     setTemplate(next);
@@ -404,23 +532,39 @@ export function PrinterSettingsPanel({
     [customBodyWidth, customMediaWidth, paperSize],
   );
 
-  const previewHtml = useMemo(
-    () =>
-      buildEntryTicketHtml(
-        testTicketData({ tenantName, tenantAddress, tenantCuit }),
+  const previewHtml = useMemo(() => {
+    if (activeTemplateKind === 'receipt') {
+      return buildPaymentReceiptHtml(
+        testReceiptData({
+          tenantId: templateTenantId,
+          tenantName,
+          tenantAddress,
+          tenantCuit,
+        }),
         {
           bodyWidthMm: resolvedPaper.bodyWidthMm,
-          template,
+          template: receiptTemplate,
         },
-      ),
-    [
-      resolvedPaper.bodyWidthMm,
-      template,
-      tenantAddress,
-      tenantCuit,
-      tenantName,
-    ],
-  );
+      );
+    }
+
+    return buildEntryTicketHtml(
+      testTicketData({ tenantName, tenantAddress, tenantCuit }),
+      {
+        bodyWidthMm: resolvedPaper.bodyWidthMm,
+        template,
+      },
+    );
+  }, [
+    activeTemplateKind,
+    receiptTemplate,
+    resolvedPaper.bodyWidthMm,
+    template,
+    tenantAddress,
+    tenantCuit,
+    tenantName,
+    templateTenantId,
+  ]);
 
   function updatePreviewHeight(): void {
     const frame = previewFrameRef.current;
@@ -446,10 +590,24 @@ export function PrinterSettingsPanel({
       // Uses the real builder and the real channel so one click validates the
       // paper width, the device name and silent mode end to end.
       const outcome: PrintOutcome = await bridge.printTicket({
-        html: buildEntryTicketHtml(
-          testTicketData({ tenantName, tenantAddress, tenantCuit }),
-          { bodyWidthMm: resolvedPaper.bodyWidthMm, template },
-        ),
+        html:
+          activeTemplateKind === 'receipt'
+            ? buildPaymentReceiptHtml(
+                testReceiptData({
+                  tenantId: templateTenantId,
+                  tenantName,
+                  tenantAddress,
+                  tenantCuit,
+                }),
+                {
+                  bodyWidthMm: resolvedPaper.bodyWidthMm,
+                  template: receiptTemplate,
+                },
+              )
+            : buildEntryTicketHtml(
+                testTicketData({ tenantName, tenantAddress, tenantCuit }),
+                { bodyWidthMm: resolvedPaper.bodyWidthMm, template },
+              ),
         deviceName: selected || null,
         tailFeedMm: tailFeed,
         mediaWidthMm: resolvedPaper.mediaWidthMm,
@@ -458,7 +616,13 @@ export function PrinterSettingsPanel({
       });
       showToast(
         outcome.ok
-          ? { message: 'Prueba enviada a la impresora.', kind: 'success' }
+          ? {
+              message:
+                activeTemplateKind === 'receipt'
+                  ? 'Prueba no fiscal enviada a la impresora.'
+                  : 'Prueba enviada a la impresora.',
+              kind: 'success',
+            }
           : { message: describePrintFailure(outcome), kind: 'error' },
       );
     } finally {
@@ -498,6 +662,66 @@ export function PrinterSettingsPanel({
       ? [{ value: selected, label: `${selected} (no disponible)` }]
       : []),
   ];
+  const activeFields =
+    activeTemplateKind === 'receipt' ? receiptTemplate.fields : template.fields;
+  const templateTitle =
+    activeTemplateKind === 'receipt'
+      ? 'Plantilla no fiscal'
+      : 'Plantilla del ticket';
+  const templateDescription =
+    activeTemplateKind === 'receipt'
+      ? canEditTicketTemplate
+        ? 'Elegí qué datos imprimir en el comprobante no fiscal.'
+        : 'Solo dueños y administradores pueden modificar el comprobante no fiscal.'
+      : canEditTicketTemplate
+        ? 'Elegí qué datos imprimir, en qué orden y con qué tamaño.'
+        : 'Solo dueños y administradores pueden modificar qué datos imprime el ticket.';
+  const activeCuitOverride =
+    activeTemplateKind === 'receipt'
+      ? receiptTemplate.cuitOverride
+      : template.cuitOverride;
+  const activeGrossIncomeText =
+    activeTemplateKind === 'receipt'
+      ? receiptTemplate.grossIncomeText
+      : template.grossIncomeText;
+  const activeNonFiscalControlText =
+    activeTemplateKind === 'receipt'
+      ? receiptTemplate.nonFiscalControlText
+      : template.nonFiscalControlText;
+
+  function saveActiveTemplateText(
+    patch: Partial<
+      Pick<
+        TicketTemplateSettings,
+        'cuitOverride' | 'grossIncomeText' | 'nonFiscalControlText'
+      >
+    >,
+  ): void {
+    if (activeTemplateKind === 'receipt') {
+      saveReceiptTemplate({ ...receiptTemplate, ...patch });
+      return;
+    }
+    saveTemplate({ ...template, ...patch });
+  }
+
+  function activeFieldHasValue(field: PrintableTemplateField): boolean {
+    return activeTemplateKind === 'receipt'
+      ? receiptFieldHasValue(field.id as ReceiptTemplateField['id'])
+      : fieldHasValue(field.id as TicketTemplateField['id']);
+  }
+
+  function activeFieldIsLocked(field: PrintableTemplateField): boolean {
+    return (
+      activeTemplateKind === 'receipt' &&
+      isRequiredReceiptField(field.id as ReceiptTemplateField['id'])
+    );
+  }
+
+  function activeFieldLabel(field: PrintableTemplateField): string {
+    return activeTemplateKind === 'receipt'
+      ? RECEIPT_TEMPLATE_FIELD_LABELS[field.id as ReceiptTemplateField['id']]
+      : TICKET_TEMPLATE_FIELD_LABELS[field.id as TicketTemplateField['id']];
+  }
 
   return (
     <div className="printer-panel">
@@ -693,7 +917,29 @@ export function PrinterSettingsPanel({
         </section>
 
         <section className="dashboard-card printer-preview-card">
-          <h2>Vista previa</h2>
+          <div className="printer-panel-title-row">
+            <h2>Vista previa</h2>
+            <div className="printer-template-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTemplateKind === 'entry'}
+                className={activeTemplateKind === 'entry' ? 'active' : ''}
+                onClick={() => setActiveTemplateKind('entry')}
+              >
+                Ingreso
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTemplateKind === 'receipt'}
+                className={activeTemplateKind === 'receipt' ? 'active' : ''}
+                onClick={() => setActiveTemplateKind('receipt')}
+              >
+                No fiscal
+              </button>
+            </div>
+          </div>
           <p className="muted printer-panel-hint">
             Papel:{' '}
             {resolvedPaper.mediaWidthMm
@@ -725,12 +971,8 @@ export function PrinterSettingsPanel({
       >
         <div className="printer-panel-title-row">
           <div>
-            <h2>Plantilla del ticket</h2>
-            <p className="muted">
-              {canEditTicketTemplate
-                ? 'Elegí qué datos imprimir, en qué orden y con qué tamaño.'
-                : 'Solo dueños y administradores pueden modificar qué datos imprime el ticket.'}
-            </p>
+            <h2>{templateTitle}</h2>
+            <p className="muted">{templateDescription}</p>
           </div>
           <button
             type="button"
@@ -747,6 +989,29 @@ export function PrinterSettingsPanel({
             Restaurar
           </button>
         </div>
+        <div
+          className="printer-template-tabs printer-template-tabs--wide"
+          role="tablist"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTemplateKind === 'entry'}
+            className={activeTemplateKind === 'entry' ? 'active' : ''}
+            onClick={() => setActiveTemplateKind('entry')}
+          >
+            Ticket de ingreso
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTemplateKind === 'receipt'}
+            className={activeTemplateKind === 'receipt' ? 'active' : ''}
+            onClick={() => setActiveTemplateKind('receipt')}
+          >
+            Comprobante no fiscal
+          </button>
+        </div>
 
         <div className="printer-template-text-grid">
           <div className="printer-panel-field">
@@ -756,11 +1021,11 @@ export function PrinterSettingsPanel({
             <input
               id="ticket-cuit"
               className="form-input"
-              value={template.cuitOverride}
+              value={activeCuitOverride}
               placeholder={tenantCuit ?? 'Ej. 20-16865508-0'}
               disabled={!canEditTicketTemplate}
               onChange={(event) =>
-                saveTemplate({ ...template, cuitOverride: event.target.value })
+                saveActiveTemplateText({ cuitOverride: event.target.value })
               }
             />
           </div>
@@ -771,12 +1036,11 @@ export function PrinterSettingsPanel({
             <input
               id="ticket-iibb"
               className="form-input"
-              value={template.grossIncomeText}
+              value={activeGrossIncomeText}
               placeholder="Ej. IIBB: 1027025-06"
               disabled={!canEditTicketTemplate}
               onChange={(event) =>
-                saveTemplate({
-                  ...template,
+                saveActiveTemplateText({
                   grossIncomeText: event.target.value,
                 })
               }
@@ -789,12 +1053,15 @@ export function PrinterSettingsPanel({
             <input
               id="ticket-control"
               className="form-input"
-              value={template.nonFiscalControlText}
-              placeholder="Control no fiscal"
+              value={activeNonFiscalControlText}
+              placeholder={
+                activeTemplateKind === 'receipt'
+                  ? 'No válido como factura'
+                  : 'Control no fiscal'
+              }
               disabled={!canEditTicketTemplate}
               onChange={(event) =>
-                saveTemplate({
-                  ...template,
+                saveActiveTemplateText({
                   nonFiscalControlText: event.target.value,
                 })
               }
@@ -808,17 +1075,24 @@ export function PrinterSettingsPanel({
           onDragEnd={handleDragEnd}
         >
           <SortableContext
-            items={template.fields.map((field) => field.id)}
+            items={activeFields.map((field) => field.id)}
             strategy={verticalListSortingStrategy}
           >
             <div className="ticket-template-list">
-              {template.fields.map((field) => (
+              {activeFields.map((field) => (
                 <TemplateFieldRow
                   key={field.id}
                   field={field}
-                  disabled={!fieldHasValue(field.id)}
+                  label={activeFieldLabel(field)}
+                  disabled={!activeFieldHasValue(field)}
+                  visibilityLocked={activeFieldIsLocked(field)}
                   readOnly={!canEditTicketTemplate}
-                  onChange={handleFieldChange}
+                  onChange={
+                    activeTemplateKind === 'receipt'
+                      ? handleReceiptFieldChange
+                      : (nextField) =>
+                          handleFieldChange(nextField as TicketTemplateField)
+                  }
                 />
               ))}
             </div>
