@@ -4,6 +4,8 @@ import {
   DEFAULT_TAIL_FEED_MM,
   defaultPrinterSettings,
   readPrinterSettings,
+  resolvePaperSize,
+  setCustomPaperSize,
   setPaperSize,
   setSelectedPrinter,
   setTailFeedMm,
@@ -46,10 +48,12 @@ describe('printerSettings', () => {
       JSON.stringify({ version: 1, deviceName: 'EPSON-TM-T20' }),
     );
     const migrated = readPrinterSettings(storage);
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.deviceName).toBe('EPSON-TM-T20');
     expect(migrated.tailFeedMm).toBe(DEFAULT_TAIL_FEED_MM);
     expect(migrated.paperSize).toBe(DEFAULT_PAPER_SIZE);
+    expect(migrated.customMediaWidthMm).toBe(80);
+    expect(migrated.customBodyWidthMm).toBe(72);
   });
 
   it('migra un blob v2 conservando impresora y avance', () => {
@@ -59,7 +63,7 @@ describe('printerSettings', () => {
       JSON.stringify({ version: 2, deviceName: 'TP85', tailFeedMm: 0 }),
     );
     expect(readPrinterSettings(storage)).toMatchObject({
-      version: 3,
+      version: 4,
       deviceName: 'TP85',
       tailFeedMm: 0,
       paperSize: DEFAULT_PAPER_SIZE,
@@ -75,6 +79,58 @@ describe('printerSettings', () => {
       deviceName: 'TP85',
       tailFeedMm: 0,
       paperSize: 'roll58',
+    });
+  });
+
+  it('resuelve presets separando ancho físico y ancho imprimible', () => {
+    expect(resolvePaperSize(defaultPrinterSettings())).toMatchObject({
+      mediaWidthMm: 80,
+      bodyWidthMm: 72,
+    });
+
+    expect(
+      resolvePaperSize({
+        ...defaultPrinterSettings(),
+        paperSize: 'roll58',
+      }),
+    ).toMatchObject({
+      mediaWidthMm: 58,
+      bodyWidthMm: 48,
+    });
+  });
+
+  it('no fuerza tamaño cuando se elige driver avanzado', () => {
+    expect(
+      resolvePaperSize({
+        ...defaultPrinterSettings(),
+        paperSize: 'driver',
+      }),
+    ).toMatchObject({
+      mediaWidthMm: null,
+      bodyWidthMm: null,
+    });
+  });
+
+  it('guarda y acota el tamaño personalizado', () => {
+    const storage = new MemoryStorage();
+    setSelectedPrinter('TP85', storage);
+    setTailFeedMm(0, storage);
+
+    const saved = setCustomPaperSize(
+      { mediaWidthMm: 57.7, bodyWidthMm: 999 },
+      storage,
+    );
+
+    expect(saved).toMatchObject({
+      deviceName: 'TP85',
+      tailFeedMm: 0,
+      paperSize: 'custom',
+      customMediaWidthMm: 58,
+      customBodyWidthMm: 58,
+    });
+    expect(resolvePaperSize(saved)).toMatchObject({
+      mediaWidthMm: 58,
+      bodyWidthMm: 58,
     });
   });
 
@@ -137,7 +193,14 @@ describe('printerSettings', () => {
     expect(readPrinterSettings(null)).toEqual(defaultPrinterSettings());
     expect(() =>
       writePrinterSettings(
-        { version: 3, deviceName: 'X', tailFeedMm: 10, paperSize: 'roll80' },
+        {
+          version: 4,
+          deviceName: 'X',
+          tailFeedMm: 10,
+          paperSize: 'roll80',
+          customMediaWidthMm: 80,
+          customBodyWidthMm: 72,
+        },
         null,
       ),
     ).not.toThrow();

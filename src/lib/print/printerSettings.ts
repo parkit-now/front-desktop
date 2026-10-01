@@ -23,37 +23,53 @@ export const TAIL_FEED_OPTIONS_MM = [0, 5, 10, 15] as const;
 export const DEFAULT_TAIL_FEED_MM = 10;
 const MAX_TAIL_FEED_MM = 30;
 
-export type PaperSize = 'roll80' | 'roll58' | 'driver';
+export type PaperSize = 'roll80' | 'roll58' | 'driver' | 'custom';
 
 export const DEFAULT_PAPER_SIZE: PaperSize = 'roll80';
+export const DEFAULT_CUSTOM_MEDIA_WIDTH_MM = 80;
+export const DEFAULT_CUSTOM_BODY_WIDTH_MM = 72;
+const MIN_PAPER_WIDTH_MM = 20;
+const MAX_PAPER_WIDTH_MM = 210;
 
-export const PAPER_SIZES: Record<
-  PaperSize,
-  { label: string; pageWidthMm: number | null; bodyWidthMm: number | null }
-> = {
+export interface ResolvedPaperSize {
+  label: string;
+  /** Ancho físico que se manda a Electron/driver. */
+  mediaWidthMm: number | null;
+  /** Ancho útil del HTML del ticket. */
+  bodyWidthMm: number | null;
+}
+
+export const PAPER_SIZES: Record<PaperSize, ResolvedPaperSize> = {
   roll80: {
     label: '80 mm (rollo estándar)',
-    pageWidthMm: 72,
+    mediaWidthMm: 80,
     bodyWidthMm: 72,
   },
   roll58: {
     label: '58 mm (rollo angosto)',
-    pageWidthMm: 48,
+    mediaWidthMm: 58,
     bodyWidthMm: 48,
   },
   driver: {
-    label: 'Usar el tamaño configurado en el driver',
-    pageWidthMm: null,
+    label: 'Driver (avanzado)',
+    mediaWidthMm: null,
     bodyWidthMm: null,
+  },
+  custom: {
+    label: 'Personalizado',
+    mediaWidthMm: DEFAULT_CUSTOM_MEDIA_WIDTH_MM,
+    bodyWidthMm: DEFAULT_CUSTOM_BODY_WIDTH_MM,
   },
 };
 
 export interface PrinterSettings {
-  version: 3;
+  version: 4;
   /** `null` = use whatever the OS considers the default printer. */
   deviceName: string | null;
   tailFeedMm: number;
   paperSize: PaperSize;
+  customMediaWidthMm: number;
+  customBodyWidthMm: number;
 }
 
 const StoredSchema = z.object({
@@ -65,15 +81,32 @@ const StoredSchema = z.object({
     .max(MAX_TAIL_FEED_MM)
     .optional()
     .catch(undefined),
-  paperSize: z.enum(['roll80', 'roll58', 'driver']).optional().catch(undefined),
+  paperSize: z
+    .enum(['roll80', 'roll58', 'driver', 'custom'])
+    .optional()
+    .catch(undefined),
+  customMediaWidthMm: z
+    .number()
+    .min(MIN_PAPER_WIDTH_MM)
+    .max(MAX_PAPER_WIDTH_MM)
+    .optional()
+    .catch(undefined),
+  customBodyWidthMm: z
+    .number()
+    .min(MIN_PAPER_WIDTH_MM)
+    .max(MAX_PAPER_WIDTH_MM)
+    .optional()
+    .catch(undefined),
 });
 
 export function defaultPrinterSettings(): PrinterSettings {
   return {
-    version: 3,
+    version: 4,
     deviceName: null,
     tailFeedMm: DEFAULT_TAIL_FEED_MM,
     paperSize: DEFAULT_PAPER_SIZE,
+    customMediaWidthMm: DEFAULT_CUSTOM_MEDIA_WIDTH_MM,
+    customBodyWidthMm: DEFAULT_CUSTOM_BODY_WIDTH_MM,
   };
 }
 
@@ -95,11 +128,19 @@ export function readPrinterSettings(
   try {
     const parsed = StoredSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) return defaults;
+    const customMediaWidthMm =
+      parsed.data.customMediaWidthMm ?? defaults.customMediaWidthMm;
+    const customBodyWidthMm = clampPaperWidth(
+      parsed.data.customBodyWidthMm ?? defaults.customBodyWidthMm,
+      customMediaWidthMm,
+    );
     return {
-      version: 3,
+      version: 4,
       deviceName: parsed.data.deviceName ?? defaults.deviceName,
       tailFeedMm: parsed.data.tailFeedMm ?? defaults.tailFeedMm,
       paperSize: parsed.data.paperSize ?? defaults.paperSize,
+      customMediaWidthMm,
+      customBodyWidthMm,
     };
   } catch {
     return defaults;
@@ -152,4 +193,48 @@ export function setPaperSize(
   };
   writePrinterSettings(next, storage);
   return next;
+}
+
+function clampPaperWidth(value: number, max = MAX_PAPER_WIDTH_MM): number {
+  const rounded = Math.round(value);
+  return Math.min(Math.max(rounded, MIN_PAPER_WIDTH_MM), max);
+}
+
+export function setCustomPaperSize(
+  input: { mediaWidthMm: number; bodyWidthMm: number },
+  storage: PrinterStorage | null = getBrowserStorage(),
+): PrinterSettings {
+  const mediaWidthMm = clampPaperWidth(input.mediaWidthMm);
+  const bodyWidthMm = clampPaperWidth(input.bodyWidthMm, mediaWidthMm);
+  const next: PrinterSettings = {
+    ...readPrinterSettings(storage),
+    paperSize: 'custom',
+    customMediaWidthMm: mediaWidthMm,
+    customBodyWidthMm: bodyWidthMm,
+  };
+  writePrinterSettings(next, storage);
+  return next;
+}
+
+export function resolvePaperSize(
+  settings: Pick<
+    PrinterSettings,
+    'paperSize' | 'customMediaWidthMm' | 'customBodyWidthMm'
+  >,
+): ResolvedPaperSize {
+  if (settings.paperSize === 'custom') {
+    const mediaWidthMm = clampPaperWidth(settings.customMediaWidthMm);
+    return {
+      label: PAPER_SIZES.custom.label,
+      mediaWidthMm,
+      bodyWidthMm: clampPaperWidth(settings.customBodyWidthMm, mediaWidthMm),
+    };
+  }
+
+  const preset = PAPER_SIZES[settings.paperSize];
+  return {
+    label: preset.label,
+    mediaWidthMm: preset.mediaWidthMm,
+    bodyWidthMm: preset.bodyWidthMm,
+  };
 }

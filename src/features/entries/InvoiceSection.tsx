@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { downloadInvoicePdf, issueInvoice } from '../../lib/api/arca';
+import QRCode from 'qrcode';
+import { getInvoiceDocument, issueInvoice } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
 import { translateApiError, translateErrorCode } from '../../lib/api/translate';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
@@ -10,6 +11,7 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { syncService } from '../../lib/sync/SyncService';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { Switch } from '../../lib/ui/Switch';
+import { renderInvoiceHtml } from './invoiceDocument';
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import {
   describeIssueConfirmation,
@@ -26,32 +28,39 @@ import {
 import type { ArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 
-/** Guarda los bytes: con «Guardar como…» en Electron, descarga en el navegador. */
-async function saveFile(fileName: string, data: Uint8Array): Promise<boolean> {
+/**
+ * Arma el PDF del comprobante con el Chromium de Electron y lo ofrece con
+ * «Guardar como…». `false` si la persona canceló el diálogo.
+ */
+async function savePdf(fileName: string, html: string): Promise<boolean> {
   const desktop = window.parkitDesktop;
-  if (desktop?.saveFile) {
-    const result = await desktop.saveFile({ defaultName: fileName, data });
-    if (!result.ok && result.reason === 'write-failed') {
-      throw new Error(result.detail ?? 'write-failed');
-    }
-    return result.ok;
+  if (!desktop?.renderPdf || !desktop.saveFile) {
+    // Renderer abierto en un navegador (dev sin Electron): el diálogo de
+    // impresión del navegador deja guardarlo como PDF.
+    const preview = window.open('', '_blank');
+    if (!preview) throw new Error('popup-blocked');
+    preview.document.write(html);
+    preview.document.close();
+    preview.print();
+    return false;
   }
-  // Renderer abierto en un navegador (dev sin Electron).
-  const url = URL.createObjectURL(
-    new Blob([new Uint8Array(data)], { type: 'application/pdf' }),
-  );
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  return true;
+  const pdf = await desktop.renderPdf({ html });
+  if (!pdf.ok) throw new Error(pdf.detail ?? pdf.reason);
+  const result = await desktop.saveFile({
+    defaultName: fileName,
+    data: pdf.data,
+  });
+  if (!result.ok && result.reason === 'write-failed') {
+    throw new Error(result.detail ?? 'write-failed');
+  }
+  return result.ok;
 }
 
 /**
  * Bloque «Factura» del diálogo de un movimiento del historial: el comprobante
  * y lo que se puede hacer según el estado. Emitir, reintentar y bajar el PDF
- * necesitan red (los hace el backend contra ARCA); el checkbox «Facturada» de
+ * necesitan red (el PDF lo arma el desktop, pero con los datos que guardó el
+ * backend al emitir); el checkbox «Facturada» de
  * las playas sin ARCA funciona offline, como cualquier corrección.
  *
  * Gemelo de `InvoiceDetail` del panel web.
@@ -153,16 +162,30 @@ export function InvoiceSection({
     if (!invoice) return;
     setBusy('pdf');
     try {
-      const data = await downloadInvoicePdf({
+      const doc = await getInvoiceDocument({
         tenantId,
         invoiceId: invoice.id,
         bearer: accessToken,
       });
-      const saved = await saveFile(
-        invoicePdfFileName({ plate: current.plate, ...invoice }),
-        data,
-      );
-      if (saved) showToast({ message: 'PDF guardado.', kind: 'success' });
+      // Los datos llegaron: si algo falla de acá en adelante es de este equipo
+      // (Chromium, disco), no del backend.
+      try {
+        const qr = await QRCode.toDataURL(doc.qrUrl, {
+          width: 200,
+          margin: 0,
+          errorCorrectionLevel: 'M',
+        });
+        const saved = await savePdf(
+          invoicePdfFileName({ plate: current.plate, ...invoice }),
+          renderInvoiceHtml(doc, qr),
+        );
+        if (saved) showToast({ message: 'PDF guardado.', kind: 'success' });
+      } catch {
+        showToast({
+          message: 'No se pudo generar el PDF. Probá de nuevo.',
+          kind: 'error',
+        });
+      }
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {

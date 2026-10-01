@@ -61,9 +61,23 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     html: string;
     deviceName: string | null;
     tailFeedMm: number;
-    pageWidthMm: number | null;
+    mediaWidthMm: number | null;
+    bodyWidthMm: number | null;
+    debugDialog?: boolean;
   }): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> =>
     ipcRenderer.invoke('printer:printTicket', payload),
+
+  /** HTML → PDF A4 con el Chromium de Electron (el comprobante de una factura). */
+  renderPdf: (payload: {
+    html: string;
+  }): Promise<
+    | { ok: true; data: Uint8Array }
+    | {
+        ok: false;
+        reason: 'invalid-payload' | 'render-failed';
+        detail?: string;
+      }
+  > => ipcRenderer.invoke('pdf:fromHtml', payload),
 
   /** «Guardar como…»: el renderer propone el nombre, la persona elige dónde. */
   saveFile: (payload: {
