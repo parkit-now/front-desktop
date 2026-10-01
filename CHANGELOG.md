@@ -1,3 +1,15 @@
+# [1.6.0](https://github.com/parkit-now/front-desktop/compare/v1.5.1...v1.6.0) (2026-10-01)
+
+
+### Bug Fixes
+
+* **impresora:** los tickets ahora se amoldan al tamaño del driver de la impresora ([9885219](https://github.com/parkit-now/front-desktop/commit/9885219f038e29377d58b05392e1943d1663407e))
+
+
+### Features
+
+* **facturas:** el PDF de la factura se arma en el desktop ([edd4e7a](https://github.com/parkit-now/front-desktop/commit/edd4e7a8fa7e6277a35b00b0acf4a1a319c088fa))
+
 ## [1.5.1](https://github.com/parkit-now/front-desktop/compare/v1.5.0...v1.5.1) (2026-09-28)
 
 
