@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/parkit-now/front-desktop/compare/v1.6.0...v1.7.0) (2026-10-01)
+
+
+### Features
+
+* **impresión:** se agregó el comprobante no fiscal y más ajustes de impresión ([66d6fb4](https://github.com/parkit-now/front-desktop/commit/66d6fb4df967057441f0739b30a5f956af947a03))
+
 # [1.6.0](https://github.com/parkit-now/front-desktop/compare/v1.5.1...v1.6.0) (2026-10-01)
 
 
