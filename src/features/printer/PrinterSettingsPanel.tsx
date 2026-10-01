@@ -19,6 +19,7 @@ import {
   Bold,
   GripVertical,
   Printer,
+  PrinterCheck,
   RefreshCcw,
   RotateCcw,
 } from 'lucide-react';
@@ -35,6 +36,8 @@ import {
 import {
   PAPER_SIZES,
   readPrinterSettings,
+  resolvePaperSize,
+  setCustomPaperSize,
   setPaperSize,
   setSelectedPrinter,
   setTailFeedMm,
@@ -202,11 +205,18 @@ export function PrinterSettingsPanel({
   const [paperSize, setPaper] = useState<PaperSize>(
     () => readPrinterSettings().paperSize,
   );
+  const [customMediaWidth, setCustomMediaWidth] = useState<number>(
+    () => readPrinterSettings().customMediaWidthMm,
+  );
+  const [customBodyWidth, setCustomBodyWidth] = useState<number>(
+    () => readPrinterSettings().customBodyWidthMm,
+  );
   const [template, setTemplate] = useState<TicketTemplateSettings>(() =>
     readTicketTemplateSettings(templateTenantId),
   );
   const [previewHeight, setPreviewHeight] = useState(180);
   const [testing, setTesting] = useState(false);
+  const [testingDialog, setTestingDialog] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
   const remoteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -384,16 +394,32 @@ export function PrinterSettingsPanel({
     showToast({ message: 'Plantilla compacta restaurada.', kind: 'success' });
   }
 
+  const resolvedPaper = useMemo(
+    () =>
+      resolvePaperSize({
+        paperSize,
+        customMediaWidthMm: customMediaWidth,
+        customBodyWidthMm: customBodyWidth,
+      }),
+    [customBodyWidth, customMediaWidth, paperSize],
+  );
+
   const previewHtml = useMemo(
     () =>
       buildEntryTicketHtml(
         testTicketData({ tenantName, tenantAddress, tenantCuit }),
         {
-          bodyWidthMm: PAPER_SIZES[paperSize].bodyWidthMm,
+          bodyWidthMm: resolvedPaper.bodyWidthMm,
           template,
         },
       ),
-    [paperSize, template, tenantAddress, tenantCuit, tenantName],
+    [
+      resolvedPaper.bodyWidthMm,
+      template,
+      tenantAddress,
+      tenantCuit,
+      tenantName,
+    ],
   );
 
   function updatePreviewHeight(): void {
@@ -410,22 +436,25 @@ export function PrinterSettingsPanel({
     setPreviewHeight(180);
   }, [previewHtml]);
 
-  async function handleTestPrint(): Promise<void> {
+  async function handleTestPrint(debugDialog = false): Promise<void> {
     const bridge = window.parkitDesktop;
     if (!bridge || typeof bridge.printTicket !== 'function') return;
 
-    setTesting(true);
+    if (debugDialog) setTestingDialog(true);
+    else setTesting(true);
     try {
       // Uses the real builder and the real channel so one click validates the
       // paper width, the device name and silent mode end to end.
       const outcome: PrintOutcome = await bridge.printTicket({
         html: buildEntryTicketHtml(
           testTicketData({ tenantName, tenantAddress, tenantCuit }),
-          { bodyWidthMm: PAPER_SIZES[paperSize].bodyWidthMm, template },
+          { bodyWidthMm: resolvedPaper.bodyWidthMm, template },
         ),
         deviceName: selected || null,
         tailFeedMm: tailFeed,
-        pageWidthMm: PAPER_SIZES[paperSize].pageWidthMm,
+        mediaWidthMm: resolvedPaper.mediaWidthMm,
+        bodyWidthMm: resolvedPaper.bodyWidthMm,
+        debugDialog,
       });
       showToast(
         outcome.ok
@@ -433,7 +462,8 @@ export function PrinterSettingsPanel({
           : { message: describePrintFailure(outcome), kind: 'error' },
       );
     } finally {
-      setTesting(false);
+      if (debugDialog) setTestingDialog(false);
+      else setTesting(false);
     }
   }
 
@@ -513,7 +543,7 @@ export function PrinterSettingsPanel({
 
           <div className="printer-panel-field">
             <label className="form-label" htmlFor="printer-paper-size">
-              Tamaño de papel
+              Papel de la impresora
             </label>
             <AppSelect
               id="printer-paper-size"
@@ -521,9 +551,17 @@ export function PrinterSettingsPanel({
               onChange={(value) => {
                 const next = value as PaperSize;
                 setPaper(next);
-                setPaperSize(next);
+                const saved =
+                  next === 'custom'
+                    ? setCustomPaperSize({
+                        mediaWidthMm: customMediaWidth,
+                        bodyWidthMm: customBodyWidth,
+                      })
+                    : setPaperSize(next);
+                setCustomMediaWidth(saved.customMediaWidthMm);
+                setCustomBodyWidth(saved.customBodyWidthMm);
                 showToast({
-                  message: 'Tamaño de papel guardado.',
+                  message: 'Papel de impresora guardado.',
                   kind: 'success',
                 });
               }}
@@ -533,11 +571,68 @@ export function PrinterSettingsPanel({
               }))}
             />
             <p className="muted printer-panel-hint">
-              Si la impresora avanza el papel y corta sin imprimir nada, probá
-              con la opción del driver: algunas térmicas rechazan los tamaños de
-              página personalizados.
+              En Windows, si el ticket sale en A4, configurá el rollo en
+              Preferencias de impresión o probá “Imprimir con diálogo” para ver
+              qué tamaño está tomando el driver.
             </p>
           </div>
+
+          {paperSize === 'custom' ? (
+            <div className="printer-custom-paper-grid">
+              <div className="printer-panel-field">
+                <label className="form-label" htmlFor="printer-media-width">
+                  Ancho físico del papel
+                </label>
+                <input
+                  id="printer-media-width"
+                  className="form-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={20}
+                  max={210}
+                  value={customMediaWidth}
+                  onChange={(event) => {
+                    const mediaWidthMm = Number(event.target.value);
+                    setCustomMediaWidth(mediaWidthMm);
+                    const saved = setCustomPaperSize({
+                      mediaWidthMm,
+                      bodyWidthMm: customBodyWidth,
+                    });
+                    setCustomMediaWidth(saved.customMediaWidthMm);
+                    setCustomBodyWidth(saved.customBodyWidthMm);
+                  }}
+                />
+                <p className="muted printer-panel-hint">Milímetros.</p>
+              </div>
+              <div className="printer-panel-field">
+                <label className="form-label" htmlFor="printer-body-width">
+                  Ancho imprimible
+                </label>
+                <input
+                  id="printer-body-width"
+                  className="form-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={20}
+                  max={customMediaWidth}
+                  value={customBodyWidth}
+                  onChange={(event) => {
+                    const bodyWidthMm = Number(event.target.value);
+                    setCustomBodyWidth(bodyWidthMm);
+                    const saved = setCustomPaperSize({
+                      mediaWidthMm: customMediaWidth,
+                      bodyWidthMm,
+                    });
+                    setCustomMediaWidth(saved.customMediaWidthMm);
+                    setCustomBodyWidth(saved.customBodyWidthMm);
+                  }}
+                />
+                <p className="muted printer-panel-hint">
+                  Dejalo menor que el papel si el driver tiene márgenes.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="printer-panel-field">
             <label className="form-label" htmlFor="printer-tail-feed">
@@ -583,11 +678,35 @@ export function PrinterSettingsPanel({
               <Printer size={15} aria-hidden="true" />
               {testing ? 'Imprimiendo...' : 'Imprimir prueba'}
             </button>
+            {window.parkitDesktop?.platform === 'win32' ? (
+              <button
+                type="button"
+                className="ghost-button compact"
+                onClick={() => void handleTestPrint(true)}
+                disabled={testingDialog || printers === null}
+              >
+                <PrinterCheck size={15} aria-hidden="true" />
+                {testingDialog ? 'Abriendo...' : 'Imprimir con diálogo'}
+              </button>
+            ) : null}
           </div>
         </section>
 
         <section className="dashboard-card printer-preview-card">
           <h2>Vista previa</h2>
+          <p className="muted printer-panel-hint">
+            Papel:{' '}
+            {resolvedPaper.mediaWidthMm
+              ? `${resolvedPaper.mediaWidthMm} mm`
+              : 'según driver'}
+            {' · '}
+            Imprimible:{' '}
+            {resolvedPaper.bodyWidthMm
+              ? `${resolvedPaper.bodyWidthMm} mm`
+              : 'según driver'}
+            {' · '}
+            Alto aprox.: {Math.round(previewHeight * (25.4 / 96) * 10) / 10} mm
+          </p>
           <div className="ticket-preview-shell">
             <iframe
               ref={previewFrameRef}

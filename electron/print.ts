@@ -33,7 +33,7 @@ const DEFAULT_TAIL_FEED_MM = 10;
 const MAX_TAIL_FEED_MM = 30;
 const MICRONS_PER_CSS_PX = 25_400 / 96;
 const CSS_PX_PER_MM = 96 / 25.4;
-const FALLBACK_WIDTH_MM = 72;
+const FALLBACK_WIDTH_MM = 80;
 const MIN_WIDTH_MM = 20;
 const MAX_WIDTH_MM = 210;
 
@@ -85,7 +85,39 @@ export interface PrintPayload {
    * guillotina lo necesita para no cortar sobre el texto; a PDF es desperdicio.
    */
   tailFeedMm?: number;
-  pageWidthMm?: number | null;
+  mediaWidthMm?: number | null;
+  bodyWidthMm?: number | null;
+  debugDialog?: boolean;
+}
+
+export function mmToMicrons(mm: number): number {
+  return Math.round(mm * MICRONS_PER_MM);
+}
+
+export function cssPxToMicrons(px: number): number {
+  return Math.round(px * MICRONS_PER_CSS_PX);
+}
+
+export function ticketPageHeightMicrons(
+  contentHeightPx: number,
+  tailFeedMm: number,
+): number {
+  return Math.max(
+    MIN_HEIGHT_MICRONS,
+    cssPxToMicrons(contentHeightPx) + mmToMicrons(tailFeedMm),
+  );
+}
+
+export function buildTicketPageCss(input: {
+  mediaWidthMm: number;
+  bodyWidthMm: number;
+  pageHeightMicrons: number;
+}): string {
+  const pageHeightMm = input.pageHeightMicrons / MICRONS_PER_MM;
+  return `
+    @page { size: ${input.mediaWidthMm}mm ${pageHeightMm}mm; margin: 0; }
+    html, body { width: ${input.bodyWidthMm}mm !important; }
+  `;
 }
 
 export function printTicketHtml(
@@ -128,13 +160,18 @@ async function runPrintJob(
     };
   }
 
-  const requestedWidth = Number(payload.pageWidthMm);
-  const pageWidthMm =
-    payload.pageWidthMm == null || !Number.isFinite(requestedWidth)
+  const requestedWidth = Number(payload.mediaWidthMm);
+  const mediaWidthMm =
+    payload.mediaWidthMm == null || !Number.isFinite(requestedWidth)
       ? null
       : Math.min(Math.max(requestedWidth, MIN_WIDTH_MM), MAX_WIDTH_MM);
+  const requestedBodyWidth = Number(payload.bodyWidthMm);
+  const bodyWidthMm =
+    payload.bodyWidthMm == null || !Number.isFinite(requestedBodyWidth)
+      ? mediaWidthMm
+      : Math.min(Math.max(requestedBodyWidth, MIN_WIDTH_MM), MAX_WIDTH_MM);
 
-  const layoutWidthMm = pageWidthMm ?? FALLBACK_WIDTH_MM;
+  const layoutWidthMm = mediaWidthMm ?? FALLBACK_WIDTH_MM;
 
   const win = new BrowserWindow({
     show: false,
@@ -167,16 +204,24 @@ async function runPrintJob(
       ? Math.min(Math.max(requestedFeed, 0), MAX_TAIL_FEED_MM)
       : DEFAULT_TAIL_FEED_MM;
 
-    const height = Math.max(
-      MIN_HEIGHT_MICRONS,
-      Math.round(Number(measured) * MICRONS_PER_CSS_PX) +
-        Math.round(tailFeedMm * MICRONS_PER_MM),
-    );
+    const height = ticketPageHeightMicrons(Number(measured), tailFeedMm);
 
     const pageSize =
-      pageWidthMm === null
+      mediaWidthMm === null
         ? undefined
-        : { width: Math.round(pageWidthMm * MICRONS_PER_MM), height };
+        : { width: mmToMicrons(mediaWidthMm), height };
+
+    if (mediaWidthMm !== null && bodyWidthMm !== null) {
+      await win.webContents
+        .insertCSS(
+          buildTicketPageCss({
+            mediaWidthMm,
+            bodyWidthMm,
+            pageHeightMicrons: height,
+          }),
+        )
+        .catch(() => undefined);
+    }
 
     return await new Promise<PrintResult>((resolve) => {
       const timer = setTimeout(
@@ -185,7 +230,7 @@ async function runPrintJob(
       );
       win.webContents.print(
         {
-          silent: true,
+          silent: payload.debugDialog === true ? false : true,
           deviceName: target.name,
           printBackground: true,
           margins: { marginType: 'none' },

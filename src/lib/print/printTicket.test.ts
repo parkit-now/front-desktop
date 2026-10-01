@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EntryTicketData } from './entryTicket';
 import { describePrintFailure, printEntryTicket } from './printTicket';
+import { setCustomPaperSize, setPaperSize } from './printerSettings';
 
 const data: EntryTicketData = {
   parkingName: 'Estacionamiento Apex',
@@ -16,9 +17,29 @@ const data: EntryTicketData = {
 
 type Bridge = NonNullable<Window['parkitDesktop']>;
 
+class MemoryStorage {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+}
+
 function bridgeWith(printTicket: Bridge['printTicket']): Bridge {
   return { printTicket } as unknown as Bridge;
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('printEntryTicket', () => {
   it('avisa cuando no está el puente de Electron', async () => {
@@ -36,16 +57,58 @@ describe('printEntryTicket', () => {
 
     const payload = printTicket.mock.calls[0][0] as {
       html: string;
-      pageWidthMm: number | null;
+      mediaWidthMm: number | null;
+      bodyWidthMm: number | null;
+      debugDialog?: boolean;
     };
     expect(payload.html).toContain('ABC123');
     expect(payload.html).toContain('VW');
     expect(payload.html).toContain('Suran');
     expect(payload.html).toContain('Estacionamiento Apex');
-    // Default = rollo de 80mm, que declara el ANCHO IMPRIMIBLE (72), no el del
-    // papel: declarar 80 dejaba el contenido en la franja no imprimible.
-    expect(payload.pageWidthMm).toBe(72);
+    expect(payload.mediaWidthMm).toBe(80);
+    expect(payload.bodyWidthMm).toBe(72);
+    expect(payload.debugDialog).toBeUndefined();
     expect(payload.html).toContain('width: 72mm');
+  });
+
+  it('no manda tamaño explícito cuando se elige driver', async () => {
+    const storage = new MemoryStorage();
+    setPaperSize('driver', storage);
+    vi.stubGlobal('window', { localStorage: storage });
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+
+    await expect(
+      printEntryTicket(data, 'tenant-1', bridgeWith(printTicket)),
+    ).resolves.toEqual({ ok: true });
+
+    const payload = printTicket.mock.calls[0][0] as {
+      html: string;
+      mediaWidthMm: number | null;
+      bodyWidthMm: number | null;
+    };
+    expect(payload.mediaWidthMm).toBeNull();
+    expect(payload.bodyWidthMm).toBeNull();
+    expect(payload.html).toContain('width: 100%');
+  });
+
+  it('manda el tamaño personalizado guardado', async () => {
+    const storage = new MemoryStorage();
+    setCustomPaperSize({ mediaWidthMm: 76, bodyWidthMm: 68 }, storage);
+    vi.stubGlobal('window', { localStorage: storage });
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+
+    await expect(
+      printEntryTicket(data, 'tenant-1', bridgeWith(printTicket)),
+    ).resolves.toEqual({ ok: true });
+
+    const payload = printTicket.mock.calls[0][0] as {
+      html: string;
+      mediaWidthMm: number | null;
+      bodyWidthMm: number | null;
+    };
+    expect(payload.mediaWidthMm).toBe(76);
+    expect(payload.bodyWidthMm).toBe(68);
+    expect(payload.html).toContain('width: 68mm');
   });
 
   it('no rechaza nunca: un puente que falla resuelve un outcome', async () => {

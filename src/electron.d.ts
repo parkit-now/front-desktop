@@ -133,7 +133,12 @@ declare global {
         deviceName: string | null;
         /** Papel alimentado después de la última línea, para la guillotina. */
         tailFeedMm: number;
-        pageWidthMm: number | null;
+        /** Ancho físico del papel que se manda al driver. */
+        mediaWidthMm: number | null;
+        /** Ancho útil del contenido HTML. */
+        bodyWidthMm: number | null;
+        /** Abre el diálogo nativo para diagnosticar qué tamaño toma el driver. */
+        debugDialog?: boolean;
       }) => Promise<DesktopPrintResult>;
       renderPdf: (payload: { html: string }) => Promise<DesktopRenderPdfResult>;
       saveFile: (payload: {
