@@ -1,7 +1,18 @@
-export type AuthField = 'email' | 'password';
+export type AuthField = 'name' | 'email' | 'password';
 export type FieldErrors = Partial<Record<AuthField, string>>;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function validateFullName(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 'Este campo es obligatorio.';
+  }
+  if (trimmed.split(/\s+/).length < 2) {
+    return 'Ingresá tu nombre y apellido';
+  }
+  return null;
+}
 
 export function validateEmail(value: string): string | null {
   const trimmed = value.trim();
