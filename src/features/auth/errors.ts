@@ -17,6 +17,7 @@ export function getErrorMessage(error: unknown): string {
 
 function mapBackendField(field: string): keyof FieldErrors | null {
   const lower = field.toLowerCase();
+  if (lower === 'name') return 'name';
   if (lower === 'email') return 'email';
   if (lower === 'password') return 'password';
   return null;

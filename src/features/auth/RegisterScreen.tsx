@@ -2,9 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { registerWithEmail } from '../../lib/supabase/session';
 import { mapAuthError } from './errors';
+import { PasswordInput } from './PasswordInput';
 import {
   validateEmail,
+  validateFullName,
   validatePassword,
+  validatePasswordConfirmation,
   type FieldErrors,
 } from './validation';
 
@@ -14,8 +17,10 @@ type Props = {
 
 export function RegisterScreen({ onSwitchToLogin }: Props) {
   const { showToast } = useToast();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState(false);
 
@@ -24,10 +29,17 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
   ): Promise<void> {
     event.preventDefault();
     const next: FieldErrors = {};
+    const nameError = validateFullName(name);
+    if (nameError) next.name = nameError;
     const emailError = validateEmail(email);
     if (emailError) next.email = emailError;
     const passwordError = validatePassword(password, { isNew: true });
     if (passwordError) next.password = passwordError;
+    const confirmationError = validatePasswordConfirmation(
+      password,
+      passwordConfirmation,
+    );
+    if (confirmationError) next.passwordConfirmation = confirmationError;
     if (Object.keys(next).length > 0) {
       setErrors(next);
       return;
@@ -35,7 +47,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
     setErrors({});
     setPending(true);
     try {
-      await registerWithEmail(email, password);
+      await registerWithEmail(name, email, password);
     } catch (error) {
       const mapped = mapAuthError(error, 'register');
       if (mapped.fieldErrors) {
@@ -62,10 +74,38 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
       >
         <div className="form-field">
           <input
+            type="text"
+            aria-label="Nombre y apellido"
+            aria-required="true"
+            aria-invalid={errors.name ? true : undefined}
+            aria-describedby={errors.name ? 'register-name-error' : undefined}
+            autoComplete="name"
+            maxLength={120}
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              if (errors.name) {
+                setErrors((prev) => ({ ...prev, name: undefined }));
+              }
+            }}
+            placeholder="Nombre y apellido *"
+            className={errors.name ? 'input-error' : undefined}
+          />
+          {errors.name ? (
+            <p id="register-name-error" className="field-error">
+              {errors.name}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="form-field">
+          <input
             type="email"
             aria-label="Email"
             aria-invalid={errors.email ? true : undefined}
-            aria-describedby={errors.email ? 'register-email-error' : undefined}
+            aria-describedby={
+              errors.email ? 'register-email-error' : 'register-email-hint'
+            }
             autoComplete="email"
             value={email}
             onChange={(event) => {
@@ -81,12 +121,15 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
             <p id="register-email-error" className="field-error">
               {errors.email}
             </p>
-          ) : null}
+          ) : (
+            <p id="register-email-hint" className="field-hint">
+              Ejemplo: nombre@ejemplo.com
+            </p>
+          )}
         </div>
 
         <div className="form-field">
-          <input
-            type="password"
+          <PasswordInput
             aria-label="Contraseña"
             aria-invalid={errors.password ? true : undefined}
             aria-describedby={
@@ -99,6 +142,15 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
               if (errors.password) {
                 setErrors((prev) => ({ ...prev, password: undefined }));
               }
+              if (
+                errors.passwordConfirmation &&
+                event.target.value === passwordConfirmation
+              ) {
+                setErrors((prev) => ({
+                  ...prev,
+                  passwordConfirmation: undefined,
+                }));
+              }
             }}
             placeholder="Contraseña (mín. 8 caracteres)"
             className={errors.password ? 'input-error' : undefined}
@@ -106,6 +158,40 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
           {errors.password ? (
             <p id="register-password-error" className="field-error">
               {errors.password}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="form-field">
+          <PasswordInput
+            aria-label="Repetir contraseña"
+            aria-required="true"
+            aria-invalid={errors.passwordConfirmation ? true : undefined}
+            aria-describedby={
+              errors.passwordConfirmation
+                ? 'register-password-confirmation-error'
+                : undefined
+            }
+            autoComplete="new-password"
+            value={passwordConfirmation}
+            onChange={(event) => {
+              setPasswordConfirmation(event.target.value);
+              if (errors.passwordConfirmation) {
+                setErrors((prev) => ({
+                  ...prev,
+                  passwordConfirmation: undefined,
+                }));
+              }
+            }}
+            placeholder="Repetir contraseña *"
+            className={errors.passwordConfirmation ? 'input-error' : undefined}
+          />
+          {errors.passwordConfirmation ? (
+            <p
+              id="register-password-confirmation-error"
+              className="field-error"
+            >
+              {errors.passwordConfirmation}
             </p>
           ) : null}
         </div>
