@@ -2100,10 +2100,10 @@ export interface components {
              */
             createdAt: string;
             /**
-             * @description Declared Argentine tax id (CUIT).
+             * @description Declared Argentine tax id (CUIT). `null` when not declared (no longer asked at sign-up).
              * @example 30712345679
              */
-            cuit: string;
+            cuit: string | null;
             /** @description Declared entity snapshot captured at submission time (name, address, legal data and per-vehicle spot counts). Materialized as a real parking lot on approval. */
             declaredEntity: {
                 [key: string]: unknown;
@@ -2127,10 +2127,10 @@ export interface components {
              */
             id: string;
             /**
-             * @description Declared legal name of the entity.
+             * @description Declared legal name of the entity. `null` when not declared (no longer asked at sign-up).
              * @example Estacionamientos del Centro S.A.
              */
-            legalName: string;
+            legalName: string | null;
             /** @description Dirección estructurada declarada, tal como se va a materializar en `tenants` al aprobar. Los borradores anteriores al wizard nuevo sólo traen `formatted`; el resto de los campos viene en `null`. */
             location: components["schemas"]["EntityAddressDto"];
             /**
@@ -2154,6 +2154,8 @@ export interface components {
              * @example 2026-05-21T10:00:00.000Z
              */
             reviewedAt: string | null;
+            /** @description Declared opening hours, one row per range (a day may have several). Empty when the applicant skipped the operational step. Created as the tenant schedules on approval. */
+            schedules: components["schemas"]["CreateScheduleDto"][];
             /**
              * @description External review status. The internal `pending_review` state surfaces as `pending`; drafts never appear in the queue.
              * @example pending
@@ -2172,6 +2174,11 @@ export interface components {
              * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
              */
             tenantId: string | null;
+            /**
+             * @description Declared total parking spots. `null` when the applicant skipped the operational step (approval then creates the tenant with capacity 0).
+             * @example 110
+             */
+            totalSpots: number | null;
         };
         ApplicationDocumentDto: {
             /**
@@ -2214,10 +2221,10 @@ export interface components {
              */
             createdAt: string;
             /**
-             * @description Declared Argentine tax id (CUIT).
+             * @description Declared Argentine tax id (CUIT). `null` when not declared (no longer asked at sign-up).
              * @example 30712345679
              */
-            cuit: string;
+            cuit: string | null;
             /**
              * @description Number of supporting documents uploaded by the applicant.
              * @example 3
@@ -2235,10 +2242,10 @@ export interface components {
              */
             id: string;
             /**
-             * @description Declared legal name of the entity.
+             * @description Declared legal name of the entity. `null` when not declared (no longer asked at sign-up).
              * @example Estacionamientos del Centro S.A.
              */
-            legalName: string;
+            legalName: string | null;
             /**
              * @description Declared display name of the parking lot.
              * @example Estacionamiento del Centro
@@ -2542,10 +2549,10 @@ export interface components {
              */
             address?: string;
             /**
-             * @description CUIT, 11 digits
+             * @description CUIT, 11 digits. OPCIONAL: ya no se pide en el alta. Si viene, tiene que tener 11 dígitos.
              * @example 30123456789
              */
-            cuit: string;
+            cuit?: string;
             /**
              * Format: email
              * @description Contact email of the entity.
@@ -2553,10 +2560,10 @@ export interface components {
              */
             email: string;
             /**
-             * @description Registered legal name of the entity.
+             * @description Registered legal name of the entity. OPCIONAL: ya no se pide en el alta, se completa después desde la configuración del perfil. Ausente → el tenant queda con `legalName` en null.
              * @example Estacionamientos del Centro S.A.
              */
-            legalName: string;
+            legalName?: string;
             /** @description Dirección estructurada declarada, normalizada en el front contra la API Georef. Opcional: hay borradores en vuelo que sólo traen `address`. Se materializa en columnas de `tenants` al aprobar la solicitud. */
             location?: components["schemas"]["UpdateEntityAddressDto"];
             /**
@@ -2565,10 +2572,12 @@ export interface components {
              */
             name: string;
             /**
-             * @description Contact phone of the entity.
-             * @example +541145678900
+             * @description Contact phone of the person in charge, in international E.164 format (with the leading `+` and country code, no spaces).
+             * @example +5491123456789
              */
             phone: string;
+            /** @description Horarios de atención declarados: una fila por franja (un día puede tener varias). Se crean como `schedules` del tenant al aprobar. Se validan con la misma regla que `/schedules` (open < close, sin solapes en el mismo día; franjas contiguas OK) y, si no cumplen, se responde 422 `ONBOARDING_NOT_SUBMITTABLE` con `validationsErrors` en `declaredEntity.schedules.<i>`. Un PATCH con `schedules` REEMPLAZA la lista entera. */
+            schedules?: components["schemas"]["CreateScheduleDto"][];
             /**
              * @description Plazas totales declaradas (van a `tenant.settings.capacity.total`).
              * @example 110
@@ -3537,6 +3546,11 @@ export interface components {
             /** @description Entities the caller belongs to, with their per-entity role. */
             memberships: components["schemas"]["MeMembershipDto"][];
             /**
+             * @description Full name of the user, or `null` for accounts created before the name was required (or social logins without a name).
+             * @example Jane Doe
+             */
+            name: string | null;
+            /**
              * @description GLOBAL platform role (`admin | user`).
              * @enum {string}
              */
@@ -4308,6 +4322,11 @@ export interface components {
              */
             email: string;
             /**
+             * @description Full name of the person registering (first and last name). Stored in `public.users.name` and in the Supabase `user_metadata.full_name`.
+             * @example Jane Doe
+             */
+            name: string;
+            /**
              * @description Password. Minimum 8 characters; the Supabase project may enforce stricter rules.
              * @example CorrectHorseBatteryStaple1!
              */
@@ -4772,7 +4791,7 @@ export interface components {
              */
             address?: string;
             /**
-             * @description CUIT, 11 digits
+             * @description CUIT, 11 digits. OPCIONAL: ya no se pide en el alta. Si viene, tiene que tener 11 dígitos.
              * @example 30123456789
              */
             cuit?: string;
@@ -4783,7 +4802,7 @@ export interface components {
              */
             email?: string;
             /**
-             * @description Registered legal name of the entity.
+             * @description Registered legal name of the entity. OPCIONAL: ya no se pide en el alta, se completa después desde la configuración del perfil. Ausente → el tenant queda con `legalName` en null.
              * @example Estacionamientos del Centro S.A.
              */
             legalName?: string;
@@ -4795,10 +4814,12 @@ export interface components {
              */
             name?: string;
             /**
-             * @description Contact phone of the entity.
-             * @example +541145678900
+             * @description Contact phone of the person in charge, in international E.164 format (with the leading `+` and country code, no spaces).
+             * @example +5491123456789
              */
             phone?: string;
+            /** @description Horarios de atención declarados: una fila por franja (un día puede tener varias). Se crean como `schedules` del tenant al aprobar. Se validan con la misma regla que `/schedules` (open < close, sin solapes en el mismo día; franjas contiguas OK) y, si no cumplen, se responde 422 `ONBOARDING_NOT_SUBMITTABLE` con `validationsErrors` en `declaredEntity.schedules.<i>`. Un PATCH con `schedules` REEMPLAZA la lista entera. */
+            schedules?: components["schemas"]["CreateScheduleDto"][];
             /**
              * @description Plazas totales declaradas (van a `tenant.settings.capacity.total`).
              * @example 110
@@ -4986,8 +5007,8 @@ export interface components {
              */
             name?: string;
             /**
-             * @description New contact phone number of the entity.
-             * @example +54 11 5555-1234
+             * @description New contact phone number of the entity, in international E.164 format (`+5491123456789`). The format is only enforced when the value CHANGES: legacy profiles keep their stored free-text phone, and sending it back unchanged is accepted.
+             * @example +5491155551234
              */
             phone?: string;
             /**
