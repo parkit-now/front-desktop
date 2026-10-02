@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateFullName } from './validation';
+import { validateFullName, validatePasswordConfirmation } from './validation';
 
 describe('validateFullName', () => {
   it('rechaza vacío y solo espacios', () => {
@@ -15,5 +15,23 @@ describe('validateFullName', () => {
   it('acepta nombre y apellido', () => {
     expect(validateFullName('Juan Pérez')).toBeNull();
     expect(validateFullName('  Ana   María  López ')).toBeNull();
+  });
+});
+
+describe('validatePasswordConfirmation', () => {
+  it('rechaza vacío', () => {
+    expect(validatePasswordConfirmation('abcdefgh', '')).toBe(
+      'Este campo es obligatorio.',
+    );
+  });
+
+  it('rechaza si no coincide', () => {
+    expect(validatePasswordConfirmation('abcdefgh', 'abcdefgx')).toBe(
+      'Las contraseñas no coinciden',
+    );
+  });
+
+  it('acepta si coincide', () => {
+    expect(validatePasswordConfirmation('abcdefgh', 'abcdefgh')).toBeNull();
   });
 });
