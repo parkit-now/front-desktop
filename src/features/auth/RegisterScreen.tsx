@@ -72,10 +72,6 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
           void handleSubmit(event);
         }}
       >
-        <p className="form-helper">
-          Los campos marcados con * son obligatorios
-        </p>
-
         <div className="form-field">
           <input
             type="text"
