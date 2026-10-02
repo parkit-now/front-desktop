@@ -2,10 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { registerWithEmail } from '../../lib/supabase/session';
 import { mapAuthError } from './errors';
+import { PasswordInput } from './PasswordInput';
 import {
   validateEmail,
   validateFullName,
   validatePassword,
+  validatePasswordConfirmation,
   type FieldErrors,
 } from './validation';
 
@@ -18,6 +20,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState(false);
 
@@ -32,6 +35,11 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
     if (emailError) next.email = emailError;
     const passwordError = validatePassword(password, { isNew: true });
     if (passwordError) next.password = passwordError;
+    const confirmationError = validatePasswordConfirmation(
+      password,
+      passwordConfirmation,
+    );
+    if (confirmationError) next.passwordConfirmation = confirmationError;
     if (Object.keys(next).length > 0) {
       setErrors(next);
       return;
@@ -119,8 +127,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
         </div>
 
         <div className="form-field">
-          <input
-            type="password"
+          <PasswordInput
             aria-label="Contraseña"
             aria-invalid={errors.password ? true : undefined}
             aria-describedby={
@@ -133,6 +140,15 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
               if (errors.password) {
                 setErrors((prev) => ({ ...prev, password: undefined }));
               }
+              if (
+                errors.passwordConfirmation &&
+                event.target.value === passwordConfirmation
+              ) {
+                setErrors((prev) => ({
+                  ...prev,
+                  passwordConfirmation: undefined,
+                }));
+              }
             }}
             placeholder="Contraseña (mín. 8 caracteres)"
             className={errors.password ? 'input-error' : undefined}
@@ -140,6 +156,40 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
           {errors.password ? (
             <p id="register-password-error" className="field-error">
               {errors.password}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="form-field">
+          <PasswordInput
+            aria-label="Repetir contraseña"
+            aria-required="true"
+            aria-invalid={errors.passwordConfirmation ? true : undefined}
+            aria-describedby={
+              errors.passwordConfirmation
+                ? 'register-password-confirmation-error'
+                : undefined
+            }
+            autoComplete="new-password"
+            value={passwordConfirmation}
+            onChange={(event) => {
+              setPasswordConfirmation(event.target.value);
+              if (errors.passwordConfirmation) {
+                setErrors((prev) => ({
+                  ...prev,
+                  passwordConfirmation: undefined,
+                }));
+              }
+            }}
+            placeholder="Repetir contraseña *"
+            className={errors.passwordConfirmation ? 'input-error' : undefined}
+          />
+          {errors.passwordConfirmation ? (
+            <p
+              id="register-password-confirmation-error"
+              className="field-error"
+            >
+              {errors.passwordConfirmation}
             </p>
           ) : null}
         </div>
