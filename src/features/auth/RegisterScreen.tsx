@@ -4,6 +4,7 @@ import { registerWithEmail } from '../../lib/supabase/session';
 import { mapAuthError } from './errors';
 import {
   validateEmail,
+  validateFullName,
   validatePassword,
   type FieldErrors,
 } from './validation';
@@ -14,6 +15,7 @@ type Props = {
 
 export function RegisterScreen({ onSwitchToLogin }: Props) {
   const { showToast } = useToast();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -24,6 +26,8 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
   ): Promise<void> {
     event.preventDefault();
     const next: FieldErrors = {};
+    const nameError = validateFullName(name);
+    if (nameError) next.name = nameError;
     const emailError = validateEmail(email);
     if (emailError) next.email = emailError;
     const passwordError = validatePassword(password, { isNew: true });
@@ -35,7 +39,7 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
     setErrors({});
     setPending(true);
     try {
-      await registerWithEmail(email, password);
+      await registerWithEmail(name, email, password);
     } catch (error) {
       const mapped = mapAuthError(error, 'register');
       if (mapped.fieldErrors) {
@@ -60,6 +64,36 @@ export function RegisterScreen({ onSwitchToLogin }: Props) {
           void handleSubmit(event);
         }}
       >
+        <p className="form-helper">
+          Los campos marcados con * son obligatorios
+        </p>
+
+        <div className="form-field">
+          <input
+            type="text"
+            aria-label="Nombre y apellido"
+            aria-required="true"
+            aria-invalid={errors.name ? true : undefined}
+            aria-describedby={errors.name ? 'register-name-error' : undefined}
+            autoComplete="name"
+            maxLength={120}
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              if (errors.name) {
+                setErrors((prev) => ({ ...prev, name: undefined }));
+              }
+            }}
+            placeholder="Nombre y apellido *"
+            className={errors.name ? 'input-error' : undefined}
+          />
+          {errors.name ? (
+            <p id="register-name-error" className="field-error">
+              {errors.name}
+            </p>
+          ) : null}
+        </div>
+
         <div className="form-field">
           <input
             type="email"
