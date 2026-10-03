@@ -2858,7 +2858,7 @@ export interface components {
              * @description Lo que el conductor pagó por adelantado con la reserva (snapshot al vincular). La caja cobra `max(estadía − prepagado, 0)`. null sin reserva.
              * @example 4500
              */
-            prepaidAmountArs: number | null;
+            prepaidAmountArs?: number | null;
             /** Format: uuid */
             rateId?: string;
             rateSnapshotFractionPriceArs?: number;
@@ -2868,9 +2868,9 @@ export interface components {
             rateSnapshotStayPriceArs?: number;
             /**
              * Format: uuid
-             * @description Reserva con la que entró el auto. La vincula el backend al crear el ingreso (por `reservationId` o por patente dentro de la ventana de llegada). null en los ingresos sin reserva y en los anteriores.
+             * @description Reserva con la que entró el auto. La vincula el backend al crear el ingreso (por `reservationId` o por patente dentro de la ventana de llegada). null en los ingresos sin reserva y en los anteriores. Opcional en el contrato: un backend anterior a la fase 6 no lo manda.
              */
-            reservationId: string | null;
+            reservationId?: string | null;
             /**
              * @description auto = created by LPR; manual = operator-typed
              * @example manual
@@ -3770,7 +3770,7 @@ export interface components {
              * @description Lo que el conductor pagó por adelantado con la reserva (snapshot al vincular). La caja cobra `max(estadía − prepagado, 0)`. null sin reserva.
              * @example 4500
              */
-            prepaidAmountArs: number | null;
+            prepaidAmountArs?: number | null;
             /** Format: uuid */
             rateId?: string;
             rateSnapshotFractionPriceArs?: number;
@@ -3780,9 +3780,9 @@ export interface components {
             rateSnapshotStayPriceArs?: number;
             /**
              * Format: uuid
-             * @description Reserva con la que entró el auto. La vincula el backend al crear el ingreso (por `reservationId` o por patente dentro de la ventana de llegada). null en los ingresos sin reserva y en los anteriores.
+             * @description Reserva con la que entró el auto. La vincula el backend al crear el ingreso (por `reservationId` o por patente dentro de la ventana de llegada). null en los ingresos sin reserva y en los anteriores. Opcional en el contrato: un backend anterior a la fase 6 no lo manda.
              */
-            reservationId: string | null;
+            reservationId?: string | null;
             /**
              * @description auto = created by LPR; manual = operator-typed
              * @example manual
