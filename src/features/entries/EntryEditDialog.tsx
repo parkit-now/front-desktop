@@ -14,6 +14,7 @@ import {
   type LocalPaymentMethod,
   type LocalPaymentTransaction,
   type LocalRate,
+  type LocalVehicleType,
   type PaymentMethodKind,
 } from '../../lib/db/localDb';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
@@ -28,6 +29,11 @@ import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
 import { InvoiceSection } from './InvoiceSection';
 import type { ArcaEmitter } from './useArcaEmitter';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
+import { AppSelect } from '../../lib/ui/AppSelect';
+import {
+  buildVehicleTypeSnapshot,
+  sortSelectableTypes,
+} from './entryVehicleType';
 
 type ActorRole = 'admin' | 'owner' | 'operator' | null;
 
@@ -167,6 +173,7 @@ function toPaymentLines(
 function entryToPatch(
   result: LocalEntry,
   body: CorrectEntryDto,
+  types: LocalVehicleType[] = [],
 ): Partial<LocalEntry> {
   const patch: Partial<LocalEntry> = {};
   if (body.plate !== undefined) patch.plate = body.plate;
@@ -177,6 +184,16 @@ function entryToPatch(
   if (body.leftAt !== undefined) patch.leftAt = body.leftAt;
   if (body.vehicleBrand !== undefined) patch.vehicleBrand = body.vehicleBrand;
   if (body.vehicleModel !== undefined) patch.vehicleModel = body.vehicleModel;
+  if (body.vehicleTypeId !== undefined) {
+    // Igual que el servidor: el tipo corrige id, nombre y categoría juntos. Si
+    // el tipo no está en la lista local no se toca nada (el server lo ignora).
+    const snapshot = buildVehicleTypeSnapshot(body.vehicleTypeId, types);
+    if (snapshot.vehicleTypeId) {
+      patch.vehicleTypeId = snapshot.vehicleTypeId;
+      patch.vehicleCategory = snapshot.vehicleCategory;
+      patch.vehicleType = snapshot.vehicleType;
+    }
+  }
   if (body.rateId !== undefined) patch.rateId = body.rateId;
   if (body.rateSnapshotName !== undefined) {
     patch.rateSnapshotName = body.rateSnapshotName;
@@ -227,6 +244,7 @@ export function EntryEditDialog({
   const [plate, setPlate] = useState(entry.plate);
   const [vehicleBrand, setVehicleBrand] = useState(entry.vehicleBrand ?? '');
   const [vehicleModel, setVehicleModel] = useState(entry.vehicleModel ?? '');
+  const [vehicleTypeId, setVehicleTypeId] = useState(entry.vehicleTypeId ?? '');
   const [color, setColor] = useState(entry.color ?? '');
   const [cochera, setCochera] = useState(entry.cochera ?? '');
   const [notes, setNotes] = useState(entry.notes ?? '');
@@ -246,6 +264,34 @@ export function EntryEditDialog({
         .toArray(),
     [tenantId],
   );
+
+  const vehicleTypes = useLiveQuery(
+    () =>
+      localDb.vehicleTypes
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((t) => !t.deletedAt)
+        .toArray(),
+    [tenantId],
+  );
+  const typeOptions = useMemo(() => {
+    const options = sortSelectableTypes(vehicleTypes ?? []).map((t) => ({
+      value: t.id,
+      label: t.accepted ? t.name : `${t.name} (no se acepta)`,
+    }));
+    // El tipo guardado puede ser de un tipo borrado: se muestra igual para que
+    // el campo no parezca vacío, pero no es una opción nueva para otros.
+    if (
+      entry.vehicleTypeId &&
+      !options.some((o) => o.value === entry.vehicleTypeId)
+    ) {
+      options.unshift({
+        value: entry.vehicleTypeId,
+        label: entry.vehicleType ?? 'Tipo eliminado',
+      });
+    }
+    return options;
+  }, [vehicleTypes, entry.vehicleTypeId, entry.vehicleType]);
 
   /**
    * Tarifa GUARDADA del movimiento, sin filtrar por `deletedAt`: un ticket
@@ -405,6 +451,9 @@ export function EntryEditDialog({
   if (changedText(nextVehicleModel, entry.vehicleModel)) {
     body.vehicleModel = nextVehicleModel;
   }
+  if (vehicleTypeId !== '' && vehicleTypeId !== (entry.vehicleTypeId ?? '')) {
+    body.vehicleTypeId = vehicleTypeId;
+  }
   if (rateChanged && selectedRate) {
     if (isUuid(selectedRate.id)) {
       body.rateId = selectedRate.id;
@@ -447,6 +496,7 @@ export function EntryEditDialog({
     body.leftAt !== undefined ||
     body.vehicleBrand !== undefined ||
     body.vehicleModel !== undefined ||
+    body.vehicleTypeId !== undefined ||
     body.rateSnapshotName !== undefined ||
     body.payments !== undefined;
 
@@ -570,6 +620,9 @@ export function EntryEditDialog({
                   : undefined,
               vehicleBrand: result.vehicleBrand ?? undefined,
               vehicleModel: result.vehicleModel ?? undefined,
+              vehicleTypeId: result.vehicleTypeId ?? undefined,
+              vehicleCategory: result.vehicleCategory ?? undefined,
+              vehicleType: result.vehicleType ?? undefined,
               rateId: result.rateId ?? undefined,
               rateSnapshotName: result.rateSnapshotName ?? undefined,
               rateSnapshotHourPriceArs:
@@ -623,7 +676,7 @@ export function EntryEditDialog({
           localDb.pendingOps,
           async () => {
             await localDb.entries.update(entry.id, {
-              ...entryToPatch(entry, body),
+              ...entryToPatch(entry, body, vehicleTypes ?? []),
               version: entry.version + 1,
               updatedAt: now,
             });
@@ -737,6 +790,16 @@ export function EntryEditDialog({
                 value={vehicleModel}
                 disabled={readOnly}
                 onChange={(event) => setVehicleModel(event.target.value)}
+              />
+            </label>
+            <label className="form-label">
+              Tipo de vehículo
+              <AppSelect
+                value={vehicleTypeId}
+                onChange={setVehicleTypeId}
+                options={typeOptions}
+                placeholder="Sin tipo"
+                disabled={readOnly || saving}
               />
             </label>
             <label className="form-label">
