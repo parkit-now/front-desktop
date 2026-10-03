@@ -83,6 +83,15 @@ import {
   LPR_CLOUD_IMAGE_QUALITY,
 } from '../camera/constants';
 
+/**
+ * Ingresos por página del feed (el backend acepta hasta 500) y tope de páginas
+ * por pull. Antes se pedía UNA página de 200 por pull: tras un corte largo, o
+ * con el cursor reseteado por un upgrade (v14, v18), ponerse al día llevaba
+ * una vuelta del pull de fondo (90 s) cada 200 ingresos.
+ */
+const ENTRY_PAGE_SIZE = 500;
+const ENTRY_MAX_PAGES = 20;
+
 /** Facturas por página del feed; se pagina hasta alcanzar el `maxSeq`. */
 const INVOICE_PAGE_SIZE = 500;
 /** Tope de páginas por sync: lo que falte entra en la próxima vuelta. */
@@ -145,6 +154,10 @@ export function entryToLocal(e: EntryDto): LocalEntry {
     vehicleTypeId: e.vehicleTypeId ?? undefined,
     vehicleCategory: e.vehicleCategory ?? undefined,
     vehicleType: e.vehicleType ?? undefined,
+    // Un backend anterior a la fase 6 no los manda: quedan sin reserva.
+    reservationId: e.reservationId ?? undefined,
+    prepaidAmountArs:
+      e.prepaidAmountArs != null ? String(e.prepaidAmountArs) : undefined,
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
@@ -378,15 +391,24 @@ class SyncService {
 
     const stateKey = `entries:${this.tenantId}`;
     const state = await localDb.syncState.get(stateKey);
-    const afterSeq = state?.lastSeq ?? 0;
+    let afterSeq = state?.lastSeq ?? 0;
 
-    const response = await pullEntryChanges({
-      tenantId: this.tenantId,
-      bearer: this.accessToken,
-      query: { afterSeq },
-    });
+    for (let page = 0; page < ENTRY_MAX_PAGES; page++) {
+      const response = await pullEntryChanges({
+        tenantId: this.tenantId,
+        bearer: this.accessToken,
+        query: { afterSeq, limit: ENTRY_PAGE_SIZE },
+      });
 
-    if (response.items.length > 0) {
+      if (response.items.length === 0) {
+        await localDb.syncState.put({
+          key: stateKey,
+          lastSeq: afterSeq,
+          lastSyncAt: new Date().toISOString(),
+        });
+        return;
+      }
+
       // Mismo resguardo que `pullCashSessions`, y acá es todavía más caro: una
       // entry con una op encolada tiene cambios que el servidor NO vio, así que
       // lo que llega en el feed es una foto vieja. Pisarla le borra al operador
@@ -412,12 +434,15 @@ class SyncService {
           });
         },
       );
-    } else {
-      await localDb.syncState.put({
-        key: stateKey,
-        lastSeq: afterSeq,
-        lastSyncAt: new Date().toISOString(),
-      });
+
+      // Página incompleta (o un cursor que no avanza): no hay más.
+      if (
+        response.items.length < ENTRY_PAGE_SIZE ||
+        response.maxSeq <= afterSeq
+      ) {
+        return;
+      }
+      afterSeq = response.maxSeq;
     }
   }
 

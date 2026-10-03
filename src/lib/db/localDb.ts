@@ -73,9 +73,39 @@ export interface LocalEntry {
   vehicleCategory?: VehicleCategoryCode;
   /** Nombre del tipo al momento del ingreso (snapshot). */
   vehicleType?: string;
+  /**
+   * Reserva con la que entró el auto y lo que ya pagó por Mercado Pago (v18).
+   * Los escribe SIEMPRE el backend al crear el ingreso (por el banner o por
+   * patente al sincronizar): un ingreso hecho sin conexión no los tiene hasta
+   * que se pushea. Al salir se cobra `max(estadía − prepago, 0)`.
+   */
+  reservationId?: string;
+  prepaidAmountArs?: string;
   version: number;
   syncSeq: number;
   updatedAt: string;
+}
+
+/**
+ * Reserva de hoy para el panel "Reservas de hoy" de la caja (v18). Es una
+ * FOTO de la última lectura online (`GET /reservations`), no un feed: se
+ * reemplaza entera por playa en cada lectura y sin conexión se muestra la
+ * última, marcada como desactualizada. La caja nunca la edita.
+ */
+export interface LocalTodayReservation {
+  id: string;
+  tenantId: string;
+  code: string;
+  status: string;
+  vehiclePlate: string;
+  driverName?: string;
+  entryAt: string;
+  exitAt: string;
+  totalArs: number;
+  /** Cuándo entró el auto (checked_in / completed), del ingreso vinculado. */
+  enteredAt?: string;
+  /** Cuándo se leyó del servidor (ISO). */
+  fetchedAt: string;
 }
 
 /**
@@ -333,6 +363,7 @@ class ParkitLocalDb extends Dexie {
   cashSessions!: Table<LocalCashSession>;
   paymentTransactions!: Table<LocalPaymentTransaction>;
   invoices!: Table<LocalInvoice>;
+  todayReservations!: Table<LocalTodayReservation>;
   syncState!: Table<SyncState>;
   pendingOps!: Table<PendingOp>;
 
@@ -628,6 +659,36 @@ class ParkitLocalDb extends Dexie {
           .filter(
             (s: SyncState) =>
               typeof s.key === 'string' && s.key.startsWith('vehicleTypes:'),
+          )
+          .delete();
+      });
+
+    // v18: reservas en la caja (fase 6).
+    //
+    // `LocalEntry` gana `reservationId` y `prepaidAmountArs` (sin índice: se
+    // leen con la fila entera) y aparece `todayReservations`, la foto del
+    // panel "Reservas de hoy" (se reemplaza entera, no tiene cursor).
+    //
+    // Se resetea el cursor `entries:`, por el mismo agujero que la v13 con
+    // `paymentTransactions:`: el deploy no es atómico. Entre el deploy del
+    // backend y la actualización de esta app, la versión vieja baja (o crea)
+    // ingresos ya vinculados a una reserva, los guarda con el mapper viejo
+    // —sin el prepago— y AVANZA EL CURSOR. Si ese auto sale después de
+    // actualizar, la caja no sabría que ya pagó y le cobraría la estadía
+    // entera. El re-pull rellena los campos (el pull ahora pagina, así que se
+    // pone al día en una vuelta).
+    //
+    // No se toca `pendingOps`: `reservationId` es opcional y las ops de
+    // ingreso encoladas siguen siendo válidas (el backend vincula por patente).
+    this.version(18)
+      .stores({ todayReservations: 'id, tenantId' })
+      .upgrade(async (tx) => {
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' && s.key.startsWith('entries:'),
           )
           .delete();
       });
