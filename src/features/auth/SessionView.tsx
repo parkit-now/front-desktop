@@ -19,6 +19,7 @@ import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
+import { TodayReservationsPanel } from '../entries/TodayReservationsPanel';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
@@ -866,6 +867,10 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         }
                         onDraftChange={handleManualEntryDraftChange}
                         onDraftReset={resetManualEntryDraft}
+                      />
+                      <TodayReservationsPanel
+                        tenantId={activeTenantId}
+                        accessToken={session.access_token}
                       />
                       <ExitControls
                         tenantId={activeTenantId}

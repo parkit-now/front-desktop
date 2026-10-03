@@ -6693,3 +6693,51 @@ h2 {
 .exit-info-row--total span:last-child {
   font-size: 16px;
 }
+
+.today-reservations {
+  flex: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 14px 18px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today-reservations__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.today-reservations__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.today-reservations__table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.today-reservations__table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.today-reservations__table tr:last-child td {
+  border-bottom: none;
+}
+
+.today-reservations__plate {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
