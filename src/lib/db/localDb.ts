@@ -14,6 +14,8 @@ export type PaymentMethodKind = components['schemas']['PaymentMethodType'];
 export type PaymentMethodInvoiceMode =
   components['schemas']['PaymentMethodInvoiceMode'];
 
+export type VehicleCategoryCode = components['schemas']['VehicleCategory'];
+
 export interface LocalRate {
   id: string;
   tenantId: string;
@@ -62,6 +64,15 @@ export interface LocalEntry {
    * bumpear `sync_seq`, así que una fila vieja no lo trae; `undefined` = no.
    */
   manuallyInvoiced?: boolean;
+  /**
+   * Tipo y categoría del vehículo, congelados al ingresar. Opcionales: los
+   * ingresos anteriores a la v17 y los que mandó una caja vieja no los tienen,
+   * y `vehicleTypeId` puede apuntar a un tipo ya borrado (sin FK en el server).
+   */
+  vehicleTypeId?: string;
+  vehicleCategory?: VehicleCategoryCode;
+  /** Nombre del tipo al momento del ingreso (snapshot). */
+  vehicleType?: string;
   version: number;
   syncSeq: number;
   updatedAt: string;
@@ -155,12 +166,26 @@ export interface LocalVehicleType {
   name: string;
   /** Si el estacionamiento acepta este tipo. Reemplaza a ServiceCode.VEHICLE_*. */
   accepted: boolean;
+  /**
+   * Categoría de la plataforma a la que cuelga el tipo. Opcional por la ventana
+   * de upgrade: la v17 resetea el cursor de `vehicleTypes:` y hasta que ese pull
+   * entre, las filas viejas no la tienen.
+   */
+  category?: VehicleCategoryCode;
   /** Defensa: el pull borra los tombstones en vez de persistirlos. */
   deletedAt?: string;
   version: number;
   syncSeq: number;
   updatedAt: string;
   createdAt: string;
+}
+
+/** Fila de la lista cerrada de categorías. Se reemplaza entera en cada sync. */
+export interface LocalVehicleCategory {
+  code: VehicleCategoryCode;
+  label: string;
+  sortOrder: number;
+  reservable: boolean;
 }
 
 export interface LocalPaymentMethod {
@@ -302,6 +327,7 @@ class ParkitLocalDb extends Dexie {
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
   vehicleTypes!: Table<LocalVehicleType>;
+  vehicleCategories!: Table<LocalVehicleCategory>;
   paymentMethods!: Table<LocalPaymentMethod>;
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
   cashSessions!: Table<LocalCashSession>;
@@ -579,6 +605,29 @@ class ParkitLocalDb extends Dexie {
             (s: SyncState) =>
               typeof s.key === 'string' &&
               s.key.startsWith('lprDetectionEvents:'),
+          )
+          .delete();
+      });
+
+    // v17: categorías de vehículo de la plataforma. Tabla nueva
+    // (`vehicleCategories`, se reemplaza entera en cada sync) y campos nuevos
+    // opcionales en tipos e ingresos.
+    //
+    // Se resetea SOLO el cursor `vehicleTypes:`: el backend subió `sync_seq` de
+    // los tipos al completar `category`, pero una caja que ya estaba al día no
+    // lo vería hasta el próximo cambio. No hace falta tocar `entries:` (los
+    // ingresos viejos quedan sin categoría, igual que en el servidor) ni
+    // `pendingOps` (todos los campos nuevos son opcionales: las ops encoladas,
+    // incluidos los tipos sin `category`, siguen siendo válidas).
+    this.version(17)
+      .stores({ vehicleCategories: 'code' })
+      .upgrade(async (tx) => {
+        await tx
+          .table('syncState')
+          .toCollection()
+          .filter(
+            (s: SyncState) =>
+              typeof s.key === 'string' && s.key.startsWith('vehicleTypes:'),
           )
           .delete();
       });
