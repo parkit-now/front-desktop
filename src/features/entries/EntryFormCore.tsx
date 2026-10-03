@@ -23,6 +23,14 @@ import {
   printEntryTicket,
 } from '../../lib/print/printTicket';
 import { type LocalRate } from '../../lib/db/localDb';
+import { AppSelect, type AppSelectHandle } from '../../lib/ui/AppSelect';
+import {
+  buildVehicleTypeSnapshot,
+  isTypeNotAccepted,
+  isTypeRequired,
+  sortSelectableTypes,
+  typeIdForCatalogSelection,
+} from './entryVehicleType';
 
 export type EntryFormVariant = 'manual' | 'auto';
 
@@ -32,6 +40,8 @@ export type ManualEntryDraft = {
   model: string;
   vehicleInput: string;
   vehicleSelected: boolean;
+  /** Tipo de vehículo elegido o heredado del catálogo. Opcional: borradores previos. */
+  vehicleTypeId?: string;
   color: string;
   colorSelected: boolean;
   rateId: string;
@@ -343,6 +353,31 @@ export function EntryFormCore({
     () => manualDraft?.vehicleSelected ?? false,
   );
 
+  // Tipo de vehículo del ingreso. Lo completa solo el modelo del catálogo
+  // (`typeAutofilled`) y el operador puede cambiarlo; con texto libre (motos,
+  // que no están en el catálogo) lo elige a mano y es obligatorio.
+  const [vehicleTypeId, setVehicleTypeId] = useState(
+    () => manualDraft?.vehicleTypeId ?? '',
+  );
+  const [typeAutofilled, setTypeAutofilled] = useState(false);
+  const [typeError, setTypeError] = useState('');
+  const typeRef = useRef<AppSelectHandle>(null);
+
+  // Tipos vivos de ESTE estacionamiento (mismo criterio que el catálogo).
+  const vehicleTypes = useLiveQuery(
+    () =>
+      localDb.vehicleTypes
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((t) => !t.deletedAt)
+        .toArray(),
+    [tenantId],
+  );
+  const selectableTypes = useMemo(
+    () => sortSelectableTypes(vehicleTypes ?? []),
+    [vehicleTypes],
+  );
+
   // Exclude soft-deleted rates: charging with a rate the owner took down is the
   // whole point of the tombstone sync. `pullRates` already removes them, this is
   // the belt-and-suspenders read.
@@ -390,6 +425,7 @@ export function EntryFormCore({
       model,
       vehicleInput,
       vehicleSelected,
+      vehicleTypeId,
       color,
       colorSelected,
       rateId,
@@ -399,6 +435,7 @@ export function EntryFormCore({
       notes,
     });
   }, [
+    vehicleTypeId,
     brand,
     cochera,
     color,
@@ -493,10 +530,29 @@ export function EntryFormCore({
         setModel(m);
         setVehicleInput(m ? `${b} ${m}` : b);
         setVehicleSelected(true);
+        // El tipo del ingreso anterior (si sigue vivo) y, si no, el del catálogo.
+        const prevType = vehicleTypes?.find((t) => t.id === prev.vehicleTypeId);
+        const resolved =
+          prevType?.id ??
+          typeIdForCatalogSelection(catalogVehicles ?? [], b, m);
+        if (resolved && !vehicleTypeId) {
+          setVehicleTypeId(resolved);
+          setTypeAutofilled(true);
+        }
       }
       plateResolved.current = true;
     }
-  }, [plate, tenantId, color, rateId, vehicleInput, activeRates]);
+  }, [
+    plate,
+    tenantId,
+    color,
+    rateId,
+    vehicleInput,
+    activeRates,
+    vehicleTypes,
+    catalogVehicles,
+    vehicleTypeId,
+  ]);
 
   // Auto-detected entries: prefill once the initial plate and rates are ready.
   const didAutoPrefill = useRef(false);
@@ -719,6 +775,13 @@ export function EntryFormCore({
     setVehicleError('');
     setVehicleSelected(true);
     setShowSuggestions(false);
+    // El modelo del catálogo lleva al tipo. Si el catálogo no lo resuelve (o
+    // apunta a un tipo que ya no existe) se deja vacío y se elige a mano.
+    const catalogType = typeIdForCatalogSelection(catalogVehicles ?? [], b, m);
+    const known = selectableTypes.some((t) => t.id === catalogType);
+    setVehicleTypeId(known && catalogType ? catalogType : '');
+    setTypeAutofilled(known);
+    setTypeError('');
   }
 
   function handleVehicleInputChange(value: string) {
@@ -728,6 +791,12 @@ export function EntryFormCore({
     setBrand('');
     setModel('');
     setShowSuggestions(true);
+    // Un tipo que puso el catálogo se va con la selección; uno elegido a mano
+    // se queda (la moto escrita a mano conserva el «Moto» que ya se eligió).
+    if (typeAutofilled) {
+      setVehicleTypeId('');
+      setTypeAutofilled(false);
+    }
     resetConfirm();
   }
 
@@ -781,9 +850,17 @@ export function EntryFormCore({
       if (hasCatalogMatches) {
         setVehicleError('Seleccioná un vehículo de la lista');
         setShowSuggestions(true);
-      } else {
-        setVehicleError('Vehículo no encontrado en el catálogo');
+        return;
       }
+      if (catalogIsEmpty) {
+        setVehicleError('Vehículo no encontrado en el catálogo');
+        return;
+      }
+      // Texto libre (p. ej. una moto): no hay catálogo de dónde sacar el tipo,
+      // así que el foco pasa al selector «Tipo» si todavía no se eligió.
+      setShowSuggestions(false);
+      if (!vehicleTypeId) typeRef.current?.focus();
+      else colorRef.current?.focus();
       return;
     }
     setShowSuggestions(false);
@@ -880,17 +957,24 @@ export function EntryFormCore({
     if (!vehicleInput.trim()) {
       setVehicleError('Ingresá el vehículo');
       ok = false;
-    } else if (!vehicleSelected) {
+    } else if (!vehicleSelected && (catalogIsEmpty || hasCatalogMatches)) {
       // Con el catálogo vacío el input rechaza TODO, y un mensaje de "no
       // encontrado" haría creer que el modelo no existe cuando en realidad
       // falta sincronizar. Se distinguen los dos casos.
       setVehicleError(
         catalogIsEmpty
           ? 'El catálogo no está sincronizado. Sincronizá para cargar ingresos.'
-          : hasCatalogMatches
-            ? 'Seleccioná un vehículo de la lista'
-            : 'Vehículo no encontrado en el catálogo',
+          : 'Seleccioná un vehículo de la lista',
       );
+      ok = false;
+    }
+    // Texto libre (no salió del catálogo): el tipo es obligatorio.
+    if (
+      vehicleInput.trim() &&
+      isTypeRequired(vehicleSelected) &&
+      !vehicleTypeId
+    ) {
+      setTypeError('Elegí el tipo de vehículo');
       ok = false;
     }
     if (!color.trim()) {
@@ -908,6 +992,8 @@ export function EntryFormCore({
       if (norm.length < 3 || norm.length > 7) plateRef.current?.focus();
       else if (!vehicleInput.trim() || (hasCatalogMatches && !vehicleSelected))
         vehicleInputRef.current?.focus();
+      else if (typeError || (isTypeRequired(vehicleSelected) && !vehicleTypeId))
+        typeRef.current?.focus();
       else if (!color.trim() || !colorSelected) colorRef.current?.focus();
       else rateRef.current?.focus();
     }
@@ -918,7 +1004,9 @@ export function EntryFormCore({
     plate.trim().length >= 3 &&
     plate.trim().length <= 7 &&
     !plateHasActiveEntry &&
-    vehicleSelected &&
+    vehicleInput.trim().length > 0 &&
+    (vehicleSelected ||
+      (!catalogIsEmpty && !hasCatalogMatches && vehicleTypeId !== '')) &&
     colorSelected &&
     rateSelected;
 
@@ -945,6 +1033,9 @@ export function EntryFormCore({
     setAwaitingConfirm(false);
     if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
     setVehicleSelected(false);
+    setVehicleTypeId('');
+    setTypeAutofilled(false);
+    setTypeError('');
   }
 
   async function submitEntry({ print }: { print: boolean }): Promise<void> {
@@ -966,6 +1057,10 @@ export function EntryFormCore({
     const finalModel = vehicleSelected ? model : vehicleInput.trim();
 
     const selectedRate = activeRates?.find((r) => r.id === rateId);
+    const typeSnapshot = buildVehicleTypeSnapshot(
+      vehicleTypeId || undefined,
+      selectableTypes,
+    );
     const entryId = generateUuidV7();
     const now = new Date().toISOString();
 
@@ -992,6 +1087,8 @@ export function EntryFormCore({
       enteredAt: now,
       vehicleBrand: finalBrand || undefined,
       vehicleModel: finalModel || undefined,
+      vehicleTypeId: typeSnapshot.vehicleTypeId,
+      vehicleCategory: typeSnapshot.vehicleCategory,
       rateId: selectedRate?.id,
       rateSnapshotName: selectedRate?.name,
       rateSnapshotHourPriceArs: selectedRate
@@ -1029,6 +1126,9 @@ export function EntryFormCore({
           leftAt: result.leftAt ?? undefined,
           vehicleBrand: result.vehicleBrand ?? undefined,
           vehicleModel: result.vehicleModel ?? undefined,
+          vehicleTypeId: result.vehicleTypeId ?? undefined,
+          vehicleCategory: result.vehicleCategory ?? undefined,
+          vehicleType: result.vehicleType ?? undefined,
           rateId: result.rateId ?? undefined,
           rateSnapshotName: result.rateSnapshotName ?? undefined,
           rateSnapshotHourPriceArs:
@@ -1070,6 +1170,9 @@ export function EntryFormCore({
               enteredAt: now,
               vehicleBrand: finalBrand || undefined,
               vehicleModel: finalModel || undefined,
+              vehicleTypeId: typeSnapshot.vehicleTypeId,
+              vehicleCategory: typeSnapshot.vehicleCategory,
+              vehicleType: typeSnapshot.vehicleType,
               rateId: selectedRate?.id,
               rateSnapshotName: selectedRate?.name,
               rateSnapshotHourPriceArs: selectedRate?.hourPriceArs,
@@ -1233,6 +1336,36 @@ export function EntryFormCore({
             />
           </div>
           {vehicleError && <p className="field-error">{vehicleError}</p>}
+        </div>
+
+        <div className="form-field">
+          <AppSelect
+            ref={typeRef}
+            value={vehicleTypeId}
+            onChange={(value) => {
+              setVehicleTypeId(value);
+              setTypeAutofilled(false);
+              setTypeError('');
+              resetConfirm();
+            }}
+            placeholder={
+              isTypeRequired(vehicleSelected) && vehicleInput.trim()
+                ? 'Tipo de vehículo (obligatorio)'
+                : 'Tipo de vehículo'
+            }
+            options={selectableTypes.map((t) => ({
+              value: t.id,
+              label: t.accepted ? t.name : `${t.name} (no se acepta)`,
+            }))}
+            error={typeError !== ''}
+            disabled={saving}
+          />
+          {typeError && <p className="field-error">{typeError}</p>}
+          {isTypeNotAccepted(vehicleTypeId || undefined, selectableTypes) && (
+            <p className="field-hint field-warning" role="status">
+              Este tipo no se acepta en caja, ¿registrar igual?
+            </p>
+          )}
         </div>
 
         <div className="form-field">

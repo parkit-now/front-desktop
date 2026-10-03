@@ -3,7 +3,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '../data-table';
-import { localDb, type LocalVehicleType } from '../../lib/db/localDb';
+import {
+  localDb,
+  type LocalVehicleType,
+  type VehicleCategoryCode,
+} from '../../lib/db/localDb';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
@@ -19,6 +23,7 @@ import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { vehicleTypeToLocal } from '../../lib/sync/SyncService';
 import { generateUuidV7 } from '../entries/entryUtils';
+import { categoryLabel, useVehicleCategories } from './vehicleCategories';
 
 type Props = {
   accessToken: string;
@@ -30,6 +35,8 @@ type TypeRow = {
   id: string;
   name: string;
   accepted: boolean;
+  /** Ausente en una fila anterior a la v17 que todavía no volvió a bajar. */
+  category?: VehicleCategoryCode;
   version: number;
   vehicleCount: number;
 };
@@ -50,6 +57,11 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
   const [editing, setEditing] = useState<TypeRow | null>(null);
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState(true);
+  const [category, setCategory] = useState<VehicleCategoryCode | ''>('');
+  const [categoryError, setCategoryError] = useState<string | undefined>(
+    undefined,
+  );
+  const categories = useVehicleCategories();
   const [nameError, setNameError] = useState<string | undefined>(undefined);
 
   const [confirmDelete, setConfirmDelete] = useState<TypeRow | null>(null);
@@ -90,6 +102,7 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
           id: t.id,
           name: t.name,
           accepted: t.accepted,
+          category: t.category,
           version: t.version,
           vehicleCount: countByType.get(t.id) ?? 0,
         }))
@@ -148,7 +161,9 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
     setEditing(null);
     setName('');
     setAccepted(true);
+    setCategory('');
     setNameError(undefined);
+    setCategoryError(undefined);
     setEditorOpen(true);
   }
 
@@ -157,7 +172,9 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
     setEditing(t);
     setName(t.name);
     setAccepted(t.accepted);
+    setCategory(t.category ?? '');
     setNameError(undefined);
+    setCategoryError(undefined);
     setEditorOpen(true);
   }
 
@@ -186,6 +203,11 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
       return;
     }
 
+    if (category === '') {
+      setCategoryError('Elegí la categoría del tipo.');
+      return;
+    }
+
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -195,7 +217,7 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
           const result = await createVehicleType({
             tenantId,
             bearer: accessToken,
-            body: { id, name: clean, accepted },
+            body: { id, name: clean, accepted, category },
           });
           await localDb.vehicleTypes.put(vehicleTypeToLocal(result));
         } else {
@@ -208,6 +230,7 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
                 tenantId,
                 name: clean,
                 accepted,
+                category,
                 // Provisoria: el servidor asigna la real al subir la op.
                 version: 1,
                 syncSeq: 0,
@@ -219,7 +242,7 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
                 operation: 'create',
                 tenantId,
                 entityId: id,
-                payload: { id, name: clean, accepted },
+                payload: { id, name: clean, accepted, category },
                 status: 'pending',
               });
             },
@@ -232,12 +255,16 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
           kind: 'success',
         });
       } else {
-        if (clean === editing.name && accepted === editing.accepted) {
+        if (
+          clean === editing.name &&
+          accepted === editing.accepted &&
+          category === editing.category
+        ) {
           showToast({ message: 'No hay cambios para guardar.', kind: 'info' });
           setSaving(false);
           return;
         }
-        const body = { name: clean, accepted };
+        const body = { name: clean, accepted, category };
         if (isOnline) {
           const result = await updateVehicleType({
             tenantId,
@@ -255,6 +282,7 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
               await localDb.vehicleTypes.update(editing.id, {
                 name: clean,
                 accepted,
+                category,
                 updatedAt: now,
               });
               await enqueuePendingOp({
@@ -324,6 +352,13 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
         header: 'Nombre',
         size: 200,
         cell: ({ row }) => row.original.name,
+      },
+      {
+        id: 'category',
+        header: 'Categoría',
+        accessorFn: (t) => categoryLabel(t.category, categories),
+        size: 150,
+        cell: ({ row }) => categoryLabel(row.original.category, categories),
       },
       {
         id: 'accepted',
@@ -397,7 +432,7 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
         },
       },
     ];
-  }, [canManage, saving, isOnline]);
+  }, [canManage, saving, isOnline, categories]);
 
   return (
     <section className="rates-panel">
@@ -461,6 +496,33 @@ export function VehicleTypesPanel({ accessToken, tenantId, canManage }: Props) {
                 disabled={saving}
               />
               {nameError ? <p className="field-error">{nameError}</p> : null}
+            </div>
+
+            <div className="form-field">
+              <label className="field-label" htmlFor="vehicle-type-category">
+                Categoría
+              </label>
+              <AppSelect
+                id="vehicle-type-category"
+                value={category}
+                onChange={(value) => {
+                  setCategory(value as VehicleCategoryCode);
+                  if (categoryError) setCategoryError(undefined);
+                }}
+                placeholder={
+                  categories.length === 0
+                    ? 'Sincronizá para cargar las categorías'
+                    : 'Elegí una categoría'
+                }
+                options={categories.map((c) => ({
+                  value: c.code,
+                  label: c.label,
+                }))}
+                disabled={saving}
+              />
+              {categoryError ? (
+                <p className="field-error">{categoryError}</p>
+              ) : null}
             </div>
 
             <label className="checkbox-field">

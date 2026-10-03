@@ -12,6 +12,7 @@ import type {
   LocalPaymentMethod,
   LocalRate,
   LocalVehicle,
+  LocalVehicleCategory,
   LocalVehicleType,
   PendingOp,
   PendingOpEntity,
@@ -83,7 +84,21 @@ const h = vi.hoisted(() => {
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
   const invoices = makeTable<LocalInvoice>();
 
+  // Tabla keyed por `code` (no por `id`): sólo lo que usa pullVehicleCategories.
+  const vehicleCategories = new Map<string, LocalVehicleCategory>();
+  const vehicleCategoriesTable = {
+    clear(): Promise<void> {
+      vehicleCategories.clear();
+      return Promise.resolve();
+    },
+    bulkPut(items: LocalVehicleCategory[]): Promise<void> {
+      for (const c of items) vehicleCategories.set(c.code, c);
+      return Promise.resolve();
+    },
+  };
+
   const localDb = {
+    vehicleCategories: vehicleCategoriesTable,
     entries: {
       bulkPut(rows: LocalEntry[]): Promise<void> {
         for (const row of rows) entries.set(row.id, row);
@@ -162,10 +177,12 @@ const h = vi.hoisted(() => {
     rates,
     vehicles,
     vehicleTypes,
+    vehicleCategories,
     paymentMethods,
     lprDetectionEvents,
     invoices,
     localDb,
+    listVehicleCategories: vi.fn(),
     pullEntryChanges,
     pullInvoiceChanges: vi.fn(
       (input: {
@@ -210,6 +227,9 @@ vi.mock('../api/vehicle-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/vehicle-types')>()),
   pullVehicleTypeChanges: h.pullVehicleTypeChanges,
   listVehicleTypes: h.listVehicleTypes,
+}));
+vi.mock('../api/vehicle-categories', () => ({
+  listVehicleCategories: h.listVehicleCategories,
 }));
 vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
@@ -307,6 +327,8 @@ beforeEach(() => {
   h.rates.rows.clear();
   h.vehicles.rows.clear();
   h.vehicleTypes.rows.clear();
+  h.vehicleCategories.clear();
+  h.listVehicleCategories.mockReset();
   h.paymentMethods.rows.clear();
   h.lprDetectionEvents.rows.clear();
   // `mockReset` devuelve la implementación original (la página vacía), no la
@@ -549,6 +571,8 @@ function serverVehicleType(
     tenantId: TENANT,
     name: 'Auto',
     accepted: true,
+    category: 'car',
+    categoryInferred: false,
     version: 1,
     syncSeq: 1,
     createdAt: ENTERED_AT,
@@ -714,6 +738,40 @@ describe('pullVehicleTypes y los cambios locales sin sincronizar', () => {
       accepted: false,
     });
     expect(h.vehicleTypes.rows.get('t-2')).toMatchObject({ name: 'Moto' });
+  });
+});
+
+describe('pullVehicleCategories', () => {
+  const car = { code: 'car', label: 'Auto', sortOrder: 1, reservable: true };
+  const bike = {
+    code: 'bicycle',
+    label: 'Bici',
+    sortOrder: 6,
+    reservable: false,
+  };
+
+  it('reemplaza la lista entera: lo que ya no viene se borra', async () => {
+    h.vehicleCategories.set('truck', {
+      code: 'truck',
+      label: 'Camión',
+      sortOrder: 7,
+      reservable: false,
+    });
+    h.listVehicleCategories.mockResolvedValue([car, bike]);
+
+    await syncService.pullVehicleCategories();
+
+    expect([...h.vehicleCategories.keys()].sort()).toEqual(['bicycle', 'car']);
+    expect(h.vehicleCategories.get('car')).toEqual(car);
+  });
+
+  it('una respuesta vacía no pisa lo local', async () => {
+    h.vehicleCategories.set('car', car as LocalVehicleCategory);
+    h.listVehicleCategories.mockResolvedValue([]);
+
+    await syncService.pullVehicleCategories();
+
+    expect(h.vehicleCategories.has('car')).toBe(true);
   });
 });
 

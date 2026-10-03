@@ -19,6 +19,10 @@ import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { generateUuidV7 } from '../entries/entryUtils';
 import { vehicleToLocal } from '../../lib/sync/SyncService';
+import {
+  categoryLabel,
+  useVehicleCategories,
+} from '../vehicle-types/vehicleCategories';
 
 type Props = {
   accessToken: string;
@@ -113,17 +117,29 @@ export function VehiclesPanel({
     [tenantId],
   );
 
+  const categories = useVehicleCategories();
+
   const typeOptions = useMemo(
     () =>
       (localTypes ?? [])
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-        .map((t) => ({ value: t.id, label: t.name })),
-    [localTypes],
+        .map((t) => ({
+          value: t.id,
+          label: t.category
+            ? `${t.name} · ${categoryLabel(t.category, categories)}`
+            : t.name,
+        })),
+    [localTypes, categories],
   );
 
   const typeNameById = useMemo(
     () => new Map((localTypes ?? []).map((t) => [t.id, t.name])),
+    [localTypes],
+  );
+
+  const categoryByTypeId = useMemo(
+    () => new Map((localTypes ?? []).map((t) => [t.id, t.category])),
     [localTypes],
   );
 
@@ -429,6 +445,15 @@ export function VehiclesPanel({
         size: 140,
         cell: ({ row }) => typeNameById.get(row.original.typeId) ?? '—',
       },
+      {
+        id: 'category',
+        header: 'Categoría',
+        accessorFn: (v) =>
+          categoryLabel(categoryByTypeId.get(v.typeId), categories),
+        size: 140,
+        cell: ({ row }) =>
+          categoryLabel(categoryByTypeId.get(row.original.typeId), categories),
+      },
     ];
 
     if (!canManage) return baseColumns;
@@ -470,7 +495,7 @@ export function VehiclesPanel({
         },
       },
     ];
-  }, [canManage, saving, typeNameById]);
+  }, [canManage, saving, typeNameById, categoryByTypeId, categories]);
 
   return (
     <section className="rates-panel">

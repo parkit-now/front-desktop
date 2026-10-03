@@ -41,6 +41,7 @@ import {
   deleteTenantVehicle,
   type VehicleDto,
 } from '../api/vehicles';
+import { listVehicleCategories } from '../api/vehicle-categories';
 import {
   createVehicleType,
   deleteVehicleType,
@@ -107,7 +108,7 @@ function rateToLocal(r: RateDto): LocalRate {
   };
 }
 
-function entryToLocal(e: EntryDto): LocalEntry {
+export function entryToLocal(e: EntryDto): LocalEntry {
   return {
     id: e.id,
     tenantId: e.tenantId,
@@ -141,6 +142,9 @@ function entryToLocal(e: EntryDto): LocalEntry {
     cashSessionId: e.cashSessionId ?? undefined,
     ticketNumber: e.ticketNumber ?? undefined,
     manuallyInvoiced: e.manuallyInvoiced,
+    vehicleTypeId: e.vehicleTypeId ?? undefined,
+    vehicleCategory: e.vehicleCategory ?? undefined,
+    vehicleType: e.vehicleType ?? undefined,
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
@@ -207,6 +211,7 @@ export function vehicleTypeToLocal(t: VehicleTypeDto): LocalVehicleType {
     tenantId: t.tenantId,
     name: t.name,
     accepted: t.accepted,
+    category: t.category,
     deletedAt: t.deletedAt ?? undefined,
     version: t.version,
     syncSeq: t.syncSeq,
@@ -469,6 +474,32 @@ class SyncService {
         lastSyncAt: new Date().toISOString(),
       });
     }
+  }
+
+  /**
+   * Las categorías de la plataforma: 8 filas globales, sin feed de cambios. Se
+   * reemplazan enteras en una sola transacción, así que una categoría que
+   * desaparezca de la lista (hoy sólo por migración) desaparece también acá.
+   * Una respuesta vacía no pisa lo local: sería un backend roto, no una lista
+   * cerrada que quedó en cero.
+   */
+  async pullVehicleCategories(): Promise<void> {
+    if (!this.accessToken) return;
+
+    const rows = await listVehicleCategories({ bearer: this.accessToken });
+    if (rows.length === 0) return;
+
+    await localDb.transaction('rw', localDb.vehicleCategories, async () => {
+      await localDb.vehicleCategories.clear();
+      await localDb.vehicleCategories.bulkPut(
+        rows.map((c) => ({
+          code: c.code,
+          label: c.label,
+          sortOrder: c.sortOrder,
+          reservable: c.reservable,
+        })),
+      );
+    });
   }
 
   async pullVehicles(): Promise<void> {
@@ -1627,6 +1658,7 @@ class SyncService {
       // independientes a propósito, así que esto achica la ventana, no la
       // elimina: el panel igual tiene que renderizar con gracia un typeId
       // irresoluble.
+      ['categorías de vehículo', () => this.pullVehicleCategories()],
       ['tipos de vehículo', () => this.pullVehicleTypes()],
       ['catálogo de vehículos', () => this.pullVehicles()],
       ['tarifas', () => this.pullRates()],

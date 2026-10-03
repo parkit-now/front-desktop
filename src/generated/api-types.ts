@@ -422,6 +422,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/driver/parkings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Nearby active parking lots for drivers, ordered by distance */
+        get: operations["DriverController_findNearby"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/parkings/{parkingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public parking lot detail with opening hours */
+        get: operations["DriverController_findOne"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/parkings/{parkingId}/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote a stay: validates the window (7 days ahead, opening hours) and prices it with the lot reservation rate and pricing engine */
+        post: operations["DriverController_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in driver's reservations */
+        get: operations["DriverReservationsController_list"];
+        put?: never;
+        /** Create a reservation (idempotent by client id): re-quotes on the server and checks capacity */
+        post: operations["DriverReservationsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/reservations/{reservationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One of the signed-in driver reservations */
+        get: operations["DriverReservationsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/reservations/{reservationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a reservation that has not started yet (refund per policy) */
+        post: operations["DriverReservationsController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/reservations/{reservationId}/cancel-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What cancelling now would refund */
+        get: operations["DriverReservationsController_cancelPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/reservations/{reservationId}/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask again for the checkout of a pending_payment reservation (same URL while alive, new one after a rejection) */
+        post: operations["DriverReservationsController_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/vehicle-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Platform vehicle catalog (brand, model, category)
+         * @description Todas las marcas y modelos de la plataforma, ordenados por marca y modelo, con su categoría. Sirve para que el conductor busque su vehículo y la categoría quede precargada (editable). Es una sola respuesta de unas 1.200 filas, cacheable.
+         */
+        get: operations["driverVehicleCatalogList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in driver's vehicles, primary first */
+        get: operations["DriverVehiclesController_list"];
+        put?: never;
+        /** Add a vehicle (the first one is always primary) */
+        post: operations["DriverVehiclesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/driver/vehicles/{vehicleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a vehicle without an active reservation (the oldest one becomes primary if needed) */
+        delete: operations["DriverVehiclesController_remove"];
+        options?: never;
+        head?: never;
+        /** Edit a vehicle or mark it as primary (plate and kind are locked while it has an active reservation) */
+        patch: operations["DriverVehiclesController_update"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1367,6 +1560,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/metrics/by-vehicle-category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stays split by vehicle category (pie chart)
+         * @description One slice per platform vehicle category over the window, most stays first: stays that ended in it, their revenue and their share of the stays.
+         *
+         *     The category is the one frozen on the stay at ingress. Stays without one (they predate the categories, or came from an old till) come back as the `category: null` slice — "Sin dato" — so the slices always add up to the total. With `cashSessionId`, only the stays that shift collected.
+         */
+        get: operations["metricsGetVehicleCategoryBreakdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/metrics/occupancy": {
         parameters: {
             query?: never;
@@ -1376,9 +1591,9 @@ export interface paths {
         };
         /**
          * Current occupancy of the lot
-         * @description Occupied spots over total capacity right now, plus a breakdown of open entries by vehicle type.
+         * @description Occupied spots over total capacity right now, plus a breakdown of open entries by vehicle category.
          *
-         *     Capacity is the lot-wide total declared on the entity profile (`settings.capacity.total`). The breakdown is best effort — see `byVehicleType`.
+         *     Capacity is the lot-wide total declared on the entity profile (`settings.capacity.total`). The breakdown is counts only — see `byVehicleCategory` (`byVehicleType` is deprecated).
          */
         get: operations["metricsGetOccupancy"];
         put?: never;
@@ -1724,6 +1939,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the reservations of the parking lot */
+        get: operations["OwnerReservationsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/reservations/{reservationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reservation detail with payments and refund */
+        get: operations["OwnerReservationsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/reservations/{reservationId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a reservation waiting for approval */
+        post: operations["OwnerReservationsController_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/reservations/{reservationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a pending_approval or confirmed reservation (full refund) */
+        post: operations["OwnerReservationsController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/reservations/{reservationId}/refund/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry a failed refund */
+        post: operations["OwnerReservationsController_retryRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/reservations/{reservationId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a reservation waiting for approval (full refund) */
+        post: operations["OwnerReservationsController_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/schedules": {
         parameters: {
             query?: never;
@@ -1807,8 +2124,26 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a service for the active tenant */
+        /** Update a service for the active tenant (ADVANCE_RESERVATION also takes the reservation rate and reservable spots) */
         patch: operations["ServicesController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/services/ADVANCE_RESERVATION/hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reservation hours: mode (opening | custom) and custom ranges */
+        get: operations["ServicesController_getReservationHours"];
+        /** Replace the whole reservation hours set (ranges must fall within the opening hours) */
+        put: operations["ServicesController_putReservationHours"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/tenants/{tenantId}/services/changes": {
@@ -1895,7 +2230,7 @@ export interface paths {
         put?: never;
         /**
          * Create a vehicle type for the entity
-         * @description Requires owner role. El `id` lo genera el cliente (UUIDv7).
+         * @description Requires owner role. El `id` lo genera el cliente (UUIDv7). `category` es opcional sólo por compatibilidad con cajas viejas: si falta se infiere y el tipo queda con `categoryInferred = true`.
          */
         post: operations["vehicleTypesCreate"];
         delete?: never;
@@ -1923,7 +2258,7 @@ export interface paths {
         head?: never;
         /**
          * Update a vehicle type using optimistic locking (expectedVersion)
-         * @description Updates name and/or accepted. Requires owner role.
+         * @description Updates name, accepted and/or category. Guardar `category` apaga `categoryInferred`. Requires owner role.
          */
         patch: operations["vehicleTypesUpdate"];
         trace?: never;
@@ -2008,6 +2343,26 @@ export interface paths {
          * @description Returns the entity vehicles with syncSeq > afterSeq, INCLUDING soft-deleted rows (non-null deletedAt) so offline clients can drop them. Used by the desktop for offline-first autocomplete.
          */
         get: operations["vehiclesPullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vehicle-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the platform vehicle categories
+         * @description Las 8 categorías de la plataforma, ordenadas por `sortOrder`. Lista cerrada: se cambia sólo por migración. No requiere tenant.
+         */
+        get: operations["vehicleCategoriesList"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2374,6 +2729,15 @@ export interface components {
             /** @description The authenticated user. */
             user: components["schemas"]["UserDto"];
         };
+        CancelPreviewDto: {
+            allowed: boolean;
+            /** @enum {string} */
+            kind: "full" | "partial" | "none";
+            /** @enum {string} */
+            reasonCode: "free_window" | "late_window" | "pending_approval" | "not_paid" | "owner" | "already_started" | "not_cancellable";
+            /** @description Lo que se reembolsaría, en pesos. */
+            refundArs: number;
+        };
         CashSessionChangesResponseDto: {
             items: components["schemas"]["CashSessionDto"][];
             /** @description Highest sync sequence included in this page. */
@@ -2496,13 +2860,20 @@ export interface components {
              * @example Volkswagen
              */
             vehicleBrand?: string;
+            /** @description Categoría de la plataforma congelada al ingresar: si el dueño cambia la categoría del tipo, los ingresos ya hechos conservan la que guardaron. null en ingresos anteriores a las categorías o de cajas viejas. */
+            vehicleCategory?: components["schemas"]["VehicleCategory"] | null;
             /**
              * @description Vehicle model snapshot.
              * @example Bora
              */
             vehicleModel?: string;
-            /** @description Snapshot del nombre del tipo al momento del ingreso. Texto y no FK: un ingreso histórico no debe cambiar si el dueño renombra o borra el tipo. */
+            /** @description Snapshot del nombre del tipo al momento del ingreso. Texto y no FK: un ingreso histórico no debe cambiar si el dueño renombra o borra el tipo. Desde las categorías también se llena en los ingresos manuales. */
             vehicleType?: string | null;
+            /**
+             * Format: uuid
+             * @description Tipo de vehículo elegido al ingresar. Sin FK en la base: puede apuntar a un tipo borrado (que sigue viajando por /vehicle-types/changes como tombstone). null en ingresos anteriores o de cajas viejas.
+             */
+            vehicleTypeId?: string | null;
             version: number;
             /**
              * Format: uuid
@@ -2539,8 +2910,15 @@ export interface components {
             reason?: string;
             /** @example Volkswagen */
             vehicleBrand?: string;
+            /** @description Corrige sólo la categoría. Sin `vehicleTypeId` válido el ingreso queda con esa categoría, sin tipo (`vehicleTypeId = null`) y con el nombre `vehicleType` que ya tenía. */
+            vehicleCategory?: components["schemas"]["VehicleCategory"];
             /** @example Bora */
             vehicleModel?: string;
+            /**
+             * Format: uuid
+             * @description Corrige el tipo de vehículo. Si resuelve a un tipo del estacionamiento (borrado o no) se actualizan `vehicleTypeId`, `vehicleType` y `vehicleCategory`; si no, se ignora.
+             */
+            vehicleTypeId?: string;
         };
         CreateApplicationDto: {
             /**
@@ -2613,6 +2991,19 @@ export interface components {
              */
             openingCash: number;
         };
+        CreateDriverVehicleDto: {
+            brand?: string | null;
+            /** @description Categoría de la plataforma (`GET /vehicle-categories`). Sólo se aceptan las reservables: una categoría que no lo es (bici, camión, otro) da 400. */
+            category: components["schemas"]["ReservableVehicleCategory"];
+            /** @description Marcarlo como principal. El primer vehículo del conductor es principal siempre. */
+            isPrimary?: boolean;
+            model?: string | null;
+            /**
+             * @description Se normaliza (mayúsculas, sin espacios ni guiones).
+             * @example AB123CD
+             */
+            plate: string;
+        };
         CreateEntryDto: {
             /**
              * Format: uuid
@@ -2653,8 +3044,15 @@ export interface components {
             ticketNumber?: number;
             /** @example Volkswagen */
             vehicleBrand?: string;
+            /** @description Categoría del vehículo. Sólo se usa si `vehicleTypeId` no resuelve a un tipo del estacionamiento; si resuelve, manda la categoría del tipo. */
+            vehicleCategory?: components["schemas"]["VehicleCategory"];
             /** @example Bora */
             vehicleModel?: string;
+            /**
+             * Format: uuid
+             * @description Tipo de vehículo elegido (`GET /tenants/:tenantId/vehicle-types`). Opcional: las cajas viejas no lo mandan y el ingreso queda sin tipo. Si es de otro estacionamiento o no existe se ignora, sin error. De ahí salen el nombre (`vehicleType`) y la categoría que se guardan.
+             */
+            vehicleTypeId?: string;
         };
         CreateMembershipDto: {
             /**
@@ -2720,6 +3118,23 @@ export interface components {
             /** @example Naranja X */
             name: string;
         };
+        CreateQuoteDto: {
+            /**
+             * Format: date-time
+             * @example 2026-09-30T10:00:00-03:00
+             */
+            entryAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-09-30T13:00:00-03:00
+             */
+            exitAt: string;
+            /**
+             * @description Patente de uno de tus vehículos. Si se manda, la cotización valida que la playa acepte ese tipo de vehículo (RESERVATION_VEHICLE_CATEGORY_NOT_ACCEPTED).
+             * @example AB123CD
+             */
+            vehiclePlate?: string;
+        };
         CreateRateDto: {
             /**
              * @description Si la fracción se deriva de hora / 12 en el formulario. Preferencia de UI: el valor derivado se guarda igual en fractionPriceArs.
@@ -2759,6 +3174,36 @@ export interface components {
              * @example 8000
              */
             stayPriceArs: number;
+        };
+        CreateReservationDto: {
+            /**
+             * Format: date-time
+             * @example 2026-09-30T10:00:00-03:00
+             */
+            entryAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-09-30T13:00:00-03:00
+             */
+            exitAt: string;
+            /**
+             * Format: uuid
+             * @description Lo genera el cliente: es la clave de idempotencia. Reintentar con el mismo id devuelve la reserva ya creada.
+             */
+            id: string;
+            /** Format: uuid */
+            parkingId: string;
+            /** @description A dónde vuelve el conductor después de pagar. Con él la reserva nace en pending_payment y la respuesta trae el checkout. Sin él: en producción 422 RESERVATION_CLIENT_OUTDATED; fuera de producción se mantiene el camino viejo (confirmada, sin pago, respuesta plana). */
+            returnUrl?: string;
+            /**
+             * @description Se normaliza (mayúsculas, sin espacios ni guiones).
+             * @example AB123CD
+             */
+            vehiclePlate: string;
+        };
+        CreateReservationResponseDto: {
+            payment: components["schemas"]["ReservationCheckoutDto"];
+            reservation: components["schemas"]["DriverReservationDetailDto"];
         };
         CreateScheduleDto: {
             /**
@@ -2813,6 +3258,8 @@ export interface components {
         CreateVehicleTypeDto: {
             /** @default true */
             accepted: boolean;
+            /** @description Categoría de la plataforma. Los clientes nuevos la mandan siempre. Opcional sólo para tolerar a las cajas viejas: si falta se infiere por el nombre (y si no se reconoce, `other`) y el tipo queda con `categoryInferred = true`. */
+            category?: components["schemas"]["VehicleCategory"];
             /**
              * Format: uuid
              * @description Client-generated UUIDv7 for offline-first sync.
@@ -2941,6 +3388,158 @@ export interface components {
              * @example https://project.supabase.co/storage/v1/object/sign/application-documents/applications/3f2504e0/docs/habilitacion.pdf?token=...
              */
             url: string;
+        };
+        DriverNearbyParkingDto: {
+            /** @description Toma reservas: servicio activado, con tarifa de reservas y cupo configurados. */
+            acceptsReservations: boolean;
+            address: string | null;
+            /** @description Lugares libres ahora: capacidad − vehículos adentro. null si la playa no declaró capacidad (no es lo mismo que 0). */
+            availableSpots: number | null;
+            /** @description Distancia al centro buscado. */
+            distanceMeters: number;
+            /** Format: uuid */
+            id: string;
+            latitude: number;
+            longitude: number;
+            name: string;
+            /** @description null si la playa no cargó horarios. */
+            openNow: boolean | null;
+            /** @description Precio de la fracción de 5 minutos de la tarifa de reservas en ARS. null si la playa no toma reservas. */
+            reservationFractionPriceArs: number | null;
+            /** @description Precio de la hora de la tarifa de reservas en ARS, igual para cualquier vehículo. null si la playa no toma reservas. */
+            reservationHourPriceArs: number | null;
+            /** @description Horario efectivo de reservas por día: el de apertura si el dueño no cargó uno propio. null si la playa no toma reservas. */
+            reservationHours: components["schemas"]["DriverScheduleDto"][] | null;
+            /** @description Reglas de la reserva. null si la playa no toma reservas. */
+            reservationRules: components["schemas"]["DriverReservationRulesDto"] | null;
+            /** @description Categorías de vehículo que pueden reservar. null si la playa no toma reservas. */
+            reservationVehicleCategories: components["schemas"]["ReservableVehicleCategory"][] | null;
+            totalSpots: number | null;
+        };
+        DriverParkingDetailDto: {
+            /** @description Toma reservas: servicio activado, con tarifa de reservas y cupo configurados. */
+            acceptsReservations: boolean;
+            address: string | null;
+            /** @description Lugares libres ahora: capacidad − vehículos adentro. null si la playa no declaró capacidad (no es lo mismo que 0). */
+            availableSpots: number | null;
+            /** Format: uuid */
+            id: string;
+            latitude: number;
+            longitude: number;
+            name: string;
+            /** @description null si la playa no cargó horarios. */
+            openNow: boolean | null;
+            /** @description Precio de la fracción de 5 minutos de la tarifa de reservas en ARS. null si la playa no toma reservas. */
+            reservationFractionPriceArs: number | null;
+            /** @description Precio de la hora de la tarifa de reservas en ARS, igual para cualquier vehículo. null si la playa no toma reservas. */
+            reservationHourPriceArs: number | null;
+            /** @description Horario efectivo de reservas por día: el de apertura si el dueño no cargó uno propio. null si la playa no toma reservas. */
+            reservationHours: components["schemas"]["DriverScheduleDto"][] | null;
+            /** @description Días hacia adelante en los que se puede reservar. */
+            reservationMaxDaysAhead: number;
+            /** @description Reglas de la reserva. null si la playa no toma reservas. */
+            reservationRules: components["schemas"]["DriverReservationRulesDto"] | null;
+            /** @description Categorías de vehículo que pueden reservar. null si la playa no toma reservas. */
+            reservationVehicleCategories: components["schemas"]["ReservableVehicleCategory"][] | null;
+            /** @description Rangos de apertura por día; vacío si no hay horarios. */
+            schedules: components["schemas"]["DriverScheduleDto"][];
+            totalSpots: number | null;
+        };
+        DriverReservationDetailDto: {
+            /**
+             * Format: date-time
+             * @description Hasta cuándo puede responder el dueño (pending_approval).
+             */
+            approvalDeadlineAt: string | null;
+            /** @description Se puede cancelar (activa y sin empezar). */
+            cancellable: boolean;
+            /**
+             * @description Quién canceló o rechazó la reserva.
+             * @enum {string|null}
+             */
+            cancelledBy: "driver" | "owner" | "system" | null;
+            /** @description Código corto para mostrar (R-XXXXXX). */
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            entryAt: string;
+            /** Format: date-time */
+            exitAt: string;
+            /**
+             * Format: date-time
+             * @description Hasta cuándo se puede pagar (pending_payment).
+             */
+            holdExpiresAt: string | null;
+            /** Format: uuid */
+            id: string;
+            latitude: number | null;
+            longitude: number | null;
+            parkingAddress: string | null;
+            /** Format: uuid */
+            parkingId: string;
+            parkingName: string;
+            payment: components["schemas"]["ReservationPaymentSummaryDto"] | null;
+            policy: components["schemas"]["ReservationPolicyDto"];
+            rateName: string;
+            /** @description Motivo de la cancelación o el rechazo: texto libre del dueño, o un código del sistema (approval_timeout, late_payment_no_capacity, checkout_unavailable). */
+            reason: string | null;
+            refundedAmountArs: number | null;
+            /** @enum {string} */
+            refundStatus: "none" | "pending" | "refunded" | "partial" | "failed";
+            state: components["schemas"]["DriverReservationState"];
+            status: components["schemas"]["ReservationStatus"];
+            totalArs: number;
+            /** @description Categoría del vehículo del conductor al reservar (snapshot). null en las reservas anteriores a las categorías. */
+            vehicleCategory: components["schemas"]["VehicleCategory"] | null;
+            vehiclePlate: string;
+        };
+        DriverReservationRulesDto: {
+            /** @description auto = se confirma sola; manual = la acepta el dueño. */
+            acceptanceMode: components["schemas"]["ReservationAcceptanceMode"];
+            /** @description Minutos antes del ingreso desde los que se puede llegar. */
+            earlyArrivalMinutes: number;
+            /** @description Cancelación gratis hasta estos minutos antes del ingreso. */
+            freeCancelMinutes: number;
+            /** @description Tolerancia tras la hora de ingreso; pasada, la reserva se da por perdida. */
+            graceMinutes: number;
+            /** @description % que se reembolsa si se cancela fuera de la ventana gratis. */
+            lateCancelRefundPct: number;
+        };
+        /** @enum {string} */
+        DriverReservationState: "active" | "completed" | "cancelled";
+        DriverScheduleDto: {
+            /** @description Minutos desde 00:00. */
+            closeMinute: number;
+            day: components["schemas"]["ScheduleDay"];
+            /** @description Minutos desde 00:00. */
+            openMinute: number;
+        };
+        DriverVehicleCatalogItemDto: {
+            /** @example Toyota */
+            brand: string;
+            /**
+             * @description Categoría del modelo: es la que el conductor ve precargada al elegir marca y modelo (y puede cambiar).
+             * @example pickup
+             */
+            category: components["schemas"]["VehicleCategory"];
+            /** @example Hilux */
+            model: string;
+        };
+        DriverVehicleDto: {
+            brand: string | null;
+            /** @description Categoría de la plataforma. La API sólo deja guardar las reservables (car, suv, pickup, van, motorcycle). */
+            category: components["schemas"]["VehicleCategory"];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Tiene una reserva activa: no se puede borrar ni cambiar patente o categoría. */
+            hasActiveReservation: boolean;
+            /** Format: uuid */
+            id: string;
+            isPrimary: boolean;
+            model: string | null;
+            /** @example AB123CD */
+            plate: string;
         };
         EntityAddressDto: {
             /**
@@ -3158,13 +3757,20 @@ export interface components {
              * @example Volkswagen
              */
             vehicleBrand?: string;
+            /** @description Categoría de la plataforma congelada al ingresar: si el dueño cambia la categoría del tipo, los ingresos ya hechos conservan la que guardaron. null en ingresos anteriores a las categorías o de cajas viejas. */
+            vehicleCategory?: components["schemas"]["VehicleCategory"] | null;
             /**
              * @description Vehicle model snapshot.
              * @example Bora
              */
             vehicleModel?: string;
-            /** @description Snapshot del nombre del tipo al momento del ingreso. Texto y no FK: un ingreso histórico no debe cambiar si el dueño renombra o borra el tipo. */
+            /** @description Snapshot del nombre del tipo al momento del ingreso. Texto y no FK: un ingreso histórico no debe cambiar si el dueño renombra o borra el tipo. Desde las categorías también se llena en los ingresos manuales. */
             vehicleType?: string | null;
+            /**
+             * Format: uuid
+             * @description Tipo de vehículo elegido al ingresar. Sin FK en la base: puede apuntar a un tipo borrado (que sigue viajando por /vehicle-types/changes como tombstone). null en ingresos anteriores o de cajas viejas.
+             */
+            vehicleTypeId?: string | null;
             version: number;
             /**
              * Format: uuid
@@ -3519,8 +4125,15 @@ export interface components {
              * @description Detection timestamp (ISO 8601). Defaults to server time if omitted.
              */
             timestamp?: string;
-            /** @description Snapshot del nombre del tipo al momento del ingreso. */
+            /** @description Categoría del vehículo, si el tipo no resuelve a uno del estacionamiento. */
+            vehicleCategory?: components["schemas"]["VehicleCategory"];
+            /** @description Snapshot del nombre del tipo al momento del ingreso. Si coincide con un tipo vivo del estacionamiento (sin distinguir mayúsculas) se resuelven también `vehicleTypeId` y la categoría; si no, la categoría se intenta adivinar por el nombre. */
             vehicleType?: string;
+            /**
+             * Format: uuid
+             * @description Tipo del estacionamiento. Si resuelve, manda sobre `vehicleType` y `vehicleCategory`.
+             */
+            vehicleTypeId?: string;
         };
         MeMembershipDto: {
             /**
@@ -3717,6 +4330,12 @@ export interface components {
             returnPath?: string | null;
         };
         Object: Record<string, never>;
+        OccupancyByVehicleCategoryDto: {
+            /** @description Platform vehicle category frozen on the open entries, or `null` ("Sin dato") when the entry never had one: it predates the categories or came from an old till. */
+            category: components["schemas"]["VehicleCategory"] | null;
+            /** @description Open entries of this category. */
+            occupied: number;
+        };
         OccupancyByVehicleTypeDto: {
             /** @description Open entries of this type. */
             occupied: number;
@@ -3750,7 +4369,16 @@ export interface components {
         };
         OccupancyResponseDto: {
             /**
-             * @description Open entries grouped by `vehicleType`, most occupied first. **Best effort, counts only.**
+             * @description Open entries grouped by platform vehicle category, most occupied first, with the `null` ("Sin dato") group last. **Counts only:** capacity is a single lot-wide total, not a per-category quota, so these cannot be turned into percentages of it.
+             *
+             *     Replaces `byVehicleType`: the category is filled on manual stays too and does not fragment when an owner renames a type.
+             */
+            byVehicleCategory: components["schemas"]["OccupancyByVehicleCategoryDto"][];
+            /**
+             * @deprecated
+             * @description **Deprecated: use `byVehicleCategory`.** It will be removed in the next version.
+             *
+             *     Open entries grouped by `vehicleType`, most occupied first. **Best effort, counts only.**
              *
              *     Two caveats the UI must respect: `vehicleType` is only populated on LPR ingress (`source = "auto"`), so lots working manually report almost everything under `unknown`; and capacity is a single lot-wide total, not a per-type quota, so these counts cannot be turned into percentages.
              *
@@ -3838,6 +4466,114 @@ export interface components {
             /** Format: uuid */
             rateId: string;
         };
+        OwnerReservationDetailDto: {
+            /**
+             * Format: date-time
+             * @description Hasta cuándo puede aceptar o rechazar el dueño.
+             */
+            approvalDeadlineAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** @enum {string|null} */
+            cancelledBy: "driver" | "owner" | "system" | null;
+            /** @description Código corto (R-XXXXXX). */
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            driverName: string | null;
+            /** Format: date-time */
+            entryAt: string;
+            /** Format: date-time */
+            exitAt: string;
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            paidAt: string | null;
+            /** @description Intentos de cobro, el más nuevo primero. */
+            payments: components["schemas"]["OwnerReservationPaymentDto"][];
+            policy: components["schemas"]["OwnerReservationPolicyDto"];
+            rateName: string;
+            reason: string | null;
+            refundAttempts: number;
+            refundedAmountArs: number | null;
+            /** @description Por qué falló el reembolso (refundStatus = failed). */
+            refundError: string | null;
+            refundRequestedArs: number | null;
+            /** Format: date-time */
+            refundRequestedAt: string | null;
+            /** @enum {string} */
+            refundStatus: "none" | "pending" | "refunded" | "partial" | "failed";
+            status: components["schemas"]["ReservationStatus"];
+            totalArs: number;
+            /** @description Categoría del vehículo del conductor al reservar (snapshot). null en las reservas anteriores a las categorías. */
+            vehicleCategory: components["schemas"]["VehicleCategory"] | null;
+            vehiclePlate: string;
+        };
+        OwnerReservationDto: {
+            /**
+             * Format: date-time
+             * @description Hasta cuándo puede aceptar o rechazar el dueño.
+             */
+            approvalDeadlineAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** @enum {string|null} */
+            cancelledBy: "driver" | "owner" | "system" | null;
+            /** @description Código corto (R-XXXXXX). */
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            driverName: string | null;
+            /** Format: date-time */
+            entryAt: string;
+            /** Format: date-time */
+            exitAt: string;
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            paidAt: string | null;
+            policy: components["schemas"]["OwnerReservationPolicyDto"];
+            rateName: string;
+            reason: string | null;
+            refundedAmountArs: number | null;
+            /** @description Por qué falló el reembolso (refundStatus = failed). */
+            refundError: string | null;
+            /** @enum {string} */
+            refundStatus: "none" | "pending" | "refunded" | "partial" | "failed";
+            status: components["schemas"]["ReservationStatus"];
+            totalArs: number;
+            /** @description Categoría del vehículo del conductor al reservar (snapshot). null en las reservas anteriores a las categorías. */
+            vehicleCategory: components["schemas"]["VehicleCategory"] | null;
+            vehiclePlate: string;
+        };
+        OwnerReservationPaymentDto: {
+            amountArs: number;
+            /** Format: date-time */
+            approvedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            provider: string;
+            providerPaymentId: string | null;
+            providerStatus: string | null;
+            providerStatusDetail: string | null;
+            /** @enum {string} */
+            status: "created" | "approved" | "rejected" | "cancelled" | "refunded" | "partially_refunded";
+        };
+        OwnerReservationPolicyDto: {
+            /** @enum {string} */
+            acceptanceMode: "auto" | "manual";
+            approvalWindowMinutes: number;
+            earlyArrivalMinutes: number;
+            freeCancelMinutes: number;
+            graceMinutes: number;
+            lateCancelRefundPct: number;
+        };
         PaginatedAuditDto: {
             /** @description Events on this page, most recent first. */
             items: components["schemas"]["AuditEventDto"][];
@@ -3873,6 +4609,14 @@ export interface components {
              * @description Total number of events matching the query.
              * @example 128
              */
+            total: number;
+        };
+        PaginatedOwnerReservationsDto: {
+            items: components["schemas"]["OwnerReservationDto"][];
+            /** @example 1 */
+            page: number;
+            /** @example 20 */
+            pageSize: number;
             total: number;
         };
         PaginatedParkingsDto: {
@@ -4271,6 +5015,28 @@ export interface components {
              */
             title: string;
         };
+        QuoteDto: {
+            durationMinutes: number;
+            /** Format: date-time */
+            entryAt: string;
+            /** Format: date-time */
+            exitAt: string;
+            /** Format: uuid */
+            parkingId: string;
+            /** @description Tarifa de reservas de la playa con la que se cotizó. */
+            rate: components["schemas"]["QuoteRateDto"];
+            /** @description Total en ARS con el mismo motor que cobra la playa (entries/pricing.ts). */
+            totalArs: number;
+        };
+        QuoteRateDto: {
+            fractionPriceArs: number;
+            hourPriceArs: number;
+            /** @description Tope de 12 h (0 = sin tope). */
+            mediaEstadiaPriceArs: number;
+            name: string;
+            /** @description Tope de 24 h (0 = sin tope). */
+            stayPriceArs: number;
+        };
         RateChangesResponseDto: {
             items: components["schemas"]["RateDto"][];
             /** @description Highest sync sequence included in this page. */
@@ -4339,6 +5105,116 @@ export interface components {
              */
             reason: string;
         };
+        /**
+         * @description Categorías de vehículo que pueden reservar. null si la playa no toma reservas.
+         * @enum {string}
+         */
+        ReservableVehicleCategory: "car" | "suv" | "pickup" | "van" | "motorcycle";
+        /**
+         * @description auto = se confirma sola; manual = la acepta el dueño.
+         * @enum {string}
+         */
+        ReservationAcceptanceMode: "auto" | "manual";
+        ReservationCheckoutDto: {
+            /** @description Donde paga el conductor; null si ya no hay nada que pagar. */
+            checkoutUrl: string | null;
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+        };
+        ReservationHourRangeDto: {
+            /** @description Minutos desde 00:00. */
+            closeMinute: number;
+            day: components["schemas"]["ScheduleDay"];
+            /** @description Minutos desde 00:00. */
+            openMinute: number;
+        };
+        ReservationHoursDto: {
+            /** @description opening = el horario de apertura (sin rangos propios); custom = los rangos de `ranges`, que tienen que caer dentro de la apertura. */
+            mode: components["schemas"]["ReservationHoursMode"];
+            /** @description Rangos propios; siempre vacío en modo opening. */
+            ranges: components["schemas"]["ReservationHourRangeDto"][];
+        };
+        /**
+         * @description opening = se reserva en el horario de apertura; custom = en los rangos de GET /services/ADVANCE_RESERVATION/hours.
+         * @enum {string}
+         */
+        ReservationHoursMode: "opening" | "custom";
+        ReservationNotReadyProblemDto: {
+            /**
+             * @description Stable, machine-readable identifier of the error class (SCREAMING_SNAKE_CASE). Independent of HTTP status and wording. Clients map this to a localized user-facing message.
+             * @example AUTH_EMAIL_ALREADY_EXISTS
+             */
+            code: string;
+            /**
+             * @description A human-readable explanation specific to this occurrence of the problem. English. Clients should not display this verbatim — use `code` to look up a localized message.
+             * @example Email already registered
+             */
+            detail: string;
+            /**
+             * @description The request path that produced the error.
+             * @example /auth/register
+             */
+            instance: string;
+            /** @description Requisitos que faltan para activar las reservas. */
+            missing: components["schemas"]["ReservationRequirement"][];
+            /**
+             * @description The HTTP status code generated by the origin server. Mirrors the response status.
+             * @example 409
+             */
+            status: number;
+            /**
+             * @description A short, human-readable summary of the problem type. Stable across occurrences of the same error class.
+             * @example Conflict
+             */
+            title: string;
+            /** @description Un ítem por requisito faltante (patrón de validationsErrors). */
+            validationsErrors: {
+                /** @example required */
+                code?: string;
+                /** @example readiness.mp_account */
+                field?: string;
+                reason?: string;
+            }[];
+        };
+        ReservationPaymentSummaryDto: {
+            /** @description Sólo mientras el pago está pendiente de hacerse. */
+            checkoutUrl: string | null;
+            /** @enum {string} */
+            status: "created" | "approved" | "rejected" | "cancelled" | "refunded" | "partially_refunded";
+        };
+        ReservationPolicyDto: {
+            /** @enum {string} */
+            acceptanceMode: "auto" | "manual";
+            /** @description Minutos que tiene el dueño para aceptar. */
+            approvalWindowMinutes: number;
+            earlyArrivalMinutes: number;
+            /** @description Minutos antes del ingreso con reembolso total. */
+            freeCancelMinutes: number;
+            /** @description Tolerancia después de la hora de ingreso. */
+            graceMinutes: number;
+            /** @description % que se reembolsa pasado el corte gratis. */
+            lateCancelRefundPct: number;
+        };
+        ReservationReadinessDto: {
+            /** @description Requisitos que faltan, en el orden de la pantalla: mp_account (Mercado Pago vinculado), spots (plazas reservables), hours (horario), vehicles (al menos un tipo de vehículo) y rate (tarifa activa). */
+            missing: components["schemas"]["ReservationRequirement"][];
+            /** @description Se cumplen todos los requisitos: se pueden activar las reservas. */
+            ready: boolean;
+        };
+        ReservationReasonDto: {
+            /**
+             * @description Motivo; lo ve el conductor.
+             * @example La playa cierra por mantenimiento.
+             */
+            reason: string;
+        };
+        /**
+         * @description Requisitos que faltan, en el orden de la pantalla: mp_account (Mercado Pago vinculado), spots (plazas reservables), hours (horario), vehicles (al menos un tipo de vehículo) y rate (tarifa activa).
+         * @enum {string}
+         */
+        ReservationRequirement: "mp_account" | "spots" | "hours" | "vehicles" | "rate";
+        /** @enum {string} */
+        ReservationStatus: "pending_payment" | "pending_approval" | "confirmed" | "checked_in" | "completed" | "cancelled" | "rejected" | "expired" | "no_show";
         ResetPasswordDto: {
             /**
              * @description New plaintext password.
@@ -4460,6 +5336,8 @@ export interface components {
             /** @description Highest sync sequence included in this page. */
             maxSeq: number;
         };
+        /** @enum {string} */
+        ScheduleDay: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
         ScheduleDto: {
             /** @description Minutes since midnight (1..1440). */
             closeMinute: number;
@@ -4479,9 +5357,36 @@ export interface components {
             version: number;
         };
         ServiceCatalogItemDto: {
+            /** @description auto = se confirma sola; manual = la acepta el dueño. */
+            acceptanceMode: components["schemas"]["ReservationAcceptanceMode"];
+            /** @description Minutos que tiene el dueño para responder en modo manual. */
+            approvalWindowMinutes: number;
             /** @enum {string} */
             code: "ADVANCE_RESERVATION";
+            /** @description Minutos antes del ingreso desde los que se puede llegar. */
+            earlyArrivalMinutes: number;
             enabled: boolean;
+            /** @description Cancelación gratis hasta estos minutos antes del ingreso. */
+            freeCancelMinutes: number;
+            /** @description Tolerancia tras la hora de ingreso; pasada, la reserva es no-show. */
+            graceMinutes: number;
+            /** @description % que se reembolsa si el conductor cancela fuera de plazo. */
+            lateCancelRefundPct: number;
+            /** @description Requisitos para activar las reservas (ADVANCE_RESERVATION). */
+            readiness: components["schemas"]["ReservationReadinessDto"];
+            /** @description Plazas que se pueden reservar a la vez (sólo ADVANCE_RESERVATION). */
+            reservableSpots: number | null;
+            /** @description opening = se reserva en el horario de apertura; custom = en los rangos de GET /services/ADVANCE_RESERVATION/hours. */
+            reservationHoursMode: components["schemas"]["ReservationHoursMode"];
+            /**
+             * Format: uuid
+             * @description Tarifa con la que se cotizan y cobran las reservas, sin distinción de vehículo (sólo ADVANCE_RESERVATION).
+             */
+            reservationRateId: string | null;
+            /** @description Categorías de vehículo (las de `GET /vehicle-categories` con `reservable = true`) que pueden reservar desde la app (sólo ADVANCE_RESERVATION; vacío en otros códigos). Es independiente de qué tipos se aceptan en la caja (`vehicle_types.accepted`). */
+            reservationVehicleCategories: components["schemas"]["ReservableVehicleCategory"][];
+            /** @description Reservas confirmadas con ingreso futuro: siguen vigentes aunque se desactive el servicio. */
+            upcomingPaidReservations: number;
         };
         ServiceChangesResponseDto: {
             items: components["schemas"]["ServiceDto"][];
@@ -4489,13 +5394,31 @@ export interface components {
             maxSeq: number;
         };
         ServiceDto: {
+            /** @description ADVANCE_RESERVATION: auto | manual. */
+            acceptanceMode: string;
+            approvalWindowMinutes: number;
             /** @enum {string} */
             code: "ADVANCE_RESERVATION";
             /** Format: date-time */
             createdAt: string;
+            earlyArrivalMinutes: number;
             enabled: boolean;
+            freeCancelMinutes: number;
+            graceMinutes: number;
             /** Format: uuid */
             id: string;
+            lateCancelRefundPct: number;
+            /** @description ADVANCE_RESERVATION: plazas que se pueden reservar a la vez. null = sin configurar. */
+            reservableSpots: number | null;
+            /** @description ADVANCE_RESERVATION: opening | custom. */
+            reservationHoursMode: string;
+            /**
+             * Format: uuid
+             * @description ADVANCE_RESERVATION: tarifa con la que se cobran las reservas. null = sin configurar.
+             */
+            reservationRateId: string | null;
+            /** @description ADVANCE_RESERVATION: categorías de vehículo que pueden reservar. */
+            reservationVehicleCategories: string[];
             syncSeq: number;
             /** Format: uuid */
             tenantId: string;
@@ -4891,6 +5814,19 @@ export interface components {
             /** @description IP camera username. Password is intentionally not persisted. */
             username?: string;
         };
+        UpdateDriverVehicleDto: {
+            brand?: string | null;
+            /** @description Categoría de la plataforma; sólo las reservables. No se puede cambiar con una reserva activa del vehículo. */
+            category?: components["schemas"]["ReservableVehicleCategory"];
+            /** @description true lo marca como principal (y desmarca al anterior). Para cambiar el principal se marca otro: false no se acepta. */
+            isPrimary?: boolean;
+            model?: string | null;
+            /**
+             * @description Se normaliza. No se puede cambiar con una reserva activa del vehículo.
+             * @example AB123CD
+             */
+            plate?: string;
+        };
         UpdateEntityAddressDto: {
             /**
              * @description Localidad.
@@ -5129,8 +6065,29 @@ export interface components {
             openMinute?: number;
         };
         UpdateServiceDto: {
+            /** @description Sólo ADVANCE_RESERVATION: auto = se confirma sola; manual = la acepta el dueño. */
+            acceptanceMode?: components["schemas"]["ReservationAcceptanceMode"];
+            /** @description Sólo ADVANCE_RESERVATION: minutos para aceptar (modo manual). */
+            approvalWindowMinutes?: number;
+            /** @description Sólo ADVANCE_RESERVATION: llegada anticipada, en minutos. */
+            earlyArrivalMinutes?: number;
             /** @description Whether the amenity is offered by the tenant. */
             enabled?: boolean;
+            /** @description Sólo ADVANCE_RESERVATION: cancelación gratis, en minutos. */
+            freeCancelMinutes?: number;
+            /** @description Sólo ADVANCE_RESERVATION: tolerancia de no-show, en minutos. */
+            graceMinutes?: number;
+            /** @description Sólo ADVANCE_RESERVATION: % de reembolso en cancelación tardía. */
+            lateCancelRefundPct?: number;
+            /** @description Sólo ADVANCE_RESERVATION: plazas que se pueden reservar a la vez, hasta la capacidad de la playa. null lo deja sin configurar. */
+            reservableSpots?: number | null;
+            /**
+             * Format: uuid
+             * @description Sólo ADVANCE_RESERVATION: id de una tarifa activa de la playa con la que se cotizan y cobran las reservas. null la desasocia.
+             */
+            reservationRateId?: string | null;
+            /** @description Sólo ADVANCE_RESERVATION: categorías de vehículo que pueden reservar desde la app (auto, SUV, pickup, utilitario y moto), sin duplicados. Es independiente de qué tipos se aceptan en la caja. */
+            reservationVehicleCategories?: components["schemas"]["ReservableVehicleCategory"][];
         };
         UpdateStaffMemberDto: {
             /**
@@ -5199,6 +6156,8 @@ export interface components {
         };
         UpdateVehicleTypeDto: {
             accepted?: boolean;
+            /** @description Cambia la categoría. Guardarla (aunque sea la misma) confirma la elección del dueño y apaga `categoryInferred`. */
+            category?: components["schemas"]["VehicleCategory"];
             /** @example Utilitario */
             name?: string;
         };
@@ -5289,6 +6248,60 @@ export interface components {
             /** @description Field-level breakdown of the validation failures. */
             validationsErrors: components["schemas"]["ValidationFieldErrorDto"][];
         };
+        /**
+         * @description Código fijo de la categoría. Es lo que se guarda y se envía.
+         * @enum {string}
+         */
+        VehicleCategory: "car" | "suv" | "pickup" | "van" | "motorcycle" | "bicycle" | "truck" | "other";
+        VehicleCategoryBreakdownDto: {
+            /** @description One slice per category present in the window, most stays first, with the `null` ("Sin dato") slice last. */
+            categories: components["schemas"]["VehicleCategorySliceDto"][];
+            /**
+             * @description Currency of every monetary figure.
+             * @example ARS
+             */
+            currency: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** @description Revenue of those stays, in ARS (sum of every slice). */
+            totalRevenue: number;
+            /** @description Stays that ended in the window (sum of every slice). */
+            totalStays: number;
+        };
+        VehicleCategoryDto: {
+            /**
+             * @description Código fijo de la categoría. Es lo que se guarda y se envía.
+             * @example suv
+             */
+            code: components["schemas"]["VehicleCategory"];
+            /** @example Utilitario / Van */
+            label: string;
+            /** @description Si se puede reservar desde la app del conductor (auto, SUV, pickup, utilitario y moto). */
+            reservable: boolean;
+            /** @description Orden de presentación (1 a 8). */
+            sortOrder: number;
+        };
+        VehicleCategorySliceDto: {
+            /** @description Platform vehicle category, as frozen on the stay at ingress. `null` is the "Sin dato" slice: stays that predate the categories, or that came from a till that does not send one. */
+            category: components["schemas"]["VehicleCategory"] | null;
+            /**
+             * @description Revenue of those stays (`entries.amountPaid`), in ARS.
+             * @example 12300
+             */
+            revenue: number;
+            /**
+             * @description Share of the window total **stays**, `0`–`1`. Shares across every slice add up to 1. `null` when there are no stays.
+             * @example 0.42
+             */
+            share: number | null;
+            /**
+             * @description Stays that ended in the window under this category.
+             * @example 42
+             */
+            stays: number;
+        };
         VehicleChangesResponseDto: {
             items: components["schemas"]["VehicleDto"][];
             maxSeq: number;
@@ -5327,6 +6340,10 @@ export interface components {
         VehicleTypeDto: {
             /** @description Si el estacionamiento acepta este tipo de vehículo. Reemplaza a los códigos `ServiceCode.VEHICLE_*`, que eran cinco valores fijos sin relación con el catálogo. */
             accepted: boolean;
+            /** @description Categoría de la plataforma a la que pertenece el tipo. El `name` es sólo la etiqueta que el dueño le pone en su playa. */
+            category: components["schemas"]["VehicleCategory"];
+            /** @description true si la categoría la adivinó el sistema (backfill o alta desde una caja vieja). La web muestra "Revisá la categoría" hasta que el dueño la guarda con PATCH. */
+            categoryInferred: boolean;
             /** Format: date-time */
             createdAt: string;
             /**
@@ -5349,6 +6366,10 @@ export interface components {
         VehicleTypeListItemDto: {
             /** @description Si el estacionamiento acepta este tipo de vehículo. Reemplaza a los códigos `ServiceCode.VEHICLE_*`, que eran cinco valores fijos sin relación con el catálogo. */
             accepted: boolean;
+            /** @description Categoría de la plataforma a la que pertenece el tipo. El `name` es sólo la etiqueta que el dueño le pone en su playa. */
+            category: components["schemas"]["VehicleCategory"];
+            /** @description true si la categoría la adivinó el sistema (backfill o alta desde una caja vieja). La web muestra "Revisá la categoría" hasta que el dueño la guarda con PATCH. */
+            categoryInferred: boolean;
             /** Format: date-time */
             createdAt: string;
             /**
@@ -6543,6 +7564,319 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    DriverController_findNearby: {
+        parameters: {
+            query: {
+                /** @description Latitud del centro. */
+                latitude: number;
+                /** @description Longitud del centro. */
+                longitude: number;
+                /** @description Radio de búsqueda en metros. */
+                radiusMeters?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverNearbyParkingDto"][];
+                };
+            };
+        };
+    };
+    DriverController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                parkingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverParkingDetailDto"];
+                };
+            };
+        };
+    };
+    DriverController_quote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                parkingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQuoteDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteDto"];
+                };
+            };
+            /** @description RESERVATION_VEHICLE_CATEGORY_NOT_ACCEPTED, RESERVATION_OUTSIDE_RESERVATION_HOURS, RESERVATION_OUTSIDE_OPENING_HOURS, DRIVER_RESERVATIONS_DISABLED o RESERVATION_VEHICLE_NOT_FOUND. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    DriverReservationsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverReservationDetailDto"][];
+                };
+            };
+        };
+    };
+    DriverReservationsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReservationDto"];
+            };
+        };
+        responses: {
+            /** @description Con returnUrl: { reservation, payment }. Sin returnUrl (sólo fuera de producción, TODO fase 4): la reserva plana, como antes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateReservationResponseDto"];
+                };
+            };
+        };
+    };
+    DriverReservationsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverReservationDetailDto"];
+                };
+            };
+        };
+    };
+    DriverReservationsController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverReservationDetailDto"];
+                };
+            };
+        };
+    };
+    DriverReservationsController_cancelPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelPreviewDto"];
+                };
+            };
+        };
+    };
+    DriverReservationsController_payment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateReservationResponseDto"];
+                };
+            };
+        };
+    };
+    driverVehicleCatalogList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleCatalogItemDto"][];
+                };
+            };
+        };
+    };
+    DriverVehiclesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleDto"][];
+                };
+            };
+        };
+    };
+    DriverVehiclesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDriverVehicleDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleDto"];
+                };
+            };
+        };
+    };
+    DriverVehiclesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vehicleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DriverVehiclesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vehicleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDriverVehicleDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleDto"];
                 };
             };
         };
@@ -7880,7 +9214,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded" | "reservation.accepted" | "reservation.rejected" | "reservation.cancelled" | "reservation.refund_retried" | "reservation.refund_failed" | "reservation.late_payment_refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
@@ -8842,6 +10176,95 @@ export interface operations {
             };
         };
     };
+    metricsGetVehicleCategoryBreakdown: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Restrict to what one cash session (shift) **collected** — the figures for a cash-up.
+                 *
+                 *     Matches `payment_transactions.cashSessionId`: the drawer that took the money when the stay was closed. **Not** `entries.cashSessionId`, which records the drawer a car *entered* under and is reassigned to the next shift for every car still inside when a shift closes.
+                 *
+                 *     With it, `from`/`to` become optional. A bound you send is used verbatim; a missing one is derived from the shift (`openedAt` → `closedAt`, or now if still open), **widened to cover every payment the shift collected**: the offline desktop can sync a close late with a `leftAt` outside its own shift, and clipping to the shift would drop it. The window actually used comes back in the response `from`/`to`.
+                 *
+                 *     Revenue then comes from the transactions, as with `paymentMethod` (reported in `revenueSource`), and the bucket limit applies to the derived window like to any other — prefer `granularity=hour` for a shift.
+                 *
+                 *     `404 CASH_SESSION_NOT_FOUND` when the session does not exist in this parking lot.
+                 */
+                cashSessionId?: string;
+                /**
+                 * @description Start of the window (inclusive), ISO-8601 **with an explicit offset**.
+                 *
+                 *     **Required unless `cashSessionId` is given**, in which case it defaults to the start of the shift — see `cashSessionId`.
+                 *
+                 *     The offset is mandatory: a naive `2026-08-07T13:00:00` would be resolved against the server clock, silently shifting the numbers by the Argentine offset. Send `-03:00` for Argentine wall-clock time.
+                 */
+                from?: string;
+                /** @description End of the window (exclusive), ISO-8601 with explicit offset. **Required unless `cashSessionId` is given.** */
+                to?: string;
+                /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
+                tz?: string;
+                /**
+                 * @description Restrict to a platform vehicle category, matched against `entries.vehicleCategory`.
+                 *
+                 *     `entries.vehicleCategory` is frozen at ingress, so changing the category of a vehicle type does not rewrite history. It is filled on manual and LPR stays alike; stays that predate the categories (or came from an old till) have none and are excluded by this filter.
+                 *
+                 *     Can be combined with the deprecated `vehicleType`: both must match.
+                 */
+                vehicleCategory?: components["schemas"]["VehicleCategory"];
+                /**
+                 * @deprecated
+                 * @description **Deprecated: use `vehicleCategory`.** It will be removed in the next version.
+                 *
+                 *     Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`, the text snapshot of the type name taken at ingress. Renaming a type does not rewrite history — stays registered under the old name keep answering to the old name, and two types with different names never group together, which is why the category replaces this.
+                 */
+                vehicleType?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleCategoryBreakdownDto"];
+                };
+            };
+            /** @description `from`/`to` missing without a `cashSessionId`, `from` not before `to`, a date-time without an explicit offset, or a malformed `cashSessionId`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Caller is an `operator` (`ENTITY_INSUFFICIENT_ROLE`) or has no membership in this lot (`ENTITY_NO_ACCESS`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description `cashSessionId` does not exist in this parking lot (`CASH_SESSION_NOT_FOUND`). A session of another lot gets the same answer. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
     metricsGetOccupancy: {
         parameters: {
             query?: never;
@@ -8909,11 +10332,18 @@ export interface operations {
                 /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
                 tz?: string;
                 /**
-                 * @description Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`.
+                 * @description Restrict to a platform vehicle category, matched against `entries.vehicleCategory`.
                  *
-                 *     Free text rather than a closed enum: vehicle types are a per-tenant catalogue (`GET /tenants/:tenantId/vehicle-types`), which is where the client should populate this filter from. `entries.vehicleType` stores a *snapshot* of the type name taken at ingress, so renaming a type does not rewrite history — stays registered under the old name keep answering to the old name.
+                 *     `entries.vehicleCategory` is frozen at ingress, so changing the category of a vehicle type does not rewrite history. It is filled on manual and LPR stays alike; stays that predate the categories (or came from an old till) have none and are excluded by this filter.
                  *
-                 *     **Partial data:** `entries.vehicleType` is only populated on LPR ingress (`source = "auto"`); manually registered stays leave it null and are excluded by this filter.
+                 *     Can be combined with the deprecated `vehicleType`: both must match.
+                 */
+                vehicleCategory?: components["schemas"]["VehicleCategory"];
+                /**
+                 * @deprecated
+                 * @description **Deprecated: use `vehicleCategory`.** It will be removed in the next version.
+                 *
+                 *     Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`, the text snapshot of the type name taken at ingress. Renaming a type does not rewrite history — stays registered under the old name keep answering to the old name, and two types with different names never group together, which is why the category replaces this.
                  */
                 vehicleType?: string;
             };
@@ -8991,11 +10421,18 @@ export interface operations {
                 /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
                 tz?: string;
                 /**
-                 * @description Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`.
+                 * @description Restrict to a platform vehicle category, matched against `entries.vehicleCategory`.
                  *
-                 *     Free text rather than a closed enum: vehicle types are a per-tenant catalogue (`GET /tenants/:tenantId/vehicle-types`), which is where the client should populate this filter from. `entries.vehicleType` stores a *snapshot* of the type name taken at ingress, so renaming a type does not rewrite history — stays registered under the old name keep answering to the old name.
+                 *     `entries.vehicleCategory` is frozen at ingress, so changing the category of a vehicle type does not rewrite history. It is filled on manual and LPR stays alike; stays that predate the categories (or came from an old till) have none and are excluded by this filter.
                  *
-                 *     **Partial data:** `entries.vehicleType` is only populated on LPR ingress (`source = "auto"`); manually registered stays leave it null and are excluded by this filter.
+                 *     Can be combined with the deprecated `vehicleType`: both must match.
+                 */
+                vehicleCategory?: components["schemas"]["VehicleCategory"];
+                /**
+                 * @deprecated
+                 * @description **Deprecated: use `vehicleCategory`.** It will be removed in the next version.
+                 *
+                 *     Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`, the text snapshot of the type name taken at ingress. Renaming a type does not rewrite history — stays registered under the old name keep answering to the old name, and two types with different names never group together, which is why the category replaces this.
                  */
                 vehicleType?: string;
             };
@@ -9115,11 +10552,18 @@ export interface operations {
                 /** @description IANA timezone used to delimit civil days (e.g. `America/Argentina/Buenos_Aires`). Defaults to Argentina. */
                 tz?: string;
                 /**
-                 * @description Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`.
+                 * @description Restrict to a platform vehicle category, matched against `entries.vehicleCategory`.
                  *
-                 *     Free text rather than a closed enum: vehicle types are a per-tenant catalogue (`GET /tenants/:tenantId/vehicle-types`), which is where the client should populate this filter from. `entries.vehicleType` stores a *snapshot* of the type name taken at ingress, so renaming a type does not rewrite history — stays registered under the old name keep answering to the old name.
+                 *     `entries.vehicleCategory` is frozen at ingress, so changing the category of a vehicle type does not rewrite history. It is filled on manual and LPR stays alike; stays that predate the categories (or came from an old till) have none and are excluded by this filter.
                  *
-                 *     **Partial data:** `entries.vehicleType` is only populated on LPR ingress (`source = "auto"`); manually registered stays leave it null and are excluded by this filter.
+                 *     Can be combined with the deprecated `vehicleType`: both must match.
+                 */
+                vehicleCategory?: components["schemas"]["VehicleCategory"];
+                /**
+                 * @deprecated
+                 * @description **Deprecated: use `vehicleCategory`.** It will be removed in the next version.
+                 *
+                 *     Restrict to a vehicle type, matched **exactly** against `entries.vehicleType`, the text snapshot of the type name taken at ingress. Renaming a type does not rewrite history — stays registered under the old name keep answering to the old name, and two types with different names never group together, which is why the category replaces this.
                  */
                 vehicleType?: string;
             };
@@ -9858,6 +11302,163 @@ export interface operations {
             };
         };
     };
+    OwnerReservationsController_list: {
+        parameters: {
+            query?: {
+                /** @description Reservas cuyo ingreso es desde esta fecha (inclusive). */
+                from?: string;
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Number of items per page (capped at 100). */
+                pageSize?: number;
+                /** @description Busca por patente (contiene, sin distinguir formato). */
+                q?: string;
+                status?: components["schemas"]["ReservationStatus"];
+                /** @description Reservas cuyo ingreso es hasta esta fecha (inclusive). */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedOwnerReservationsDto"];
+                };
+            };
+        };
+    };
+    OwnerReservationsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerReservationDetailDto"];
+                };
+            };
+        };
+    };
+    OwnerReservationsController_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerReservationDetailDto"];
+                };
+            };
+        };
+    };
+    OwnerReservationsController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservationReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerReservationDetailDto"];
+                };
+            };
+        };
+    };
+    OwnerReservationsController_retryRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerReservationDetailDto"];
+                };
+            };
+        };
+    };
+    OwnerReservationsController_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reservationId: string;
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservationReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerReservationDetailDto"];
+                };
+            };
+        };
+    };
     SchedulesController_findAll: {
         parameters: {
             query?: {
@@ -10037,6 +11638,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServiceCatalogItemDto"];
+                };
+            };
+            /** @description SERVICE_RESERVATION_NOT_READY: se intentó activar las reservas sin cumplir los requisitos; `missing` los lista. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationNotReadyProblemDto"];
+                };
+            };
+        };
+    };
+    ServicesController_getReservationHours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationHoursDto"];
+                };
+            };
+        };
+    };
+    ServicesController_putReservationHours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The ID of the tenant (parking lot) */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservationHoursDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservationHoursDto"];
+                };
+            };
+            /** @description RESERVATION_HOURS_OUTSIDE_OPENING: algún rango no cae dentro del horario de apertura. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
                 };
             };
         };
@@ -10844,6 +12511,34 @@ export interface operations {
             };
             /** @description Caller is not a member of the entity, or lacks the role. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    vehicleCategoriesList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleCategoryDto"][];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
