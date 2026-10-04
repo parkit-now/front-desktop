@@ -5786,9 +5786,13 @@ h2 {
   color: var(--color-muted);
 }
 
-/* Compact exit modal — tighten vertical rhythm so it isn't so tall. */
+/* Compact exit modal — tighten vertical rhythm so it isn't so tall. Con
+   reserva, split o factura puede pasar el alto de la ventana (1280x800): el
+   modal scrollea adentro en vez de dejar los botones fuera de pantalla. */
 .exit-modal {
   padding: 16px 18px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .exit-modal .rate-dialog-header {
@@ -6765,6 +6769,81 @@ h2 {
   color: var(--color-muted);
   background: var(--color-card);
   border-color: var(--color-border);
+}
+
+/* Salida con reserva (fase 6c): caja de la reserva y desglose del cobro. */
+.exit-reservation {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-brand);
+  border-radius: 10px;
+  background: var(--color-bg-start);
+  font-size: 13px;
+}
+
+.exit-reservation__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: stretch;
+  color: var(--color-brand-strong);
+  font-size: 14px;
+}
+
+.exit-reservation__slot {
+  color: var(--color-text);
+}
+
+.exit-charge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.exit-charge__label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.exit-charge__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 14px;
+}
+
+.exit-charge__amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.exit-charge__row--total {
+  margin-top: 2px;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
+  font-weight: 700;
+}
+
+.exit-charge__row--total span:first-child {
+  font-size: 15px;
+}
+
+.exit-charge__row--total .exit-charge__amount {
+  font-size: 18px;
 }
 
 .exit-info-row--total {

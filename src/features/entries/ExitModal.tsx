@@ -49,12 +49,11 @@ import {
 } from './entryUtils';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
 import {
-  arrivalSuffix,
+  arrivalChipText,
   exitBreakdown,
   exitCharge,
-  formatExtraTime,
   formatMinutes,
-  formatReservationWindow,
+  formatOutsideTime,
   formatTime,
   prepaidOf,
   reservationCode,
@@ -843,8 +842,8 @@ export function ExitModal({
               ) : null}
               {prepaid !== null ? (
                 <>
-                  <div className="reservation-banner">
-                    <div className="reservation-banner-head">
+                  <div className="exit-reservation">
+                    <div className="exit-reservation__head">
                       <strong>
                         Reserva{' '}
                         {entry.reservationId
@@ -855,45 +854,47 @@ export function ExitModal({
                         Prepaga
                       </span>
                     </div>
-                    <span className="reservation-banner-sub">
-                      {reservation
-                        ? `Cubre ${formatReservationWindow(reservation.entryAt, reservation.exitAt)} · `
-                        : ''}
-                      ya pagó {formatArs(prepaid)}
-                      {reservation && arrivalSuffix(reservation.arrival)
-                        ? ` · ${arrivalSuffix(reservation.arrival)}`
-                        : ''}
-                    </span>
+                    {reservation && breakdown ? (
+                      <span className="exit-reservation__slot">
+                        Reservó {formatTime(reservation.entryAt)} –{' '}
+                        {formatTime(reservation.exitAt)} (
+                        {formatMinutes(breakdown.reservedMinutes)})
+                      </span>
+                    ) : null}
+                    {reservation && arrivalChipText(reservation) ? (
+                      <span className="reservation-pill reservation-pill--warn exit-reservation__flag">
+                        {arrivalChipText(reservation)}
+                      </span>
+                    ) : null}
                   </div>
-                  {reservation && breakdown ? (
-                    <>
-                      <div className="exit-info-row">
-                        <span className="muted">Tiempo reservado</span>
-                        <span>
-                          {formatTime(reservation.entryAt)}–
-                          {formatTime(reservation.exitAt)} (
-                          {formatMinutes(breakdown.reservedMinutes)})
+                  <div className="exit-charge" role="group" aria-label="Cobro">
+                    <p className="exit-charge__label">Cobro</p>
+                    {breakdown && formatOutsideTime(breakdown) ? (
+                      <div className="exit-charge__row">
+                        <span className="muted">
+                          Tiempo fuera de la reserva
                         </span>
+                        <span>{formatOutsideTime(breakdown)}</span>
                       </div>
-                      <div className="exit-info-row">
-                        <span className="muted">Tiempo extra</span>
-                        <span>
-                          {formatExtraTime(breakdown) ?? 'Sin tiempo extra'}
-                        </span>
-                      </div>
-                    </>
-                  ) : null}
-                  <div className="exit-info-row">
-                    <span className="muted">Estadía total</span>
-                    <span>{formatArs(charge.stayTotal)}</span>
-                  </div>
-                  <div className="exit-info-row">
-                    <span className="muted">Prepago reserva</span>
-                    <span>− {formatArs(prepaid)}</span>
-                  </div>
-                  <div className="exit-info-row exit-info-row--total">
-                    <span>A cobrar</span>
-                    <span>{formatArs(charge.due)}</span>
+                    ) : null}
+                    <div className="exit-charge__row">
+                      <span className="muted">Estadía total</span>
+                      <span className="exit-charge__amount">
+                        {formatArs(charge.stayTotal)}
+                      </span>
+                    </div>
+                    <div className="exit-charge__row">
+                      <span className="muted">Prepagado por la reserva</span>
+                      <span className="exit-charge__amount">
+                        − {formatArs(prepaid)}
+                      </span>
+                    </div>
+                    <div className="exit-charge__row exit-charge__row--total">
+                      <span>A cobrar</span>
+                      <span className="exit-charge__amount">
+                        {formatArs(charge.due)}
+                      </span>
+                    </div>
                   </div>
                 </>
               ) : null}

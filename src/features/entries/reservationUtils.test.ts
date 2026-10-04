@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../lib/api/client';
 import {
   arrivalNoticeText,
-  arrivalSuffix,
   canUnlinkReservation,
   exitBreakdown,
   exitCharge,
-  formatExtraTime,
+  formatOutsideTime,
+  arrivalChipText,
   formatMinutes,
   formatReservationWindow,
   isLinkableMatch,
@@ -232,11 +232,15 @@ describe('llegada anticipada o tardía (6c)', () => {
     expect(isLinkableMatch({ linkable: false })).toBe(false);
   });
 
-  it('arrivalSuffix', () => {
-    expect(arrivalSuffix('early')).toBe('llegó antes');
-    expect(arrivalSuffix('late')).toBe('llegó tarde');
-    expect(arrivalSuffix('on_time')).toBe('');
-    expect(arrivalSuffix(undefined)).toBe('');
+  it('arrivalChipText (salida)', () => {
+    expect(arrivalChipText({ arrival: 'early', minutesEarly: 50 })).toBe(
+      'Llegó 50 min antes',
+    );
+    expect(arrivalChipText({ arrival: 'late', minutesEarly: 0 })).toBe(
+      'Llegó tarde',
+    );
+    expect(arrivalChipText({ arrival: 'on_time' })).toBeNull();
+    expect(arrivalChipText({})).toBeNull();
   });
 
   it('desglose de la salida: reservado, extra antes y después', () => {
@@ -252,7 +256,9 @@ describe('llegada anticipada o tardía (6c)', () => {
       extraAfterMinutes: 15,
       extraMinutes: 65,
     });
-    expect(formatExtraTime(breakdown)).toBe('50 min antes + 15 min después');
+    expect(formatOutsideTime(breakdown)).toBe(
+      '50 min antes del horario + 15 min después del horario',
+    );
   });
 
   it('dentro de la franja no hay tiempo extra', () => {
@@ -263,7 +269,7 @@ describe('llegada anticipada o tardía (6c)', () => {
       reservationExitAt: '2026-10-07T02:30:00.000Z',
     });
     expect(breakdown.extraMinutes).toBe(0);
-    expect(formatExtraTime(breakdown)).toBeNull();
+    expect(formatOutsideTime(breakdown)).toBeNull();
   });
 
   it('el excedente con llegada anticipada sale de la estadía real menos el prepago', () => {

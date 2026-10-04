@@ -202,13 +202,6 @@ export function isLinkableMatch(match: { linkable?: boolean | null }): boolean {
   return match.linkable !== false;
 }
 
-/** Sufijo del estado "En curso" según cómo llegó: "llegó antes" / "llegó tarde". */
-export function arrivalSuffix(arrival: string | null | undefined): string {
-  if (arrival === 'early') return 'llegó antes';
-  if (arrival === 'late') return 'llegó tarde';
-  return '';
-}
-
 export type ExitBreakdown = {
   /** Duración de la franja reservada (lo que cubre el prepago), en minutos. */
   reservedMinutes: number;
@@ -244,16 +237,36 @@ export function exitBreakdown(input: {
   };
 }
 
-/** "50 min antes + 15 min después", o null si no hubo tiempo extra. */
-export function formatExtraTime(breakdown: ExitBreakdown): string | null {
+/**
+ * El tiempo que estuvo fuera de la franja reservada, para la salida:
+ * "50 min antes del horario", "15 min después del horario" o los dos. `null`
+ * si estuvo dentro de la franja.
+ */
+export function formatOutsideTime(breakdown: ExitBreakdown): string | null {
   const parts: string[] = [];
   if (breakdown.extraBeforeMinutes > 0) {
-    parts.push(`${formatMinutes(breakdown.extraBeforeMinutes)} antes`);
+    parts.push(
+      `${formatMinutes(breakdown.extraBeforeMinutes)} antes del horario`,
+    );
   }
   if (breakdown.extraAfterMinutes > 0) {
-    parts.push(`${formatMinutes(breakdown.extraAfterMinutes)} después`);
+    parts.push(
+      `${formatMinutes(breakdown.extraAfterMinutes)} después del horario`,
+    );
   }
   return parts.length > 0 ? parts.join(' + ') : null;
+}
+
+/** Chip de la salida: "Llegó 50 min antes" / "Llegó tarde", o null. */
+export function arrivalChipText(input: {
+  arrival?: string | null;
+  minutesEarly?: number | null;
+}): string | null {
+  if (input.arrival === 'early') {
+    return `Llegó ${formatMinutes(input.minutesEarly ?? 0)} antes`;
+  }
+  if (input.arrival === 'late') return 'Llegó tarde';
+  return null;
 }
 
 /**
