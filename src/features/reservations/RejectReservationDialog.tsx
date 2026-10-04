@@ -39,8 +39,9 @@ export function RejectReservationDialog({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ids = useId();
   const trimmed = reason.trim();
-  const missing = touched && trimmed.length === 0;
   const blocked = !isOnline || stale;
+  // Bloqueado no se puede escribir: no tiene sentido pedir el motivo.
+  const missing = touched && trimmed.length === 0 && !blocked;
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -76,7 +77,7 @@ export function RejectReservationDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${ids}-title`}
-        aria-describedby={`${ids}-refund`}
+        aria-describedby={stale ? undefined : `${ids}-refund`}
       >
         <header className="rate-dialog-header">
           <div>
@@ -137,10 +138,12 @@ export function RejectReservationDialog({
             ) : null}
           </div>
 
-          <p id={`${ids}-refund`} className="reject-reservation-refund">
-            Le devolvemos <strong>{formatArs(refundArs)}</strong> al conductor
-            por Mercado Pago. El reembolso siempre es total.
-          </p>
+          {stale ? null : (
+            <p id={`${ids}-refund`} className="reject-reservation-refund">
+              Le devolvemos <strong>{formatArs(refundArs)}</strong> al conductor
+              por Mercado Pago. El reembolso siempre es total.
+            </p>
+          )}
 
           {stale ? (
             <p role="status" className="field-hint field-warning">
