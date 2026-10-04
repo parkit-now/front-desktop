@@ -837,6 +837,12 @@ h2 {
   min-height: 0;
 }
 
+/* Con el banner de "Sin conexión" arriba hay una fila más: sin esto el 1fr
+   le toca al encabezado, que se estira y empuja el contenido para abajo. */
+.app-main:has(> .offline-banner) {
+  grid-template-rows: auto auto 1fr;
+}
+
 .workspace-header {
   display: flex;
   align-items: center;
