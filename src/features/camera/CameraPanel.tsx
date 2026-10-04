@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { CAMERA_BASE_URL } from '../../lib/camera/constants';
 import { CameraSettingsPanel } from './CameraSettingsPanel';
 import { useCameraStatus } from './useCameraStatus';
+import { MjpegImage } from './MjpegImage';
 
 type Props = {
   tenantId?: string | null;
@@ -91,7 +92,7 @@ export function CameraPanel({
             ) : null}
           </div>
         ) : (
-          <img
+          <MjpegImage
             key={streamKey}
             className="camera-panel__video"
             src={`${CAMERA_BASE_URL}/stream/mjpeg?t=${streamKey}`}

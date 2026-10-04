@@ -277,6 +277,24 @@ def _known_plates() -> set[str]:
     return _known_plates_value
 
 
+# Modo prueba: el renderer lo prende desde Configurar cámara para poder probar
+# siempre con el mismo auto. Con él no se descarta nada: ni las patentes que el
+# renderer da por conocidas ni las repetidas dentro de COOLDOWN.
+#
+# Viaja en el mismo POST /known-plates y vence igual que la lista, a propósito.
+# Un modo prueba que quede prendido en producción llena el disco y la cola de
+# tarjetas, así que no puede depender de que alguien se acuerde de apagarlo: si
+# el renderer deja de reafirmarlo —lo apagaron, se cerró la app, se colgó—, a
+# los 30 s el servicio vuelve solo al comportamiento normal.
+_testing_mode_at: float | None = None
+
+
+def _testing_mode() -> bool:
+    if _testing_mode_at is None:
+        return False
+    return time.monotonic() - _testing_mode_at <= _KNOWN_PLATES_TTL
+
+
 # Ya se avisó que esta cámara corre sin zona de detección. Se rearma al cambiar
 # el ROI desde la config, para que el aviso vuelva si lo borran.
 _warned_no_roi = False
@@ -358,6 +376,63 @@ def _levenshtein(a: str, b: str) -> int:
             )
         prev = cur
     return prev[-1]
+
+
+def _substring_distance(needle: str, haystack: str) -> int:
+    """Menor levenshtein entre `needle` y CUALQUIER tramo contiguo de `haystack`.
+
+    Es levenshtein con los extremos de `haystack` gratis (alineamiento
+    semi-global): "G577" contra "IAG574" da 1, porque el mejor tramo es "G574".
+    """
+    if not needle:
+        return 0
+    prev = [0] * (len(haystack) + 1)  # arrancar en cualquier columna no cuesta
+    for i, cn in enumerate(needle, 1):
+        cur = [i]
+        for j, ch in enumerate(haystack, 1):
+            cur.append(
+                min(
+                    cur[j - 1] + 1,
+                    prev[j] + 1,
+                    prev[j - 1] + (0 if cn == ch else 1),
+                )
+            )
+        prev = cur
+    return min(prev)  # terminar en cualquier columna tampoco
+
+
+# Un fragmento de menos caracteres ya no dice a qué patente pertenece: "AB"
+# está adentro de miles. Con 3 y a lo sumo 1 error, la chance de que el pedazo
+# de OTRA patente caiga justo adentro de la del cluster es baja, y encima tiene
+# que pasar el veto de posición.
+FRAGMENT_MIN_LEN = 3
+FRAGMENT_MAX_DISTANCE = 1
+
+
+def _is_fragment_of(fragment: dict, full: dict) -> bool:
+    """Si `fragment` es un pedazo mal leído de la patente de `full`.
+
+    EL CASO QUE ESTO ARREGLA
+
+    Con la patente chica en el cuadro, el detector a veces ubica mal el
+    recuadro: corta la mitad de la patente y agarra lo que hay al lado. El OCR
+    lee lo que quedó adentro. Medido en la instalación real: `IAG 574` al 80 %
+    y, un segundo después y del mismo auto, `G577` al 55 %. Por texto no se
+    agrupaban —son 3 ediciones y `G577` es corta, así que el límite baja a 1—
+    y el operador recibía una segunda tarjeta "Verificar patente" con basura.
+
+    Un fragmento NUNCA es una lectura con formato válido: si el OCR leyó una
+    patente argentina completa, es una patente, y decidir si es la misma la
+    tiene que hacer `_plates_similar`. Esto sólo rescata lecturas que de todas
+    formas no se pueden registrar tal cual.
+    """
+    if fragment.get("formatValid"):
+        return False
+    a = _normalised(fragment)
+    b = _normalised(full)
+    if len(a) < FRAGMENT_MIN_LEN or len(a) >= len(b):
+        return False
+    return _substring_distance(a, b) <= FRAGMENT_MAX_DISTANCE
 
 
 def _normalised(result: dict) -> str:
@@ -589,7 +664,16 @@ def _cluster_matches(cluster: dict, candidate: dict, now: float) -> float | None
     b = _normalised(candidate["result"])
     if _plates_similar(a, b, max_distance=1):
         return _candidate_distance(anchor, candidate)
-    if not _plates_similar(a, b, max_distance=PLATE_MERGE_DISTANCE):
+    # Fragmentos: el texto se compara también contra `best`, porque el ancla
+    # puede ser otro fragmento ("G577" y después "AG57"). La posición sigue
+    # siendo contra el ancla, como en el resto: es la que acompaña al auto.
+    reference = cluster["best"]["result"]
+    fragment = (
+        _is_fragment_of(candidate["result"], anchor["result"])
+        or _is_fragment_of(anchor["result"], candidate["result"])
+        or _is_fragment_of(candidate["result"], reference)
+    )
+    if not fragment and not _plates_similar(a, b, max_distance=PLATE_MERGE_DISTANCE):
         return None
     if not _bbox_close(
         anchor["bbox"], candidate["bbox"], candidate["frame_size"], MOVE_MAX_RATIO
@@ -678,14 +762,16 @@ def _persist_cluster(cluster: dict) -> dict | None:
     # suprime por texto exacto, así que esto no cambia nada de lo que ve el
     # operador, sólo evita el gasto. Por parecido, un auto distinto con patente
     # similar a una tarjeta abierta desaparecería sin que nadie se entere.
-    if normalized and normalized in _known_plates():
+    testing = _testing_mode()
+
+    if normalized and not testing and normalized in _known_plates():
         print(
             f"[{_ts()}]  DUPLICATE {normalized:<12}  reason=known-by-operator",
             flush=True,
         )
         return None
 
-    if normalized:
+    if normalized and not testing:
         last_saved = _last_saved_by_plate.get(normalized, 0)
         remaining = COOLDOWN - (now - last_saved)
         if remaining > 0:
@@ -1379,10 +1465,14 @@ def set_known_plates(payload: dict):
         )
         if normalized
     }
+    testing = payload.get("testingMode") is True
     g = globals()
+    if testing != _testing_mode():
+        logger.warning("testing_mode_on" if testing else "testing_mode_off")
     g["_known_plates_value"] = plates
     g["_known_plates_at"] = time.monotonic()
-    return {"count": len(plates)}
+    g["_testing_mode_at"] = time.monotonic() if testing else None
+    return {"count": len(plates), "testingMode": testing}
 
 
 @app.post("/detections/{event_id}/uploaded")

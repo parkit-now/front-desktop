@@ -36,6 +36,7 @@ def storage(monkeypatch):
     monkeypatch.setattr(main, "_last_saved_by_plate", {})
     monkeypatch.setattr(main, "_known_plates_value", set())
     monkeypatch.setattr(main, "_known_plates_at", 0.0)
+    monkeypatch.setattr(main, "_testing_mode_at", None)
     return fake
 
 
@@ -176,3 +177,55 @@ def test_la_lista_vence(monkeypatch):
 def test_default_plate_cooldown_cubre_el_viaje_del_renderer():
     assert main.COOLDOWN == 60.0
     assert main.COOLDOWN >= 12
+
+
+# ── Modo prueba ───────────────────────────────────────────────────────────────
+#
+# Para probar una instalación hay que pasar el mismo auto una y otra vez, y
+# justamente eso es lo que la supresión está hecha para descartar.
+
+
+def test_modo_prueba_guarda_aunque_el_renderer_conozca_la_patente(storage, monkeypatch):
+    main.set_known_plates({"plates": ["AB123CD"], "testingMode": True})
+    assert main._persist_cluster(_cluster()) is not None
+    assert storage.guardados == ["AB123CD"]
+
+
+def test_modo_prueba_guarda_la_misma_patente_dentro_del_cooldown(storage):
+    main.set_known_plates({"plates": [], "testingMode": True})
+    assert main._persist_cluster(_cluster()) is not None
+    assert main._persist_cluster(_cluster()) is not None
+    assert storage.guardados == ["AB123CD", "AB123CD"]
+
+
+def test_sin_modo_prueba_el_cooldown_sigue_descartando(storage):
+    main.set_known_plates({"plates": []})
+    assert main._persist_cluster(_cluster()) is not None
+    assert main._persist_cluster(_cluster()) is None
+
+
+def test_el_modo_prueba_vence_si_el_renderer_deja_de_reafirmarlo(monkeypatch):
+    """Que quede prendido en producción no puede depender de que lo apaguen."""
+    main.set_known_plates({"plates": [], "testingMode": True})
+    assert main._testing_mode()
+    monkeypatch.setattr(
+        main, "_testing_mode_at", main.time.monotonic() - main._KNOWN_PLATES_TTL - 1
+    )
+    assert not main._testing_mode()
+
+
+@pytest.mark.parametrize("valor", [None, False, "true", 1])
+def test_solo_un_true_explicito_prende_el_modo_prueba(valor, monkeypatch):
+    """Un renderer viejo no manda el campo; un valor raro no tiene que prenderlo."""
+    monkeypatch.setattr(main, "_testing_mode_at", None)
+    payload = {"plates": []}
+    if valor is not None:
+        payload["testingMode"] = valor
+    main.set_known_plates(payload)
+    assert not main._testing_mode()
+
+
+def test_apagarlo_vuelve_al_comportamiento_normal_al_instante():
+    main.set_known_plates({"plates": [], "testingMode": True})
+    main.set_known_plates({"plates": []})
+    assert not main._testing_mode()

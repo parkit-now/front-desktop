@@ -14,6 +14,7 @@ OpenVINO acceleration on the few machines that have it, without touching code:
     LPR_DETECTOR_CONF    detection confidence threshold [0, 1]  (default 0.4)
     LPR_ONNX_PROVIDERS   comma-separated onnxruntime providers  (default CPU)
     LPR_OCR_DEVICE       "cpu" | "cuda" | "auto"                (default cpu)
+    LPR_REFINE           second detection pass on a crop        (default 1)
 """
 
 import os
@@ -40,6 +41,25 @@ OCR_MODEL = os.environ.get("LPR_OCR_MODEL", "cct-s-v2-global-model")
 DETECTOR_CONF = float(os.environ.get("LPR_DETECTOR_CONF", "0.4"))
 QUALITY_LOW_CONFIDENCE = float(os.environ.get("LPR_QUALITY_LOW_CONFIDENCE", "0.60"))
 QUALITY_HIGH_CONFIDENCE = float(os.environ.get("LPR_QUALITY_HIGH_CONFIDENCE", "0.80"))
+
+# ── Second detection pass ─────────────────────────────────────────────────────
+# The detector letterboxes the WHOLE input down to 384 px. On a 2560x1440
+# camera, even a cropped detection zone of ~1800 px shrinks a 115 px plate to
+# ~24 px, and at that size the box comes back misplaced: measured on a real
+# install, it cut "IA" off "IAG 574" and grabbed the sticker next to it, so the
+# OCR read "G577". The same image cropped to 800 px read "IAG 574" at 0.85.
+#
+# So after the first pass, each detection is re-run on a crop around it, where
+# the plate is several times bigger, and the better of the two readings wins.
+REFINE_ENABLED = os.environ.get("LPR_REFINE", "1").strip().lower() not in ("0", "false", "no", "off")
+# Context kept around the first box, in plate widths / heights per side. Wide
+# enough to contain the whole plate even when the first box is off by a third
+# of its width, which is the error seen in the field.
+REFINE_PAD_X = 1.0
+REFINE_PAD_Y = 1.5
+# Only refine when the crop is meaningfully smaller than the input: otherwise
+# the detector sees the plate at about the same scale and the pass is wasted.
+REFINE_MAX_CROP_RATIO = 0.6
 
 # CPU by default for maximum portability. Override to e.g.
 # "OpenVINOExecutionProvider,CPUExecutionProvider" or "CUDAExecutionProvider".
@@ -123,6 +143,74 @@ def _mean_conf(confidence: float | list[float]) -> float:
     return float(confidence)
 
 
+Box = tuple[int, int, int, int]
+
+
+def _clip_box(box: Box, width: int, height: int) -> Box | None:
+    x1, y1, x2, y2 = box
+    x1, y1 = max(int(x1), 0), max(int(y1), 0)
+    x2, y2 = min(int(x2), width), min(int(y2), height)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return x1, y1, x2, y2
+
+
+def _refine_window(box: Box, width: int, height: int) -> Box | None:
+    """Crop to re-detect in, or None when it would not enlarge the plate."""
+    x1, y1, x2, y2 = box
+    bw, bh = x2 - x1, y2 - y1
+    if bw <= 0 or bh <= 0:
+        return None
+    window = _clip_box(
+        (
+            round(x1 - bw * REFINE_PAD_X),
+            round(y1 - bh * REFINE_PAD_Y),
+            round(x2 + bw * REFINE_PAD_X),
+            round(y2 + bh * REFINE_PAD_Y),
+        ),
+        width,
+        height,
+    )
+    if window is None:
+        return None
+    wx1, wy1, wx2, wy2 = window
+    # The detector scales by the LONGER side, so that is what has to shrink.
+    if max(wx2 - wx1, wy2 - wy1) > REFINE_MAX_CROP_RATIO * max(width, height):
+        return None
+    return window
+
+
+def _overlaps(a: Box, b: Box) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _pick_refined(first: Box, window: Box, detections) -> tuple[Box, float] | None:
+    """The re-detected box that stands for the first one, in image coordinates.
+
+    The crop may catch a second plate (a car right behind): only boxes that
+    overlap the first one count, and of those the most confident wins.
+    """
+    ox, oy = window[0], window[1]
+    best: tuple[Box, float] | None = None
+    for detection in detections:
+        bb = detection.bounding_box
+        box = (bb.x1 + ox, bb.y1 + oy, bb.x2 + ox, bb.y2 + oy)
+        if not _overlaps(box, first):
+            continue
+        if best is None or detection.confidence > best[1]:
+            best = (box, float(detection.confidence))
+    return best
+
+
+def _better(a: "Recognition | None", b: "Recognition | None") -> "Recognition | None":
+    """A plate in a valid format beats any invalid read; then confidence decides."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return max(a, b, key=lambda r: (r.format_valid, r.confidence))
+
+
 class PlateRecognizer:
     """Wraps fast-alpr's detect-then-OCR pipeline behind a simple call."""
 
@@ -143,30 +231,58 @@ class PlateRecognizer:
 
     def recognize(self, image: np.ndarray) -> Recognition | None:
         """Return the best readable plate in a BGR image, or None."""
+        height, width = image.shape[:2]
         best: Recognition | None = None
-        for r in self._alpr.predict(image):
-            if r.ocr is None:
+        for detection in self._alpr.detector.predict(image):
+            bb = detection.bounding_box
+            box = _clip_box((bb.x1, bb.y1, bb.x2, bb.y2), width, height)
+            if box is None:
                 continue
-            raw_text = r.ocr.text
-            text = _normalise(raw_text)
-            if not text:
-                continue
-            # Honest composite: detector quality × OCR quality. No format-based
-            # fudge factor — the OCR head already knows the plate alphabet.
-            confidence = round(min(r.detection.confidence * _mean_conf(r.ocr.confidence), 1.0), 3)
-            format_type = _format_type(text)
-            format_valid = format_type != "unknown"
-            bb = r.detection.bounding_box
-            candidate = Recognition(
-                plate=_format_plate(text),
-                text=text,
-                raw_text=raw_text,
-                format_valid=format_valid,
-                format_type=format_type,
-                quality_status=_quality_status(format_valid, confidence),
-                confidence=confidence,
-                bbox=(bb.x1, bb.y1, bb.x2, bb.y2),
-            )
-            if best is None or candidate.confidence > best.confidence:
-                best = candidate
+            reading = self._read(image, box, float(detection.confidence))
+            if REFINE_ENABLED:
+                reading = _better(reading, self._refine(image, box))
+            # Across plates confidence alone decides, as before: a valid but
+            # shaky plate in the background must not beat the car in front.
+            if reading is not None and (best is None or reading.confidence > best.confidence):
+                best = reading
         return best
+
+    def _refine(self, image: np.ndarray, box: Box) -> Recognition | None:
+        height, width = image.shape[:2]
+        window = _refine_window(box, width, height)
+        if window is None:
+            return None
+        wx1, wy1, wx2, wy2 = window
+        picked = _pick_refined(box, window, self._alpr.detector.predict(image[wy1:wy2, wx1:wx2]))
+        if picked is None:
+            return None
+        refined, confidence = picked
+        refined = _clip_box(refined, width, height)
+        if refined is None:
+            return None
+        return self._read(image, refined, confidence)
+
+    def _read(self, image: np.ndarray, box: Box, detection_confidence: float) -> Recognition | None:
+        x1, y1, x2, y2 = box
+        ocr = self._alpr.ocr.predict(image[y1:y2, x1:x2])
+        if ocr is None:
+            return None
+        raw_text = ocr.text
+        text = _normalise(raw_text)
+        if not text:
+            return None
+        # Honest composite: detector quality × OCR quality. No format-based
+        # fudge factor — the OCR head already knows the plate alphabet.
+        confidence = round(min(detection_confidence * _mean_conf(ocr.confidence), 1.0), 3)
+        format_type = _format_type(text)
+        format_valid = format_type != "unknown"
+        return Recognition(
+            plate=_format_plate(text),
+            text=text,
+            raw_text=raw_text,
+            format_valid=format_valid,
+            format_type=format_type,
+            quality_status=_quality_status(format_valid, confidence),
+            confidence=confidence,
+            bbox=box,
+        )

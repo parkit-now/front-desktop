@@ -133,6 +133,7 @@ tamaño se excluyen `tkinter`, `matplotlib`, `scipy`, `pandas`, `torch`,
 | `make lpr-down`            | Detiene el servicio levantado con `lpr-up`.               |
 | `make lpr-logs`            | Sigue los logs del servicio en background (`tail -f`).    |
 | `make lpr-test FILE=...`   | Manda una imagen a `/process` y muestra la patente leída. |
+| `make lpr-unit`            | Corre los tests unitarios (sin servicio ni modelos).      |
 | `make lpr-build`           | Empaqueta el binario standalone con PyInstaller.          |
 | `make clean`               | Borra `.venv`, `.build`, `dist` y `__pycache__`.          |
 
@@ -210,6 +211,16 @@ que usamos la variante `s` (más precisa).
 | `LPR_DETECTOR_CONF`  | `0.4`                   | Umbral de confianza del detector `[0, 1]`.                                                                                       |
 | `LPR_ONNX_PROVIDERS` | `CPUExecutionProvider`  | Habilitar aceleración donde exista: `OpenVINOExecutionProvider,CPUExecutionProvider` (Intel) o `CUDAExecutionProvider` (NVIDIA). |
 | `LPR_OCR_DEVICE`     | `cpu`                   | `cpu` / `cuda` / `auto`.                                                                                                         |
+| `LPR_REFINE`         | `1`                     | Segunda pasada del detector sobre un recorte alrededor de cada patente. `0` la apaga (ver abajo).                                |
+
+**Segunda pasada (`LPR_REFINE`).** El detector achica la imagen entera a 384 px.
+Con una cámara de 2560×1440, una patente de ~115 px le llega con ~24 px y el
+recuadro sale corrido: en una instalación real cortó "IA" de `IAG 574` y el OCR
+leyó `G577`. Por eso cada detección se vuelve a buscar en un recorte a su
+alrededor, donde la patente se ve varias veces más grande, y gana la mejor de
+las dos lecturas (formato válido primero, después confianza): nunca empeora la
+primera. Cuesta una inferencia más del detector por patente encontrada (medido:
+~95 → ~225 ms por análisis en CPU) y nada cuando no hay patente.
 
 ---
 

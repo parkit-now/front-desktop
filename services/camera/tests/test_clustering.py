@@ -316,3 +316,101 @@ def test_el_snapshot_guarda_el_tamano_del_cuadro():
     _agregar(*MISMO_A, now=0.0)
     snap = main._candidate_snapshot(main._clusters[0]["candidates"][0])
     assert snap["frameSize"] == [FRAME[0], FRAME[1]]
+
+
+# ── Fragmentos: una lectura cortada del mismo auto ────────────────────────────
+#
+# Medido en la instalación real (Garage, recorte al ROI de 1843x1254). Un auto
+# dio dos lecturas buenas y, 1,4 s después de la última, el detector ubicó mal
+# el recuadro: cortó "IA" y agarró el sticker de al lado. Antes de esto, `G577`
+# abría una segunda tarjeta "Verificar patente" con basura.
+FRAG_FRAME = (1843, 1254)
+FRAG_BUENA_1 = ("IAG574", (617, 490, 772, 553))  # 0,797 a las 20:21:45,9
+FRAG_BUENA_2 = ("IAG574", (857, 301, 1001, 343))  # 0,737 a las 20:21:47,5
+FRAG_CORTADA = ("G577", (914, 210, 1004, 253))  # 0,547 a las 20:21:48,9
+
+
+def _resultado(plate, conf, valida, bbox):
+    return {
+        "normalizedText": plate,
+        "confidence": conf,
+        "formatValid": valida,
+        "qualityStatus": "valid_low" if valida else "invalid_format",
+        "bbox": list(bbox),
+    }
+
+
+def test_distancia_contra_un_tramo():
+    assert main._substring_distance("G574", "IAG574") == 0
+    assert main._substring_distance("G577", "IAG574") == 1
+    assert main._substring_distance("XYZ", "IAG574") == 3
+
+
+def test_fragmento_reconoce_el_caso_real():
+    cortada = _resultado("G577", 0.547, False, FRAG_CORTADA[1])
+    buena = _resultado("IAG574", 0.737, True, FRAG_BUENA_2[1])
+    assert main._is_fragment_of(cortada, buena)
+    # Por la vía de siempre NO se unían: ese es el bug.
+    assert not main._plates_similar("G577", "IAG574", max_distance=3)
+
+
+@pytest.mark.parametrize(
+    "fragmento, completa, esperado",
+    [
+        # Una lectura con formato válido nunca es un fragmento: es una patente.
+        (("IAG574", True), ("IAG5741", False), False),
+        # Demasiado corta para decir a qué patente pertenece.
+        (("G5", False), ("IAG574", True), False),
+        # Igual de larga: no es un pedazo de la otra.
+        (("IAG577", False), ("IAG574", True), False),
+        # Un pedazo de OTRA patente: no está adentro ni con un error.
+        (("XKR", False), ("IAG574", True), False),
+        # Pedazo con un error, de cualquier lado de la patente.
+        (("IAG5", False), ("IAG574", True), True),
+        (("123CD", False), ("AB123CD", True), True),
+    ],
+)
+def test_que_cuenta_como_fragmento(fragmento, completa, esperado):
+    f = _resultado(fragmento[0], 0.5, fragmento[1], (0, 0, 1, 1))
+    c = _resultado(completa[0], 0.8, completa[1], (0, 0, 1, 1))
+    assert main._is_fragment_of(f, c) is esperado
+
+
+def test_el_fragmento_se_suma_al_auto_y_no_abre_otra_tarjeta():
+    frame = _frame(FRAG_FRAME)
+    main._add_cluster_candidate(_resultado("IAG574", 0.797, True, FRAG_BUENA_1[1]), frame, 0.0)
+    main._add_cluster_candidate(_resultado("IAG574", 0.737, True, FRAG_BUENA_2[1]), frame, 1.56)
+    main._add_cluster_candidate(_resultado("G577", 0.547, False, FRAG_CORTADA[1]), frame, 2.95)
+
+    assert len(main._clusters) == 1, "el fragmento abrió una tarjeta aparte"
+    cluster = main._clusters[0]
+    assert len(cluster["candidates"]) == 3
+    # El fragmento queda como evidencia, pero la lectura que se registra sigue
+    # siendo la buena.
+    assert cluster["best"]["result"]["normalizedText"] == "IAG574"
+    assert cluster["best"]["result"]["confidence"] == 0.797
+
+
+def test_el_fragmento_que_llega_primero_tambien_se_une():
+    frame = _frame(FRAG_FRAME)
+    main._add_cluster_candidate(_resultado("G577", 0.547, False, FRAG_CORTADA[1]), frame, 0.0)
+    main._add_cluster_candidate(_resultado("IAG574", 0.737, True, FRAG_BUENA_2[1]), frame, 1.4)
+    assert len(main._clusters) == 1
+    assert main._clusters[0]["best"]["result"]["normalizedText"] == "IAG574"
+
+
+def test_un_fragmento_lejos_en_el_cuadro_no_se_une():
+    """La posición sigue vetando: el pedazo tiene que estar donde está el auto."""
+    frame = _frame(FRAG_FRAME)
+    main._add_cluster_candidate(_resultado("IAG574", 0.737, True, FRAG_BUENA_2[1]), frame, 0.0)
+    lejos = (100, 1100, 190, 1143)
+    main._add_cluster_candidate(_resultado("G577", 0.547, False, lejos), frame, 1.4)
+    assert len(main._clusters) == 2
+
+
+def test_una_patente_valida_parecida_no_se_trata_como_fragmento():
+    """Dos autos con patentes válidas siguen pasando por `_plates_similar`."""
+    frame = _frame(FRAG_FRAME)
+    main._add_cluster_candidate(_resultado("AH000BO", 0.8, True, FRAG_BUENA_2[1]), frame, 0.0)
+    main._add_cluster_candidate(_resultado("AB174CU", 0.8, True, FRAG_BUENA_2[1]), frame, 1.4)
+    assert len(main._clusters) == 2

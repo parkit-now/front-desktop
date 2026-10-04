@@ -52,7 +52,7 @@ export const TICKET_TEMPLATE_FIELD_LABELS: Record<
   nonFiscalControl: 'Control no fiscal',
   ticketNumber: 'Número de ticket',
   plate: 'Patente',
-  vehicleBrand: 'Marca',
+  vehicleBrand: 'Marca y modelo',
   vehicleModel: 'Modelo',
   color: 'Color',
   rate: 'Tarifa',
@@ -162,7 +162,30 @@ function normalizeFields(
     if (!seen.has(defaults.id)) normalized.push({ ...defaults });
   }
 
-  return normalized;
+  return linkVehicleFields(normalized);
+}
+
+/**
+ * Marca y modelo se imprimen en un solo renglón y se configuran juntos: el
+ * modelo copia visibilidad, tamaño y énfasis de la marca y va siempre detrás
+ * de ella. Se conservan los dos ids porque son los que valida el backend.
+ */
+export function linkVehicleFields(
+  fields: TicketTemplateField[],
+): TicketTemplateField[] {
+  const brand = fields.find((field) => field.id === 'vehicleBrand');
+  const model = fields.find((field) => field.id === 'vehicleModel');
+  if (!brand || !model) return fields;
+
+  const rest = fields.filter((field) => field.id !== 'vehicleModel');
+  const brandIndex = rest.indexOf(brand);
+  rest.splice(brandIndex + 1, 0, {
+    ...model,
+    visible: brand.visible,
+    fontSizePt: brand.fontSizePt,
+    emphasis: brand.emphasis,
+  });
+  return rest;
 }
 
 export function readTicketTemplateSettings(

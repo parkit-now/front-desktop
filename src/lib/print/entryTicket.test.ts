@@ -103,8 +103,8 @@ describe('buildEntryTicketHtml', () => {
   it('se adapta al ancho del driver cuando no hay tamaño declarado', () => {
     const html = buildEntryTicketHtml(ticket(), { bodyWidthMm: null });
     expect(html).toContain('width: 100%');
-    expect(html).toContain('max-width: 80mm');
-    expect(html).not.toContain('width: 72mm');
+    expect(html).toContain('max-width: 72mm; margin: 0;');
+    expect(html).not.toContain(' width: 72mm');
   });
 
   it('escapa texto cargado por el operador', () => {
@@ -142,6 +142,27 @@ describe('buildEntryTicketHtml', () => {
   it('trata como vacío un valor con solo espacios', () => {
     const html = buildEntryTicketHtml(ticket({ vehicleModel: '   ' }));
     expect(html).not.toContain('Modelo');
+  });
+
+  it('imprime marca y modelo en un solo renglón', () => {
+    const html = buildEntryTicketHtml(ticket());
+    expect(html).toContain(
+      '>Vehículo</span><span class="t-value">VW Suran</span>',
+    );
+    expect(html).not.toContain('>Marca<');
+    expect(html).not.toContain('>Modelo<');
+  });
+
+  it('muestra solo la marca si falta el modelo', () => {
+    const html = buildEntryTicketHtml(ticket({ vehicleModel: null }));
+    expect(html).toContain('<span class="t-value">VW</span>');
+  });
+
+  it('omite el renglón si faltan marca y modelo', () => {
+    const html = buildEntryTicketHtml(
+      ticket({ vehicleBrand: null, vehicleModel: null }),
+    );
+    expect(html).not.toContain('Vehículo');
   });
 
   it('marca S/N cuando no hay número de ticket', () => {

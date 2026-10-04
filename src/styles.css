@@ -7446,3 +7446,22 @@ h2 {
     animation: none;
   }
 }
+
+/* Modo prueba de la cámara (CameraSettingsPanel / AutoEntriesColumns). */
+.camera-testing-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.camera-testing-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.auto-entries__testing {
+  flex: none;
+}

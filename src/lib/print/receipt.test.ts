@@ -70,7 +70,7 @@ describe('buildPaymentReceiptHtml', () => {
   it('se adapta al ancho del driver cuando no hay tamaño declarado', () => {
     const html = buildPaymentReceiptHtml(receipt(), { bodyWidthMm: null });
     expect(html).toContain('width: 100%');
-    expect(html).toContain('max-width: 80mm');
+    expect(html).toContain('max-width: 72mm; margin: 0;');
   });
 
   it('omite valores opcionales vacíos y escapa texto cargado', () => {
