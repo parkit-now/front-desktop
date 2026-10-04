@@ -12,7 +12,7 @@ import {
   isLinkableMatch,
   matchArrivalText,
   unlinkErrorMessage,
-  upcomingTodayText,
+  upcomingReservationText,
   matchesPlate,
   normalizePlate,
   prepaidOf,
@@ -202,17 +202,27 @@ describe('llegada anticipada o tardía (6c)', () => {
     );
   });
 
-  it('aviso de reserva hoy demasiado temprano', () => {
+  it('aviso de reserva más tarde: hoy o mañana', () => {
+    const now = new Date('2026-10-06T21:00:00.000Z'); // 18:00
     expect(
-      upcomingTodayText({
-        entryAt: RES_AT,
-        linkableFrom: '2026-10-06T22:30:00.000Z',
-      }),
+      upcomingReservationText(
+        { entryAt: RES_AT, linkableFrom: '2026-10-06T22:30:00.000Z' },
+        now,
+      ),
     ).toBe(
       'Esta patente tiene una reserva hoy a las 20:30. Si entra ahora, es una estadía común: la reserva se toma sola desde las 19:30.',
     );
-    expect(upcomingTodayText({ entryAt: RES_AT })).toBe(
+    expect(upcomingReservationText({ entryAt: RES_AT }, now)).toBe(
       'Esta patente tiene una reserva hoy a las 20:30. Si entra ahora, es una estadía común.',
+    );
+    // 23:40 → reserva a la 01:10 del día siguiente.
+    expect(
+      upcomingReservationText(
+        { entryAt: '2026-10-07T04:10:00.000Z' },
+        new Date('2026-10-07T02:40:00.000Z'),
+      ),
+    ).toBe(
+      'Esta patente tiene una reserva mañana a las 01:10. Si entra ahora, es una estadía común.',
     );
   });
 

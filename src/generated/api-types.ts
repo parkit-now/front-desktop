@@ -5243,7 +5243,7 @@ export interface components {
         ReservationHoursMode: "opening" | "custom";
         ReservationMatchDto: {
             /**
-             * @description Cómo llega el auto AHORA: early (antes de la ventana, dentro del tope: se vincula y el extra se cobra al salir), on_time, late (pasada la tolerancia, antes de exitAt: se vincula) o too_early (sólo en `upcomingToday`: no se vincula).
+             * @description Cómo llega el auto AHORA: early (antes de la ventana, dentro del tope: se vincula y el extra se cobra al salir), on_time, late (pasada la tolerancia, antes de exitAt: se vincula) o too_early (sólo en `upcoming`: no se vincula).
              * @enum {string}
              */
             arrival: "early" | "on_time" | "late" | "too_early";
@@ -5293,8 +5293,8 @@ export interface components {
         ReservationMatchResponseDto: {
             /** @description La reserva de esa patente a la que se vincularía un ingreso ahora (antes, a tiempo o tarde; ver `arrival`), o null. */
             reservation: components["schemas"]["ReservationMatchDto"] | null;
-            /** @description Sólo si `reservation` es null: la próxima reserva confirmada de HOY de esa patente a la que todavía es muy temprano para vincular (`arrival: too_early`, `linkable: false`). La caja avisa "tiene una reserva hoy a las HH:MM"; el ingreso queda como estadía común. */
-            upcomingToday: components["schemas"]["ReservationMatchDto"] | null;
+            /** @description Sólo si `reservation` es null: la próxima reserva confirmada de esa patente en las próximas 24 h a la que todavía es muy temprano para vincular (`arrival: too_early`, `linkable: false`). La caja avisa "tiene una reserva hoy a las HH:MM"; el ingreso queda como estadía común. */
+            upcoming: components["schemas"]["ReservationMatchDto"] | null;
         };
         ReservationNotReadyProblemDto: {
             /**

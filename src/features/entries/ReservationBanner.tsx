@@ -4,7 +4,7 @@ import {
   formatReservationWindow,
   formatTime,
   matchArrivalText,
-  upcomingTodayText,
+  upcomingReservationText,
 } from './reservationUtils';
 
 /**
@@ -51,8 +51,8 @@ export function EntryReservationBanner({
 }
 
 /**
- * Fase 6c: la patente tiene una reserva HOY, pero llega antes del tope de
- * llegada anticipada. El ingreso de ahora es una estadía común (no se manda
+ * Fase 6c: la patente tiene una reserva hoy (o mañana temprano), pero llega
+ * antes del tope de llegada anticipada. El ingreso de ahora es una estadía común (no se manda
  * la reserva); el aviso es para que el operador se lo diga al conductor.
  */
 export function UpcomingReservationNotice({
@@ -73,7 +73,7 @@ export function UpcomingReservationNotice({
         </span>
       </div>
       <span className="reservation-banner-sub">
-        {upcomingTodayText(upcoming)}
+        {upcomingReservationText(upcoming)}
       </span>
     </div>
   );

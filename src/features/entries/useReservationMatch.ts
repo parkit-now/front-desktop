@@ -15,8 +15,9 @@ export type ReservationMatchState = {
   /** La reserva a la que se vincularía el ingreso de ahora (banner). */
   match: ReservationMatchDto | null;
   /**
-   * Fase 6c: una reserva de HOY de esa patente a la que todavía es muy
-   * temprano para vincular (aviso "tiene una reserva hoy a las HH:MM").
+   * Fase 6c: una reserva de esa patente en las próximas 24 h a la que todavía
+   * es muy temprano para vincular (aviso "tiene una reserva hoy a las
+   * HH:MM").
    */
   upcoming: ReservationMatchDto | null;
 };
@@ -55,7 +56,7 @@ export function useReservationMatch(input: {
           setState({
             match: response.reservation ?? null,
             // Un backend anterior a la 6c no lo manda.
-            upcoming: response.upcomingToday ?? null,
+            upcoming: response.upcoming ?? null,
           });
         })
         .catch(() => {

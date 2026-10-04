@@ -209,14 +209,15 @@ export function matchArrivalText(input: ArrivalInput): string | null {
 }
 
 /**
- * Aviso de una reserva de HOY a la que todavía es muy temprano para vincular:
- * el ingreso de ahora es una estadía común.
+ * Aviso de una reserva próxima (hoy o mañana, dentro de 24 h) a la que todavía
+ * es muy temprano para vincular: el ingreso de ahora es una estadía común.
  */
-export function upcomingTodayText(input: {
-  entryAt: string;
-  linkableFrom?: string | null;
-}): string {
-  const head = `Esta patente tiene una reserva hoy a las ${formatTime(input.entryAt)}.`;
+export function upcomingReservationText(
+  input: { entryAt: string; linkableFrom?: string | null },
+  now: Date = new Date(),
+): string {
+  const day = arDayKey(input.entryAt) === arDayKey(now) ? 'hoy' : 'mañana';
+  const head = `Esta patente tiene una reserva ${day} a las ${formatTime(input.entryAt)}.`;
   const tail = input.linkableFrom
     ? ` Si entra ahora, es una estadía común: la reserva se toma sola desde las ${formatTime(input.linkableFrom)}.`
     : ' Si entra ahora, es una estadía común.';
