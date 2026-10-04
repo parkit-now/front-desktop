@@ -1,3 +1,17 @@
+# [1.10.0](https://github.com/parkit-now/front-desktop/compare/v1.9.0...v1.10.0) (2026-10-04)
+
+
+### Bug Fixes
+
+* **camara:** ya no se abre una nueva conexion a la camara cada vez que se entra a esa tab ([81a9389](https://github.com/parkit-now/front-desktop/commit/81a9389dbd6fed163d47bec0c438e015747074a2))
+* **impresora:** nuevo driver generico para impresoras termicas ([a143a59](https://github.com/parkit-now/front-desktop/commit/a143a59197a80f565132fb51036430accf450ac6))
+
+
+### Features
+
+* **refinement:** implement second detection pass to improve license plate recognition accuracy ([c0f3fe8](https://github.com/parkit-now/front-desktop/commit/c0f3fe8ce70186c2f9ee8e3865864a9ec5e95cc4))
+* **testing-mode:** implement camera testing mode to display all detections without suppression ([20a908f](https://github.com/parkit-now/front-desktop/commit/20a908fa41ee87854b98eab8ebd41ef4020ac63c))
+
 # [1.9.0](https://github.com/parkit-now/front-desktop/compare/v1.8.0...v1.9.0) (2026-10-04)
 
 
