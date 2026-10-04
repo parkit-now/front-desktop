@@ -26,6 +26,8 @@ import {
   printEntryTicket,
 } from '../../lib/print/printTicket';
 import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
+import { calcAmountDue } from './pricing';
+import { prepaidOf } from './reservationUtils';
 import { InvoiceSection } from './InvoiceSection';
 import type { ArcaEmitter } from './useArcaEmitter';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
@@ -374,25 +376,34 @@ export function EntryEditDialog({
     (sum, line) => sum + parseMoney(line.amount),
     0,
   );
+  // Con reserva lo sugerido es el excedente sobre el prepago, igual que en la
+  // salida y en el detector de subcobro del backend.
+  const prepaid = prepaidOf(entry);
   const suggestedAmount =
     nextEnteredAt && nextLeftAt
-      ? calcSuggestedAmount(nextEnteredAt, nextLeftAt, {
-          hour: rateSnapshot.rateSnapshotHourPriceArs,
-          fraction: rateSnapshot.rateSnapshotFractionPriceArs,
-          mediaEstadia: rateSnapshot.rateSnapshotMediaEstadiaPriceArs,
-          stay: rateSnapshot.rateSnapshotStayPriceArs,
-        })
+      ? calcAmountDue(
+          calcSuggestedAmount(nextEnteredAt, nextLeftAt, {
+            hour: rateSnapshot.rateSnapshotHourPriceArs,
+            fraction: rateSnapshot.rateSnapshotFractionPriceArs,
+            mediaEstadia: rateSnapshot.rateSnapshotMediaEstadiaPriceArs,
+            stay: rateSnapshot.rateSnapshotStayPriceArs,
+          }),
+          prepaid,
+        )
       : 0;
   const originalSuggestedAmount =
     entry.enteredAt && entry.leftAt
-      ? calcSuggestedAmount(entry.enteredAt, entry.leftAt, {
-          hour: parseMoney(entry.rateSnapshotHourPriceArs ?? '0'),
-          fraction: parseMoney(entry.rateSnapshotFractionPriceArs ?? '0'),
-          mediaEstadia: parseMoney(
-            entry.rateSnapshotMediaEstadiaPriceArs ?? '0',
-          ),
-          stay: parseMoney(entry.rateSnapshotStayPriceArs ?? '0'),
-        })
+      ? calcAmountDue(
+          calcSuggestedAmount(entry.enteredAt, entry.leftAt, {
+            hour: parseMoney(entry.rateSnapshotHourPriceArs ?? '0'),
+            fraction: parseMoney(entry.rateSnapshotFractionPriceArs ?? '0'),
+            mediaEstadia: parseMoney(
+              entry.rateSnapshotMediaEstadiaPriceArs ?? '0',
+            ),
+            stay: parseMoney(entry.rateSnapshotStayPriceArs ?? '0'),
+          }),
+          prepaid,
+        )
       : 0;
   const originalPayments = useMemo(
     () => paymentIdentity(toPaymentLines(entry, pms)),

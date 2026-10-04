@@ -37,7 +37,6 @@ import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import { useArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import {
-  calcSuggestedAmount,
   computeChange,
   formatDuration,
   isCashCovered,
@@ -49,6 +48,12 @@ import {
   type StayPrices,
 } from './entryUtils';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
+import {
+  exitCharge,
+  formatReservationWindow,
+  prepaidOf,
+  reservationCode,
+} from './reservationUtils';
 
 /** Cada cuánto se recalcula el sugerido con el modal abierto. */
 const TICK_MS = 15_000;
@@ -98,14 +103,28 @@ export function ExitModal({
     ],
   );
 
-  const suggested = useMemo(
+  // Entró con reserva: ya pagó por Mercado Pago y se cobra sólo el excedente,
+  // `max(estadía − prepago, 0)` (fase 6). Sin reserva, `prepaid` es null y el
+  // cobro es la estadía entera, como siempre.
+  const prepaid = prepaidOf(entry);
+  const charge = useMemo(
     () =>
-      calcSuggestedAmount(
-        entry.enteredAt,
-        new Date(nowMs).toISOString(),
+      exitCharge({
+        enteredAt: entry.enteredAt,
+        leftAt: new Date(nowMs).toISOString(),
         prices,
-      ),
-    [entry.enteredAt, nowMs, prices],
+        prepaid,
+      }),
+    [entry.enteredAt, nowMs, prices, prepaid],
+  );
+  const suggested = charge.due;
+  // La franja sale de la foto de "Reservas de hoy", si la tenemos.
+  const reservation = useLiveQuery(
+    () =>
+      entry.reservationId
+        ? localDb.todayReservations.get(entry.reservationId)
+        : undefined,
+    [entry.reservationId],
   );
 
   const [amount, setAmount] = useState(
@@ -182,6 +201,11 @@ export function ExitModal({
   const parsedAmount = parseFloat(amount.replace(',', '.'));
   const amountToCharge =
     Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
+  // La reserva cubre toda la estadía: se cierra sin cobro (sin medio de pago,
+  // sin efectivo y sin QR). Si el operador carga un monto, vuelve el cobro
+  // normal.
+  const closesWithoutCharge =
+    prepaid !== null && !splitEnabled && amountToCharge <= 0;
   const parsedReceived = parseFloat(received.replace(',', '.'));
   const receivedAmount =
     Number.isFinite(parsedReceived) && parsedReceived > 0 ? parsedReceived : 0;
@@ -190,6 +214,7 @@ export function ExitModal({
   // single-method payment; split or non-cash methods are charged exactly.
   const isCash =
     !splitEnabled &&
+    !closesWithoutCharge &&
     !!effectivePm &&
     isCashMethod(effectivePm.type, effectivePm.name);
   const change = computeChange(amountToCharge, receivedAmount);
@@ -222,7 +247,8 @@ export function ExitModal({
       : [];
   const invoicesOnCharge =
     selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
-  const showInvoiceChooser = offersReceiver && invoicesOnCharge;
+  const showInvoiceChooser =
+    offersReceiver && invoicesOnCharge && !closesWithoutCharge;
   const showPausedNotice =
     invoicingPaused && selectedModes.some((mode) => mode !== 'none');
 
@@ -239,7 +265,8 @@ export function ExitModal({
   // Sólo en cobro de un solo medio: repartir una estadía entre QR y efectivo
   // exigiría atar una línea del split a un intento, y hoy el backend crea UN
   // intento por estadía. Ver el reporte de la feature.
-  const isMpQr = !splitEnabled && isMercadoPagoMethod(effectivePm);
+  const isMpQr =
+    !splitEnabled && !closesWithoutCharge && isMercadoPagoMethod(effectivePm);
 
   // Las dos precondiciones (hay red, y la estadía existe del lado del
   // servidor) viven en `entryUtils` para poder testearlas sin React.
@@ -357,8 +384,11 @@ export function ExitModal({
       }
     } else {
       const v = parseFloat(amount.replace(',', '.'));
-      amountPaid = Number.isFinite(v) && v > 0 ? v : undefined;
-      if (effectivePm && amountPaid !== undefined) {
+      // Cubierto por la reserva: se cierra con $0 cobrado y sin líneas de
+      // pago (una línea de $0 ensuciaría el arqueo).
+      amountPaid =
+        Number.isFinite(v) && v > 0 ? v : closesWithoutCharge ? 0 : undefined;
+      if (effectivePm && amountPaid !== undefined && amountPaid > 0) {
         payments = [
           {
             id: generateUuidV7(),
@@ -792,6 +822,41 @@ export function ExitModal({
                   </div>
                 </>
               ) : null}
+              {prepaid !== null ? (
+                <>
+                  <div className="reservation-banner">
+                    <div className="reservation-banner-head">
+                      <strong>
+                        Reserva{' '}
+                        {entry.reservationId
+                          ? reservationCode(entry.reservationId)
+                          : ''}
+                      </strong>
+                      <span className="reservation-pill reservation-pill--brand">
+                        Prepaga
+                      </span>
+                    </div>
+                    <span className="reservation-banner-sub">
+                      {reservation
+                        ? `Cubre ${formatReservationWindow(reservation.entryAt, reservation.exitAt)} · `
+                        : ''}
+                      ya pagó {formatArs(prepaid)}
+                    </span>
+                  </div>
+                  <div className="exit-info-row">
+                    <span className="muted">Estadía total</span>
+                    <span>{formatArs(charge.stayTotal)}</span>
+                  </div>
+                  <div className="exit-info-row">
+                    <span className="muted">Prepago reserva</span>
+                    <span>− {formatArs(prepaid)}</span>
+                  </div>
+                  <div className="exit-info-row exit-info-row--total">
+                    <span>A cobrar</span>
+                    <span>{formatArs(charge.due)}</span>
+                  </div>
+                </>
+              ) : null}
             </div>
 
             {/* Fila 1: cuánto y con qué. El medio se oculta al dividir el
@@ -819,14 +884,20 @@ export function ExitModal({
                     autoFocus
                   />
                 </div>
-                {suggested > 0 ? (
+                {prepaid !== null ? (
+                  <p className="exit-field-hint">
+                    {charge.coveredByReservation
+                      ? 'La reserva cubre toda la estadía: se cierra sin cobro.'
+                      : `Excedente sobre la reserva: ${formatArs(suggested)}`}
+                  </p>
+                ) : suggested > 0 ? (
                   <p className="exit-field-hint">
                     Sugerido: {formatArs(suggested)}
                   </p>
                 ) : null}
               </div>
 
-              {!splitEnabled && pms.length > 0 ? (
+              {!splitEnabled && !closesWithoutCharge && pms.length > 0 ? (
                 <div className="form-field">
                   <span className="form-label">Medio de pago</span>
                   <PaymentMethodSelect
@@ -845,7 +916,7 @@ export function ExitModal({
               ) : null}
             </div>
 
-            {pms.length > 1 ? (
+            {pms.length > 1 && !closesWithoutCharge ? (
               <label className="exit-split-toggle">
                 <input
                   type="checkbox"
@@ -998,7 +1069,11 @@ export function ExitModal({
                   className="primary-button compact"
                   disabled={saving || !canConfirm}
                 >
-                  {saving ? 'Confirmando...' : 'Confirmar cobro'}
+                  {saving
+                    ? 'Confirmando...'
+                    : closesWithoutCharge
+                      ? 'Cerrar sin cobro'
+                      : 'Confirmar cobro'}
                 </button>
               )}
             </div>

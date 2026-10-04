@@ -6622,3 +6622,122 @@ h2 {
   font-size: 12px;
   opacity: 0.75;
 }
+
+/* ── Reservas en la caja (fase 6) ─────────────────────────────────────────── */
+
+.reservation-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-brand);
+  border-radius: 10px;
+  background: var(--color-bg-start);
+  font-size: 13px;
+}
+
+.reservation-banner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-brand-strong);
+}
+
+.reservation-banner-sub {
+  color: var(--color-muted);
+}
+
+.reservation-pill {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.reservation-pill--ok {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+
+.reservation-pill--warn {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+}
+
+.reservation-pill--brand {
+  color: var(--color-brand-strong);
+  background: var(--color-bg-start);
+  border-color: var(--color-brand);
+}
+
+.reservation-pill--neutral {
+  color: var(--color-muted);
+  background: var(--color-card);
+  border-color: var(--color-border);
+}
+
+.exit-info-row--total {
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--color-border);
+  font-weight: 700;
+}
+
+.exit-info-row--total span:last-child {
+  font-size: 16px;
+}
+
+.today-reservations {
+  flex: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 14px 18px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today-reservations__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.today-reservations__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.today-reservations__table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.today-reservations__table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.today-reservations__table tr:last-child td {
+  border-bottom: none;
+}
+
+.today-reservations__plate {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}

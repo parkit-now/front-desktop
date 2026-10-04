@@ -475,8 +475,50 @@ describe('pullEntries y el cursor', () => {
     await syncService.pullEntries();
 
     expect(h.pullEntryChanges).toHaveBeenCalledWith(
-      expect.objectContaining({ query: { afterSeq: 42 } }),
+      expect.objectContaining({ query: { afterSeq: 42, limit: 500 } }),
     );
+  });
+
+  it('pagina hasta la última página incompleta (cursor reseteado por un upgrade)', async () => {
+    const page = (from: number, count: number) =>
+      Array.from({ length: count }, (_, i) =>
+        serverEntry(`e-${from + i}`, { syncSeq: from + i }),
+      );
+    h.pullEntryChanges
+      .mockResolvedValueOnce({ items: page(1, 500), maxSeq: 500 })
+      .mockResolvedValueOnce({ items: page(501, 3), maxSeq: 503 });
+
+    await syncService.pullEntries();
+
+    expect(h.pullEntryChanges).toHaveBeenCalledTimes(2);
+    expect(h.pullEntryChanges).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: { afterSeq: 500, limit: 500 } }),
+    );
+    expect(h.syncState.get(STATE_KEY)?.lastSeq).toBe(503);
+    expect(h.entries.size).toBe(503);
+  });
+
+  it('baja la reserva vinculada y el prepago del ingreso', async () => {
+    h.pullEntryChanges.mockResolvedValue({
+      items: [
+        serverEntry('e-res', {
+          reservationId: 'res-1',
+          prepaidAmountArs: 4500,
+        }),
+        // Un backend anterior a la fase 6 no los manda.
+        serverEntry('e-old'),
+      ],
+      maxSeq: 2,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-res')).toMatchObject({
+      reservationId: 'res-1',
+      prepaidAmountArs: '4500',
+    });
+    expect(h.entries.get('e-old')?.reservationId).toBeUndefined();
+    expect(h.entries.get('e-old')?.prepaidAmountArs).toBeUndefined();
   });
 
   it('avanza igual aunque haya salteado una fila', async () => {

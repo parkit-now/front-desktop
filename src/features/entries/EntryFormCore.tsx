@@ -11,7 +11,8 @@ import {
 } from 'react';
 import { createEntry } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
-import { localDb, type LocalEntry } from '../../lib/db/localDb';
+import { localDb } from '../../lib/db/localDb';
+import { entryToLocal } from '../../lib/sync/SyncService';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
@@ -31,6 +32,8 @@ import {
   sortSelectableTypes,
   typeIdForCatalogSelection,
 } from './entryVehicleType';
+import { EntryReservationBanner } from './ReservationBanner';
+import { useReservationMatch } from './useReservationMatch';
 
 export type EntryFormVariant = 'manual' | 'auto';
 
@@ -332,6 +335,16 @@ export function EntryFormCore({
   const [colorError, setColorError] = useState('');
   const [rateError, setRateError] = useState('');
   const [plateHasActiveEntry, setPlateHasActiveEntry] = useState(false);
+
+  // Banner "Tiene reserva": la reserva confirmada de esta patente dentro de su
+  // ventana de llegada. Sólo con conexión; sin red el backend vincula el
+  // ingreso por patente cuando sincroniza.
+  const reservationMatch = useReservationMatch({
+    tenantId,
+    accessToken,
+    plate,
+    enabled: isOnline && !plateHasActiveEntry,
+  });
 
   // Highlighted suggestion index for keyboard navigation
   const [highlightedSuggestionIdx, setHighlightedSuggestionIdx] = useState(0);
@@ -1105,6 +1118,11 @@ export function EntryFormCore({
         : undefined,
       cashSessionId: activeSession?.id,
       ticketNumber,
+      // Sólo la reserva que mostró el banner, y sólo con conexión: offline el
+      // backend la busca por patente al sincronizar. Si ya no vale, el backend
+      // la ignora y busca igual: nunca rechaza el ingreso por esto.
+      reservationId:
+        isOnline && reservationMatch ? reservationMatch.id : undefined,
     };
 
     setSaving(true);
@@ -1115,44 +1133,10 @@ export function EntryFormCore({
           bearer: accessToken,
           body,
         });
-        const localEntry: LocalEntry = {
-          id: result.id,
-          tenantId: result.tenantId,
-          plate: result.plate,
-          color: result.color ?? undefined,
-          cochera: result.cochera ?? undefined,
-          notes: result.notes ?? undefined,
-          enteredAt: result.enteredAt,
-          leftAt: result.leftAt ?? undefined,
-          vehicleBrand: result.vehicleBrand ?? undefined,
-          vehicleModel: result.vehicleModel ?? undefined,
-          vehicleTypeId: result.vehicleTypeId ?? undefined,
-          vehicleCategory: result.vehicleCategory ?? undefined,
-          vehicleType: result.vehicleType ?? undefined,
-          rateId: result.rateId ?? undefined,
-          rateSnapshotName: result.rateSnapshotName ?? undefined,
-          rateSnapshotHourPriceArs:
-            result.rateSnapshotHourPriceArs !== null
-              ? String(result.rateSnapshotHourPriceArs)
-              : undefined,
-          rateSnapshotStayPriceArs:
-            result.rateSnapshotStayPriceArs !== null
-              ? String(result.rateSnapshotStayPriceArs)
-              : undefined,
-          rateSnapshotFractionPriceArs:
-            result.rateSnapshotFractionPriceArs !== null
-              ? String(result.rateSnapshotFractionPriceArs)
-              : undefined,
-          rateSnapshotMediaEstadiaPriceArs:
-            result.rateSnapshotMediaEstadiaPriceArs != null
-              ? String(result.rateSnapshotMediaEstadiaPriceArs)
-              : undefined,
-          cashSessionId: result.cashSessionId ?? undefined,
-          ticketNumber: result.ticketNumber ?? undefined,
-          version: result.version,
-          syncSeq: result.syncSeq,
-          updatedAt: result.updatedAt,
-        };
+        // El mapper del sync: trae también la reserva vinculada y el prepago
+        // que escribió el backend, que la salida necesita para cobrar sólo el
+        // excedente.
+        const localEntry = entryToLocal(result);
         await localDb.entries.put(localEntry);
       } else {
         await localDb.transaction(
@@ -1299,6 +1283,9 @@ export function EntryFormCore({
             autoFocus={variant === 'manual'}
           />
           {plateError && <p className="field-error">{plateError}</p>}
+          {reservationMatch ? (
+            <EntryReservationBanner match={reservationMatch} />
+          ) : null}
         </div>
 
         <div className="form-field">
