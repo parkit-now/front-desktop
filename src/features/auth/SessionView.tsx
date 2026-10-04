@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import {
   AlertTriangle,
+  CalendarClock,
   Car,
   Cctv,
   CreditCard,
@@ -20,6 +21,7 @@ import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { TodayReservationsPanel } from '../entries/TodayReservationsPanel';
+import { ReservationsPanel } from '../reservations/ReservationsPanel';
 import { useReservationsFeed } from '../reservations/useReservationsFeed';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
@@ -80,6 +82,7 @@ type WorkspaceSection =
   | 'vehicles'
   | 'vehicle-types'
   | 'caja'
+  | 'reservas'
   | 'impresora'
   | 'camara-config';
 
@@ -642,6 +645,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     vehicles: 'Catálogo de Vehículos',
     'vehicle-types': 'Tipos de Vehículo',
     caja: 'Caja',
+    reservas: 'Reservas',
     impresora: 'Impresora',
     'camara-config': 'Configuración de cámara',
   };
@@ -654,6 +658,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
+    if (s === 'reservas') return <CalendarClock size={20} aria-hidden />;
     if (s === 'impresora') return <Printer size={20} aria-hidden />;
     if (s === 'camara-config') return <Cctv size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
@@ -736,6 +741,34 @@ export function SessionView({ session, sessionStale = false }: Props) {
               >
                 <Archive size={18} aria-hidden="true" />
                 {!sidebarCollapsed ? <span>Caja</span> : null}
+              </button>
+            ) : null}
+
+            {canShowReservasNav ? (
+              <button
+                type="button"
+                className={`nav-item ${section === 'reservas' ? 'active' : ''}`}
+                onClick={() => setSection('reservas')}
+                aria-label={
+                  reservationsFeed.pendingCount > 0
+                    ? `Reservas, ${reservationsFeed.pendingCount} por aceptar`
+                    : undefined
+                }
+              >
+                <CalendarClock size={18} aria-hidden="true" />
+                {!sidebarCollapsed ? <span>Reservas</span> : null}
+                {reservationsFeed.pendingCount > 0 ? (
+                  <span
+                    // La key reinicia la animación con cada reserva nueva.
+                    key={reservationsFeed.pulseKey}
+                    className={`nav-badge${
+                      reservationsFeed.pulseKey > 0 ? ' nav-badge--pulse' : ''
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {reservationsFeed.pendingCount}
+                  </span>
+                ) : null}
               </button>
             ) : null}
 
@@ -879,6 +912,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                       <TodayReservationsPanel
                         tenantId={activeTenantId}
                         pendingCount={reservationsFeed.pendingCount}
+                        onOpenReservations={() => setSection('reservas')}
                       />
                       <ExitControls
                         tenantId={activeTenantId}
@@ -1041,6 +1075,21 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   <h2>Falta estacionamiento activo</h2>
                   <p className="muted">
                     Seleccioná un estacionamiento para gestionar la caja.
+                  </p>
+                </section>
+              )
+            ) : section === 'reservas' ? (
+              activeTenantId ? (
+                <ReservationsPanel
+                  tenantId={activeTenantId}
+                  accessToken={session.access_token}
+                  feed={reservationsFeed}
+                />
+              ) : (
+                <section className="dashboard-card warning">
+                  <h2>Falta estacionamiento activo</h2>
+                  <p className="muted">
+                    Seleccioná un estacionamiento para ver sus reservas.
                   </p>
                 </section>
               )
