@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/parkit-now/front-desktop/compare/v1.8.0...v1.9.0) (2026-10-04)
+
+
+### Features
+
+* **desktop:** correcciones de la revisión general ([75d68a9](https://github.com/parkit-now/front-desktop/commit/75d68a9abfdad1838c8e61f8090fba8dde36c6cc))
+
 # [1.8.0](https://github.com/parkit-now/front-desktop/compare/v1.7.0...v1.8.0) (2026-10-04)
 
 
