@@ -249,9 +249,13 @@ export interface Chip {
   tone: ChipTone;
 }
 
-/** Chip de estado. En la caja "el dueño" es la playa, no "vos". */
+/**
+ * Chip de estado. En la caja "el dueño" es la playa, no "vos". Una en curso
+ * dice además si el auto llegó antes de su ventana o tarde (fase 6c).
+ */
 export function statusChip(
-  r: Pick<LocalReservation, 'status' | 'cancelledBy'>,
+  r: Pick<LocalReservation, 'status' | 'cancelledBy'> &
+    Partial<Pick<LocalReservation, 'arrival'>>,
 ): Chip {
   switch (r.status) {
     case 'pending_approval':
@@ -259,7 +263,15 @@ export function statusChip(
     case 'confirmed':
       return { label: 'Confirmada', tone: 'ok' };
     case 'checked_in':
-      return { label: 'En curso', tone: 'brand' };
+      return {
+        label:
+          r.arrival === 'early'
+            ? 'En curso · llegó antes'
+            : r.arrival === 'late'
+              ? 'En curso · llegó tarde'
+              : 'En curso',
+        tone: 'brand',
+      };
     case 'completed':
       return { label: 'Completada', tone: 'neutral' };
     case 'no_show':

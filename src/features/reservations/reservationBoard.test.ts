@@ -314,6 +314,23 @@ describe('chips', () => {
     });
   });
 
+  it('en curso dice si llegó antes o tarde (6c)', () => {
+    expect(statusChip(res({ status: 'checked_in' })).label).toBe('En curso');
+    expect(
+      statusChip(res({ status: 'checked_in', arrival: 'on_time' })).label,
+    ).toBe('En curso');
+    expect(
+      statusChip(res({ status: 'checked_in', arrival: 'early' })).label,
+    ).toBe('En curso · llegó antes');
+    expect(
+      statusChip(res({ status: 'checked_in', arrival: 'late' })).label,
+    ).toBe('En curso · llegó tarde');
+    // Ya salió: la llegada no cambia el estado final.
+    expect(
+      statusChip(res({ status: 'completed', arrival: 'early' })).label,
+    ).toBe('Completada');
+  });
+
   it('reembolso', () => {
     expect(refundChip(res({ refundStatus: 'refunded' }))?.label).toBe(
       'Reembolsada',

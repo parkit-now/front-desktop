@@ -4,6 +4,7 @@ import { localDb } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import {
   arDayKey,
+  arrivalSuffix,
   formatTime,
   isPanelStatus,
   STATUS_LABELS,
@@ -116,6 +117,9 @@ export function TodayReservationsPanel({
                         }
                       >
                         {STATUS_LABELS[status]}
+                        {status === 'checked_in' && arrivalSuffix(row.arrival)
+                          ? ` · ${arrivalSuffix(row.arrival)}`
+                          : ''}
                       </span>
                     ) : (
                       row.status
