@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../../lib/api/client';
 import {
   arrivalNoticeText,
-  canUnlinkReservation,
   exitBreakdown,
   exitCharge,
   formatOutsideTime,
@@ -11,7 +9,6 @@ import {
   formatReservationWindow,
   isLinkableMatch,
   matchArrivalText,
-  unlinkErrorMessage,
   upcomingReservationText,
   matchesPlate,
   normalizePlate,
@@ -283,66 +280,5 @@ describe('llegada anticipada o tardía (6c)', () => {
         prepaid: 4500,
       }),
     ).toMatchObject({ stayTotal: 5750, due: 1250 });
-  });
-
-  describe('canUnlinkReservation', () => {
-    const entry = { reservationId: 'r-1', syncSeq: 12 };
-    it('con conexión, adentro, sincronizado y sin ops encoladas: sí', () => {
-      expect(
-        canUnlinkReservation({ isOnline: true, entry, pendingOpsForEntry: 0 }),
-      ).toBe(true);
-    });
-    it.each([
-      ['sin conexión', { isOnline: false, entry, pendingOpsForEntry: 0 }],
-      [
-        'ya salió',
-        {
-          isOnline: true,
-          entry: { ...entry, leftAt: '2026-10-07T02:30:00.000Z' },
-          pendingOpsForEntry: 0,
-        },
-      ],
-      [
-        'sin reserva',
-        {
-          isOnline: true,
-          entry: { syncSeq: 12 },
-          pendingOpsForEntry: 0,
-        },
-      ],
-      [
-        'todavía no sincronizado',
-        {
-          isOnline: true,
-          entry: { ...entry, syncSeq: 0 },
-          pendingOpsForEntry: 0,
-        },
-      ],
-      ['con ops encoladas', { isOnline: true, entry, pendingOpsForEntry: 1 }],
-    ])('%s: no', (_label, input) => {
-      expect(canUnlinkReservation(input)).toBe(false);
-    });
-  });
-});
-
-describe('unlinkErrorMessage', () => {
-  const problem = (code: string) => ({ code }) as never;
-  it('409 por versión: explica que otra caja lo cambió', () => {
-    expect(
-      unlinkErrorMessage(new ApiError(409, 'Conflict', problem('CONFLICT'))),
-    ).toBe(
-      'Este ingreso cambió en otra caja. Esperá a que se sincronice y volvé a intentar.',
-    );
-  });
-  it('el auto ya salió', () => {
-    expect(
-      unlinkErrorMessage(
-        new ApiError(
-          409,
-          'Conflict',
-          problem('ENTRY_RESERVATION_UNLINK_CLOSED'),
-        ),
-      ),
-    ).toBe('El auto ya salió: la reserva no se puede desvincular.');
   });
 });

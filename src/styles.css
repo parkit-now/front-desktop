@@ -469,6 +469,24 @@ h2 {
   min-width: 0;
 }
 
+.camera-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.camera-panel__toolbar--end {
+  justify-content: flex-end;
+}
+
+.camera-panel__gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 40px;
+}
+
 .camera-panel__viewport {
   position: relative;
   border: 1px solid #d0d9e6;
@@ -721,8 +739,85 @@ h2 {
   border-color: rgba(255, 255, 255, 0.24);
 }
 
+.nav-group {
+  display: grid;
+  gap: 8px;
+}
+
+.nav-group__header {
+  position: relative;
+}
+
+.nav-group__chevron {
+  margin-left: auto;
+  opacity: 0.8;
+}
+
+.nav-group__children {
+  display: grid;
+  gap: 4px;
+  margin-left: 14px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(208, 217, 230, 0.2);
+}
+
+.nav-group__child {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.nav-group__popover {
+  position: fixed;
+  left: 116px;
+  z-index: 60;
+  min-width: 200px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid rgba(208, 217, 230, 0.3);
+  border-radius: 12px;
+  background: #0c2f5d;
+  box-shadow: 0 12px 28px rgba(7, 25, 53, 0.45);
+}
+
+.nav-group__popover-title {
+  margin: 0;
+  padding: 4px 10px 6px;
+  color: rgba(217, 231, 255, 0.7);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nav-group__popover-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #d9e7ff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-group__popover-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-group__popover-item.active {
+  background: linear-gradient(140deg, #2083ff 0%, #0f5fd8 100%);
+  color: #fff;
+}
+
 .sidebar-foot {
   display: grid;
+  gap: 10px;
   gap: 10px;
   min-width: 0;
 }
@@ -2801,6 +2896,21 @@ h2 {
     align-content: center;
     overflow-x: auto;
     padding-bottom: 2px;
+  }
+
+  .nav-group,
+  .nav-group__children {
+    display: contents;
+  }
+
+  .nav-group__children {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nav-group__popover {
+    left: 12px;
   }
 
   .sidebar-nav .nav-item {
@@ -6724,11 +6834,6 @@ h2 {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-}
-
-.arrival-notice-unlink {
-  padding: 4px 10px;
-  font-size: 12px;
 }
 
 .arrival-notice-close {

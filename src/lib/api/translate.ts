@@ -73,8 +73,6 @@ const CODE_MESSAGES: Record<string, string> = {
     'Ingresá el motivo del cambio para modificar horarios o importes.',
   ENTRY_EXIT_NOT_AFTER_ENTRY:
     'La fecha y hora de egreso debe ser mayor a la de ingreso.',
-  ENTRY_RESERVATION_UNLINK_CLOSED:
-    'El auto ya salió: la reserva no se puede desvincular.',
 
   // Medios de pago.
   // Llega por el PATCH (renombrar, prender/apagar, marcar predeterminado)

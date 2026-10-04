@@ -5,6 +5,7 @@ import type {
   LocalPaymentTransaction,
 } from '../../lib/db/localDb';
 import {
+  computeReservationsCollected,
   computeSessionStats,
   computeSessionSummary,
   computeSummariesBySession,
@@ -355,6 +356,66 @@ describe('computeSessionStats', () => {
     );
     expect(excedido.withdrawnCash).toBe(-3000);
     expect(excedido.handoffStatus).toBe('over');
+  });
+});
+
+describe('computeReservationsCollected', () => {
+  const reserved = (overrides: Partial<LocalEntry>) =>
+    entry({
+      reservationId: 'res-1',
+      prepaidAmountArs: '1500.00',
+      leftAt: '2026-09-01T12:00:00.000Z',
+      ...overrides,
+    });
+
+  it('sin pagos (salida de $0) suma los que salieron dentro del turno', () => {
+    expect(
+      computeReservationsCollected(
+        [
+          reserved({ id: 'a' }),
+          reserved({ id: 'b', prepaidAmountArs: '500' }),
+          // Salió antes de abrir el turno y después de cerrarlo: no cuenta.
+          reserved({ id: 'c', leftAt: '2026-09-01T07:00:00.000Z' }),
+          reserved({ id: 'd', leftAt: '2026-09-01T17:00:00.000Z' }),
+          // Sin reserva o todavía adentro: no cuenta.
+          entry({ id: 'e', leftAt: '2026-09-01T12:00:00.000Z' }),
+          reserved({ id: 'f', leftAt: undefined }),
+        ],
+        session(),
+        [],
+      ),
+    ).toBe(2000);
+  });
+
+  it('el fin del turno es exclusivo: la salida justo al cierre es del turno siguiente', () => {
+    const closed = session({ closedAt: '2026-09-01T12:00:00.000Z' });
+    expect(computeReservationsCollected([reserved({})], closed, [])).toBe(0);
+  });
+
+  it('con pagos manda la caja de los pagos, aunque la ventana diga otra cosa', () => {
+    const exits = [reserved({ id: 'a', cashSessionId: 'session-0' })];
+    const paidInOther = [tx({ entryId: 'a', cashSessionId: 'session-2' })];
+    const paidHere = [tx({ entryId: 'a', cashSessionId: 'session-1' })];
+    // Salió dentro de la ventana de session-1 pero pagó en session-2.
+    expect(computeReservationsCollected(exits, session(), paidInOther)).toBe(0);
+    expect(computeReservationsCollected(exits, session(), paidHere)).toBe(1500);
+    // Salió fuera de la ventana pero su pago quedó en este turno (offline).
+    const late = [reserved({ id: 'a', leftAt: '2026-09-01T20:00:00.000Z' })];
+    expect(computeReservationsCollected(late, session(), paidHere)).toBe(1500);
+  });
+
+  it('no altera el efectivo esperado ni el total del cajón', () => {
+    const stats = computeSessionStats(
+      session(),
+      [reserved({})],
+      [tx({ amount: 1000 })],
+      Date.now(),
+      [reserved({})],
+      [tx({ amount: 1000, entryId: 'entry-1' })],
+    );
+    expect(stats.reservationsCollected).toBe(1500);
+    expect(stats.summary.grandTotal).toBe(1000);
+    expect(stats.summary.cashTotal).toBe(6000);
   });
 });
 

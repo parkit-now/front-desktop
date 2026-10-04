@@ -3,8 +3,6 @@
  * del excedente al salir. Sin React ni Dexie,
  * para testearla sola.
  */
-import { ApiError } from '../../lib/api/client';
-import { translateApiError } from '../../lib/api/translate';
 import { ARGENTINA_TIME_ZONE } from '../../lib/format/argentina';
 import { calcSuggestedAmount, type StayPrices } from './entryUtils';
 import { calcAmountDue } from './pricing';
@@ -267,41 +265,4 @@ export function arrivalChipText(input: {
   }
   if (input.arrival === 'late') return 'Llegó tarde';
   return null;
-}
-
-/**
- * ¿Se puede desvincular la reserva de este ingreso desde la caja? Sólo con
- * conexión (lo decide el backend, con la versión del ingreso), con el auto
- * todavía adentro, con el ingreso ya en el servidor (`syncSeq > 0`) y sin
- * operaciones encoladas encima: si hubiera un cierre o una corrección sin
- * sincronizar, desvincular cambiaría la versión y ese cambio terminaría en
- * conflicto.
- */
-export function canUnlinkReservation(input: {
-  isOnline: boolean;
-  entry: { reservationId?: string; leftAt?: string; syncSeq: number };
-  pendingOpsForEntry: number;
-}): boolean {
-  return (
-    input.isOnline &&
-    Boolean(input.entry.reservationId) &&
-    !input.entry.leftAt &&
-    input.entry.syncSeq > 0 &&
-    input.pendingOpsForEntry === 0
-  );
-}
-
-/**
- * El 409 genérico (otra caja cambió el ingreso: la versión no coincide) se
- * explica con lo que hay que hacer; el resto pasa por `translate.ts`.
- */
-export function unlinkErrorMessage(error: unknown): string {
-  if (
-    error instanceof ApiError &&
-    error.status === 409 &&
-    (error.problem as { code?: unknown } | null)?.code === 'CONFLICT'
-  ) {
-    return 'Este ingreso cambió en otra caja. Esperá a que se sincronice y volvé a intentar.';
-  }
-  return translateApiError(error);
 }

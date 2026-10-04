@@ -1,6 +1,7 @@
 import { Bookmark, Info, Save, Trash2, X } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useCloseOnOutsideClick } from '../../lib/ui/useCloseOnOutsideClick';
+import { useEscapeKey } from '../../lib/ui/useEscapeKey';
 import type {
   TableTemplateScope,
   TableViewConfig,
@@ -36,6 +37,8 @@ export function TemplateSelector({
   const closeMenu = useCallback(() => setOpen(false), []);
 
   useCloseOnOutsideClick(menuRef, open, closeMenu);
+  useEscapeKey(() => setSaveDialogOpen(false), true, saveDialogOpen);
+  useEscapeKey(() => setEditingTemplate(null), true, editingTemplate !== null);
 
   const selectedTemplate = useMemo(
     () =>

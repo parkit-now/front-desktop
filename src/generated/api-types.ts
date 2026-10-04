@@ -473,6 +473,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/driver/parkings/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search active parking lots by name or address
+         * @description Case-insensitive match on name or address, active lots only, at most 20. With `latitude` and `longitude` each item carries `distanceMeters` and the list is ordered by it; otherwise ordered by name and `distanceMeters` is null. Items have the same fields as `GET /driver/parkings`.
+         */
+        get: operations["DriverController_search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/driver/reservations": {
         parameters: {
             query?: never;
@@ -1239,23 +1259,6 @@ export interface paths {
          * @description Emite a consumidor final o, con `receiverCuit`, identificada con ese CUIT: la letra la decide el padrón (A si el emisor es RI y el receptor RI o monotributista). Los problemas de ARCA (caído, rechazo, certificado vencido, CUIT sin datos en el padrón) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
          */
         post: operations["InvoicesController_issue"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tenants/{tenantId}/entries/{entryId}/reservation/unlink": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Unlink the reservation from an open entry (it becomes a regular stay; the reservation goes back to confirmed, or no_show past its window). Idempotent; optimistic locking like the exit. */
-        post: operations["EntriesController_unlinkReservation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3324,7 +3327,12 @@ export interface components {
              */
             day: string;
             /**
-             * @description Sum of `amountPaid` over entries closed in the window, in ARS. Counts revenue at exit time, since payments carry no timestamp of their own.
+             * @description Portion of `revenue` paid online for reservations (prepayment of stays that left in the window, no-shows and partially kept cancellations dated in the window), in ARS.
+             * @example 3000
+             */
+            reservationRevenue: number;
+            /**
+             * @description Sum of `amountPaid` over entries closed in the window plus `reservationRevenue`, in ARS. Till revenue counts at exit time, since payments carry no timestamp of their own.
              * @example 184500
              */
             revenue: number;
@@ -3356,7 +3364,12 @@ export interface components {
              */
             day: string;
             /**
-             * @description Sum of `amountPaid` over entries closed in the window, in ARS. Counts revenue at exit time, since payments carry no timestamp of their own.
+             * @description Portion of `revenue` paid online for reservations (prepayment of stays that left in the window, no-shows and partially kept cancellations dated in the window), in ARS.
+             * @example 3000
+             */
+            reservationRevenue: number;
+            /**
+             * @description Sum of `amountPaid` over entries closed in the window plus `reservationRevenue`, in ARS. Till revenue counts at exit time, since payments carry no timestamp of their own.
              * @example 184500
              */
             revenue: number;
@@ -3492,6 +3505,33 @@ export interface components {
             reservationVehicleCategories: components["schemas"]["ReservableVehicleCategory"][] | null;
             /** @description Rangos de apertura por día; vacío si no hay horarios. */
             schedules: components["schemas"]["DriverScheduleDto"][];
+            totalSpots: number | null;
+        };
+        DriverParkingSearchResultDto: {
+            /** @description Toma reservas: servicio activado, con tarifa de reservas y cupo configurados. */
+            acceptsReservations: boolean;
+            address: string | null;
+            /** @description Lugares libres ahora: capacidad − vehículos adentro. null si la playa no declaró capacidad (no es lo mismo que 0). */
+            availableSpots: number | null;
+            /** @description Distancia en metros a las coordenadas enviadas. null si la búsqueda no trae coordenadas o la playa no tiene ubicación cargada. */
+            distanceMeters: number | null;
+            /** Format: uuid */
+            id: string;
+            latitude: number;
+            longitude: number;
+            name: string;
+            /** @description null si la playa no cargó horarios. */
+            openNow: boolean | null;
+            /** @description Precio de la fracción de 5 minutos de la tarifa de reservas en ARS. null si la playa no toma reservas. */
+            reservationFractionPriceArs: number | null;
+            /** @description Precio de la hora de la tarifa de reservas en ARS, igual para cualquier vehículo. null si la playa no toma reservas. */
+            reservationHourPriceArs: number | null;
+            /** @description Horario efectivo de reservas por día: el de apertura si el dueño no cargó uno propio. null si la playa no toma reservas. */
+            reservationHours: components["schemas"]["DriverScheduleDto"][] | null;
+            /** @description Reglas de la reserva. null si la playa no toma reservas. */
+            reservationRules: components["schemas"]["DriverReservationRulesDto"] | null;
+            /** @description Categorías de vehículo que pueden reservar. null si la playa no toma reservas. */
+            reservationVehicleCategories: components["schemas"]["ReservableVehicleCategory"][] | null;
             totalSpots: number | null;
         };
         DriverReservationDetailDto: {
@@ -4929,7 +4969,7 @@ export interface components {
         };
         PaymentMethodBreakdownDto: {
             /**
-             * @description Portion of `total` that has itemised transactions behind it.
+             * @description Portion of `total` that has itemised transactions behind it, including the reservation slice.
              * @example 25000
              */
             allocated: number;
@@ -4945,7 +4985,7 @@ export interface components {
             /** Format: date-time */
             to: string;
             /**
-             * @description Authoritative revenue for the window, summed from `entries.amountPaid`. This is the figure the KPI shows.
+             * @description Authoritative revenue for the window: `entries.amountPaid` plus the reservation money (`Mercado Pago (reserva)` slice). This is the figure the KPI shows.
              * @example 29300
              */
             total: number;
@@ -4980,6 +5020,13 @@ export interface components {
              * @example 21
              */
             count: number;
+            /**
+             * @description `payment`: a till payment method (from `payment_transactions`).
+             *     `reservation`: the single slice named `Mercado Pago (reserva)` — reservation prepayments paid online, recognised on an accrual basis (stay exit, no-show date, or cancellation date). Pass that name as the `paymentMethod` filter of the revenue endpoint to get only this money.
+             * @example payment
+             * @enum {string}
+             */
+            kind: "payment" | "reservation";
             /**
              * @description Payment method name, as snapshotted on the transaction. Snapshots are used rather than a join, so methods deleted since the payment still report correctly.
              * @example Efectivo
@@ -5405,7 +5452,14 @@ export interface components {
              */
             key: string;
             /**
-             * @description Revenue attributed to this bucket, in ARS. Anchored on `leftAt`.
+             * @description Portion of `revenue` that comes from reservations paid online (Mercado Pago), in ARS. Accrual basis: the prepayment of a stay lands on its `leftAt`; a no-show lands on the reservation `entryAt`; a cancellation that kept part of the money lands on `cancelledAt`.
+             *
+             *     With a `cashSessionId` only the prepayment of the stays that left under that drawer counts. With a `paymentMethod`, it counts only when the filter is `Mercado Pago (reserva)`.
+             * @example 3000
+             */
+            reservationRevenue: number;
+            /**
+             * @description Revenue attributed to this bucket, in ARS: till revenue anchored on `leftAt` plus `reservationRevenue`.
              * @example 12300
              */
             revenue: number;
@@ -6448,10 +6502,10 @@ export interface components {
             sortOrder: number;
         };
         VehicleCategorySliceDto: {
-            /** @description Platform vehicle category, as frozen on the stay at ingress. `null` is the "Sin dato" slice: stays that predate the categories, or that came from a till that does not send one. */
-            category: components["schemas"]["VehicleCategory"] | null;
+            /** @description Platform vehicle category, as frozen on the stay at ingress. `null` is the "Sin dato" slice: stays that predate the categories, or that came from a till that does not send one. `reservation_unused` ("Reservas sin uso") is the reservation money with no stay behind it (no-show, partial cancel): `stays` 0, only present when > 0, so the total matches `revenue/by-payment-method`. */
+            category: components["schemas"]["VehicleCategorySliceKey"] | null;
             /**
-             * @description Revenue of those stays (`entries.amountPaid`), in ARS.
+             * @description Revenue of those stays (`entries.amountPaid` plus the reservation prepayment), in ARS.
              * @example 12300
              */
             revenue: number;
@@ -6466,6 +6520,11 @@ export interface components {
              */
             stays: number;
         };
+        /**
+         * @description Platform vehicle category, as frozen on the stay at ingress. `null` is the "Sin dato" slice: stays that predate the categories, or that came from a till that does not send one. `reservation_unused` ("Reservas sin uso") is the reservation money with no stay behind it (no-show, partial cancel): `stays` 0, only present when > 0, so the total matches `revenue/by-payment-method`.
+         * @enum {string}
+         */
+        VehicleCategorySliceKey: "car" | "suv" | "pickup" | "van" | "motorcycle" | "bicycle" | "truck" | "other" | "reservation_unused";
         VehicleChangesResponseDto: {
             items: components["schemas"]["VehicleDto"][];
             maxSeq: number;
@@ -7809,6 +7868,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    DriverController_search: {
+        parameters: {
+            query: {
+                /** @description Latitud del conductor. Se usa solo si se envía junto con `longitude`, cada resultado trae la distancia y se ordena por ella; si no, se ordena por nombre. */
+                latitude?: number;
+                /** @description Longitud del conductor (va junto con `latitude`). */
+                longitude?: number;
+                /** @description Texto a buscar en el nombre o la dirección (sin distinguir mayúsculas). Mínimo 2 caracteres, sin contar los espacios de los extremos. */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverParkingSearchResultDto"][];
                 };
             };
         };
@@ -9741,41 +9826,6 @@ export interface operations {
             };
         };
     };
-    EntriesController_unlinkReservation: {
-        parameters: {
-            query: {
-                /** @description Expected current version of the row. Used for optimistic locking. */
-                expectedVersion: number;
-            };
-            header?: never;
-            path: {
-                entryId: string;
-                /** @description Parking lot tenant ID */
-                tenantId: unknown;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EntryDto"];
-                };
-            };
-            /** @description CONFLICT: la versión no coincide (otra caja lo cambió). ENTRY_RESERVATION_UNLINK_CLOSED: el auto ya salió. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-        };
-    };
     EntriesController_pullChanges: {
         parameters: {
             query?: {
@@ -10533,6 +10583,8 @@ export interface operations {
                  * @description Restrict to stays paid with this payment method (the snapshot name stored on the transaction, e.g. `Efectivo`).
                  *
                  *     Setting it switches `revenue` to sum `payment_transactions` instead of `entries.amountPaid` — the transactions table is the only place the per-method split exists. The response reports this in `revenueSource`.
+                 *
+                 *     Reservation money paid online is its own bucket, named `Mercado Pago (reserva)` (the same name `by-payment-method` reports). Pass exactly that value to get only reservation revenue; any other method excludes it.
                  */
                 paymentMethod?: string;
                 /** @description End of the window (exclusive), ISO-8601 with explicit offset. **Required unless `cashSessionId` is given.** */
