@@ -32,6 +32,13 @@ export function toLocalReservation(
     cancelledBy: dto.cancelledBy ?? undefined,
     // `stay` lo agrega la fase 6; un backend anterior no lo manda.
     enteredAt: dto.stay?.enteredAt ?? undefined,
+    // `arrival` lo agrega la 6c.
+    stayEntryId: dto.stay?.entryId ?? undefined,
+    arrival: dto.stay?.arrival ?? undefined,
+    minutesEarly: dto.stay?.minutesEarly ?? undefined,
+    minutesLate: dto.stay?.minutesLate ?? undefined,
+    stayPrepaidArs: dto.stay?.prepaidAmountArs ?? undefined,
+    policy: dto.policy ?? undefined,
     fetchedAt,
   };
 }

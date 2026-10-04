@@ -11,6 +11,19 @@ export const MATCH_DEBOUNCE_MS = 400;
 /** Una patente más corta no identifica a nadie: no se consulta. */
 const MIN_PLATE_LENGTH = 3;
 
+export type ReservationMatchState = {
+  /** La reserva a la que se vincularía el ingreso de ahora (banner). */
+  match: ReservationMatchDto | null;
+  /**
+   * Fase 6c: una reserva de esa patente en las próximas 24 h a la que todavía
+   * es muy temprano para vincular (aviso "tiene una reserva hoy a las
+   * HH:MM").
+   */
+  upcoming: ReservationMatchDto | null;
+};
+
+const EMPTY: ReservationMatchState = { match: null, upcoming: null };
+
 /**
  * La reserva de la patente que se está cargando (banner "Tiene reserva").
  *
@@ -28,9 +41,9 @@ export function useReservationMatch(input: {
   accessToken: string;
   plate: string;
   enabled: boolean;
-}): ReservationMatchDto | null {
+}): ReservationMatchState {
   const { tenantId, accessToken, plate, enabled } = input;
-  const [match, setMatch] = useState<ReservationMatchDto | null>(null);
+  const [state, setState] = useState<ReservationMatchState>(EMPTY);
   const normalized = normalizePlate(plate);
 
   useEffect(() => {
@@ -39,10 +52,15 @@ export function useReservationMatch(input: {
     const timer = setTimeout(() => {
       matchReservation({ tenantId, bearer: accessToken, plate: normalized })
         .then((response) => {
-          if (!cancelled) setMatch(response.reservation ?? null);
+          if (cancelled) return;
+          setState({
+            match: response.reservation ?? null,
+            // Un backend anterior a la 6c no lo manda.
+            upcoming: response.upcoming ?? null,
+          });
         })
         .catch(() => {
-          if (!cancelled) setMatch(null);
+          if (!cancelled) setState(EMPTY);
         });
     }, MATCH_DEBOUNCE_MS);
     return () => {
@@ -51,5 +69,9 @@ export function useReservationMatch(input: {
     };
   }, [tenantId, accessToken, normalized, enabled]);
 
-  return enabled && matchesPlate(match, plate) ? match : null;
+  if (!enabled) return EMPTY;
+  return {
+    match: matchesPlate(state.match, plate) ? state.match : null,
+    upcoming: matchesPlate(state.upcoming, plate) ? state.upcoming : null,
+  };
 }

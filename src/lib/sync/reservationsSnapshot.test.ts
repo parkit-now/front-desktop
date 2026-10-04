@@ -58,6 +58,54 @@ describe('toLocalReservation', () => {
     expect(row.cancelledBy).toBeUndefined();
   });
 
+  it('guarda cómo llegó el auto vinculado (6c)', () => {
+    const row = toLocalReservation(
+      {
+        ...base,
+        status: 'checked_in',
+        stay: {
+          entryId: 'e-1',
+          enteredAt: '2026-10-06T20:10:00.000Z',
+          leftAt: null,
+          excessChargedArs: null,
+          prepaidAmountArs: 4500,
+          arrival: 'early',
+          minutesEarly: 50,
+          minutesLate: 0,
+        },
+      } as never,
+      'tenant-1',
+      'x',
+    );
+    expect(row).toMatchObject({
+      stayEntryId: 'e-1',
+      arrival: 'early',
+      minutesEarly: 50,
+      minutesLate: 0,
+      stayPrepaidArs: 4500,
+    });
+  });
+
+  it('un backend de la fase 6 (stay sin arrival) no inventa la llegada', () => {
+    const row = toLocalReservation(
+      {
+        ...base,
+        status: 'checked_in',
+        stay: {
+          entryId: 'e-1',
+          enteredAt: '2026-10-06T20:52:00.000Z',
+          leftAt: null,
+          excessChargedArs: null,
+          prepaidAmountArs: 4500,
+        },
+      } as never,
+      'tenant-1',
+      'x',
+    );
+    expect(row.arrival).toBeUndefined();
+    expect(row.stayEntryId).toBe('e-1');
+  });
+
   it('un backend sin `stay` (anterior a la fase 6) no rompe', () => {
     const withoutStay: Partial<typeof base> = { ...base };
     delete withoutStay.stay;

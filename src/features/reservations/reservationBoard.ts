@@ -10,7 +10,12 @@
 import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import type { LocalReservation } from '../../lib/db/localDb';
-import { arDayKey, formatTime } from '../entries/reservationUtils';
+import { formatArs } from '../../lib/format/argentina';
+import {
+  arDayKey,
+  formatMinutes,
+  formatTime,
+} from '../entries/reservationUtils';
 
 export type ReservationBucket = 'pending' | 'today' | 'upcoming';
 
@@ -249,9 +254,28 @@ export interface Chip {
   tone: ChipTone;
 }
 
-/** Chip de estado. En la caja "el dueño" es la playa, no "vos". */
+/**
+ * Quién canceló, sin ambigüedad ("playa" no se entendía): el estacionamiento
+ * (dueño), el conductor, o el sistema. Si el sistema canceló porque nadie
+ * respondió a tiempo, se dice así.
+ */
+export function cancelledLabel(
+  r: Pick<LocalReservation, 'cancelledBy'> &
+    Partial<Pick<LocalReservation, 'reason'>>,
+): string {
+  if (r.cancelledBy === 'owner') return 'Cancelada por el estacionamiento';
+  if (r.cancelledBy === 'driver') return 'Cancelada por el conductor';
+  if (r.reason === 'approval_timeout') return 'Vencida sin respuesta';
+  return 'Cancelada por el sistema';
+}
+
+/**
+ * Chip de estado. En la caja el dueño es "el estacionamiento", no "vos". Una en curso
+ * dice además si el auto llegó antes de su ventana o tarde (fase 6c).
+ */
 export function statusChip(
-  r: Pick<LocalReservation, 'status' | 'cancelledBy'>,
+  r: Pick<LocalReservation, 'status' | 'cancelledBy'> &
+    Partial<Pick<LocalReservation, 'arrival' | 'reason'>>,
 ): Chip {
   switch (r.status) {
     case 'pending_approval':
@@ -259,7 +283,15 @@ export function statusChip(
     case 'confirmed':
       return { label: 'Confirmada', tone: 'ok' };
     case 'checked_in':
-      return { label: 'En curso', tone: 'brand' };
+      return {
+        label:
+          r.arrival === 'early'
+            ? 'En curso · llegó antes'
+            : r.arrival === 'late'
+              ? 'En curso · llegó tarde'
+              : 'En curso',
+        tone: 'brand',
+      };
     case 'completed':
       return { label: 'Completada', tone: 'neutral' };
     case 'no_show':
@@ -269,11 +301,7 @@ export function statusChip(
         ? { label: 'Vencida sin respuesta', tone: 'neutral' }
         : { label: 'Rechazada', tone: 'neutral' };
     case 'cancelled':
-      if (r.cancelledBy === 'owner')
-        return { label: 'Cancelada · playa', tone: 'neutral' };
-      if (r.cancelledBy === 'driver')
-        return { label: 'Cancelada · conductor', tone: 'neutral' };
-      return { label: 'Cancelada · sistema', tone: 'neutral' };
+      return { label: cancelledLabel(r), tone: 'neutral' };
     case 'expired':
       return { label: 'Vencida sin pago', tone: 'neutral' };
     case 'pending_payment':
@@ -386,4 +414,146 @@ export function classifyActionError(error: unknown): {
     message: translateApiError(error),
     stale: typeof code === 'string' && RACE_CODES.has(code),
   };
+}
+
+// ─── Modal "Reservas de hoy" del operativo ──────────────────────────────────
+
+/** Reservas vigentes: esperan respuesta, confirmadas o en curso. */
+const LIVE: readonly Status[] = ['pending_approval', 'confirmed', 'checked_in'];
+
+export function isLiveStatus(status: Status): boolean {
+  return LIVE.includes(status);
+}
+
+/**
+ * Lo que dice el ítem del operativo: cuántas reservas VIGENTES hay hoy (por
+ * aceptar a tiempo + confirmadas + en curso; no cuentan las canceladas,
+ * rechazadas, vencidas, completadas ni las que no se presentaron) y cuántas
+ * esperan respuesta (el mismo número que el badge del menú).
+ */
+export function todaySummary(
+  rows: readonly Pick<
+    LocalReservation,
+    'status' | 'entryAt' | 'approvalDeadlineAt'
+  >[],
+  now: Date = new Date(),
+): { today: number; pending: number } {
+  const pending = pendingCount(rows, now.getTime());
+  const live = rowsOf(rows, 'today', now).filter((r) =>
+    isLiveStatus(r.status),
+  ).length;
+  return { today: live + pending, pending };
+}
+
+/** Texto del número del ítem: la cuenta, o "Sin reservas hoy" si no hay. */
+export function todayCountLabel(count: number): string {
+  return count > 0 ? String(count) : 'Sin reservas hoy';
+}
+
+/**
+ * Grupos del modal, en el orden en que se muestran:
+ * 1. `pending`: por aceptar (de cualquier día: tienen plazo), la que vence antes primero.
+ * 2. `today`: las vigentes de hoy: en curso primero, después las confirmadas por hora.
+ * 3. `resolved`: las ya resueltas de hoy (completada, cancelada, etc.), por hora.
+ */
+export function todayDialogGroups<
+  T extends Pick<LocalReservation, 'status' | 'entryAt' | 'approvalDeadlineAt'>,
+>(
+  rows: readonly T[],
+  now: Date = new Date(),
+): { pending: T[]; today: T[]; resolved: T[] } {
+  const day = rowsOf(rows, 'today', now);
+  const live = day.filter((r) => isLiveStatus(r.status));
+  return {
+    pending: rowsOf(rows, 'pending', now),
+    today: [
+      ...live.filter((r) => r.status === 'checked_in'),
+      ...live.filter((r) => r.status !== 'checked_in'),
+    ],
+    resolved: day.filter((r) => !isLiveStatus(r.status)),
+  };
+}
+
+export type DetailLine = { label: string; value: string };
+
+/** "Hasta 60 min antes" / "1 h" para la política. */
+function minutesPhrase(minutes: number): string {
+  return formatMinutes(minutes);
+}
+
+/**
+ * Reglas de la playa al reservar, en frases cortas para el detalle. Vacío si
+ * la foto no las trae (backend anterior).
+ */
+export function policySummaryLines(
+  policy: LocalReservation['policy'] | undefined,
+): string[] {
+  if (!policy) return [];
+  const lines = [
+    `Puede llegar desde ${minutesPhrase(policy.earlyArrivalMinutes)} antes; tolerancia ${minutesPhrase(policy.graceMinutes)}.`,
+  ];
+  if (
+    typeof policy.earlyArrivalMaxMinutes === 'number' &&
+    policy.earlyArrivalMaxMinutes > policy.earlyArrivalMinutes
+  ) {
+    lines.push(
+      `Si llega antes, hasta ${minutesPhrase(policy.earlyArrivalMaxMinutes)} antes entra con la reserva y el extra se cobra al salir.`,
+    );
+  }
+  lines.push(
+    policy.lateCancelRefundPct > 0
+      ? `Cancelación gratis hasta ${minutesPhrase(policy.freeCancelMinutes)} antes; después se devuelve el ${policy.lateCancelRefundPct} %.`
+      : `Cancelación gratis hasta ${minutesPhrase(policy.freeCancelMinutes)} antes; después no se devuelve nada.`,
+  );
+  return lines;
+}
+
+/**
+ * Filas del detalle de una reserva en el modal: código, conductor, vehículo,
+ * franja, lo pagado y, si entró, cuándo y cómo llegó.
+ */
+export function reservationDetailLines(
+  r: Pick<
+    LocalReservation,
+    | 'code'
+    | 'driverName'
+    | 'vehiclePlate'
+    | 'entryAt'
+    | 'exitAt'
+    | 'totalArs'
+    | 'enteredAt'
+    | 'arrival'
+    | 'minutesEarly'
+    | 'minutesLate'
+    | 'stayPrepaidArs'
+  >,
+  vehicleLabel: string,
+  now: Date = new Date(),
+): DetailLine[] {
+  const lines: DetailLine[] = [
+    { label: 'Código', value: r.code },
+    { label: 'Conductor', value: r.driverName ?? '—' },
+    {
+      label: 'Vehículo',
+      value:
+        vehicleLabel && vehicleLabel !== '—'
+          ? `${r.vehiclePlate} · ${vehicleLabel}`
+          : r.vehiclePlate,
+    },
+    { label: 'Franja', value: formatSlot(r.entryAt, r.exitAt, now) },
+    {
+      label: 'Pagado',
+      value: `${formatArs(r.stayPrepaidArs ?? r.totalArs)} por Mercado Pago`,
+    },
+  ];
+  if (r.enteredAt) {
+    const how =
+      r.arrival === 'early'
+        ? ` · llegó ${formatMinutes(r.minutesEarly ?? 0)} antes`
+        : r.arrival === 'late'
+          ? ` · llegó ${formatMinutes(r.minutesLate ?? 0)} tarde`
+          : '';
+    lines.push({ label: 'Ingresó', value: `${formatTime(r.enteredAt)}${how}` });
+  }
+  return lines;
 }

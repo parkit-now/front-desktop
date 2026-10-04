@@ -8,6 +8,7 @@ const {
   actionState,
   availableActions,
   bucketOf,
+  cancelledLabel,
   classifyActionError,
   countByBucket,
   countdownTo,
@@ -20,8 +21,13 @@ const {
   pendingIdSet,
   reasonLabel,
   refundChip,
+  policySummaryLines,
+  reservationDetailLines,
   rowsOf,
   statusChip,
+  todayCountLabel,
+  todayDialogGroups,
+  todaySummary,
 } = await import('./reservationBoard');
 
 // 13:00 en Buenos Aires.
@@ -297,11 +303,41 @@ describe('formatSlot', () => {
   });
 });
 
+describe('cancelledLabel', () => {
+  it('dice quién canceló', () => {
+    expect(cancelledLabel({ cancelledBy: 'owner' })).toBe(
+      'Cancelada por el estacionamiento',
+    );
+    expect(cancelledLabel({ cancelledBy: 'driver' })).toBe(
+      'Cancelada por el conductor',
+    );
+    expect(cancelledLabel({ cancelledBy: 'system' })).toBe(
+      'Cancelada por el sistema',
+    );
+    expect(cancelledLabel({})).toBe('Cancelada por el sistema');
+  });
+
+  it('el sistema por falta de respuesta es "Vencida sin respuesta"', () => {
+    expect(
+      cancelledLabel({ cancelledBy: 'system', reason: 'approval_timeout' }),
+    ).toBe('Vencida sin respuesta');
+    expect(
+      statusChip(
+        res({
+          status: 'cancelled',
+          cancelledBy: 'system',
+          reason: 'late_payment_no_capacity',
+        }),
+      ).label,
+    ).toBe('Cancelada por el sistema');
+  });
+});
+
 describe('chips', () => {
   it('estado: en la caja el dueño es "la playa"', () => {
     expect(
       statusChip(res({ status: 'cancelled', cancelledBy: 'owner' })).label,
-    ).toBe('Cancelada · playa');
+    ).toBe('Cancelada por el estacionamiento');
     expect(
       statusChip(res({ status: 'rejected', cancelledBy: 'owner' })).label,
     ).toBe('Rechazada');
@@ -312,6 +348,23 @@ describe('chips', () => {
       label: 'Por aceptar',
       tone: 'warn',
     });
+  });
+
+  it('en curso dice si llegó antes o tarde (6c)', () => {
+    expect(statusChip(res({ status: 'checked_in' })).label).toBe('En curso');
+    expect(
+      statusChip(res({ status: 'checked_in', arrival: 'on_time' })).label,
+    ).toBe('En curso');
+    expect(
+      statusChip(res({ status: 'checked_in', arrival: 'early' })).label,
+    ).toBe('En curso · llegó antes');
+    expect(
+      statusChip(res({ status: 'checked_in', arrival: 'late' })).label,
+    ).toBe('En curso · llegó tarde');
+    // Ya salió: la llegada no cambia el estado final.
+    expect(
+      statusChip(res({ status: 'completed', arrival: 'early' })).label,
+    ).toBe('Completada');
   });
 
   it('reembolso', () => {
@@ -415,5 +468,127 @@ describe('classifyActionError (carreras con la web)', () => {
     expect(classifyActionError(new TypeError('fetch')).message).toContain(
       'No pudimos conectarnos',
     );
+  });
+});
+
+describe('modal "Reservas de hoy" del operativo', () => {
+  const rows = [
+    res({ id: 'hoy', status: 'confirmed' }),
+    res({ id: 'adentro', status: 'checked_in', entryAt: YESTERDAY }),
+    res({
+      id: 'por-aceptar',
+      status: 'pending_approval',
+      entryAt: TOMORROW,
+      approvalDeadlineAt: new Date(NOW + 5 * 60_000).toISOString(),
+    }),
+    res({
+      id: 'vencida',
+      status: 'pending_approval',
+      approvalDeadlineAt: new Date(NOW - 60_000).toISOString(),
+    }),
+    res({ id: 'manana', status: 'confirmed', entryAt: TOMORROW }),
+  ];
+
+  it('el ítem cuenta las vigentes (por aceptar a tiempo + confirmadas + en curso)', () => {
+    expect(todaySummary(rows, NOW_DATE)).toEqual({ today: 3, pending: 1 });
+  });
+
+  it('el ítem no cuenta canceladas, rechazadas, vencidas, completadas ni no-show', () => {
+    const resolved = (
+      ['completed', 'cancelled', 'rejected', 'expired', 'no_show'] as const
+    ).map((status) => res({ id: status, status }));
+    expect(todaySummary(resolved, NOW_DATE)).toEqual({ today: 0, pending: 0 });
+    expect(todaySummary([...rows, ...resolved], NOW_DATE).today).toBe(3);
+  });
+
+  it('sin vigentes el ítem dice "Sin reservas hoy"', () => {
+    expect(todayCountLabel(0)).toBe('Sin reservas hoy');
+    expect(todayCountLabel(4)).toBe('4');
+  });
+
+  it('grupos: por aceptar, después en curso, confirmadas por hora y al final las resueltas', () => {
+    const more = [
+      ...rows,
+      res({
+        id: 'tarde',
+        status: 'confirmed',
+        entryAt: '2026-10-04T01:00:00Z',
+      }),
+      res({
+        id: 'temprano',
+        status: 'confirmed',
+        entryAt: '2026-10-03T17:00:00Z',
+      }),
+      res({
+        id: 'cancelada',
+        status: 'cancelled',
+        entryAt: '2026-10-03T15:00:00Z',
+      }),
+      res({
+        id: 'completada',
+        status: 'completed',
+        entryAt: '2026-10-03T14:00:00Z',
+      }),
+      res({ id: 'ayer-cancelada', status: 'cancelled', entryAt: YESTERDAY }),
+    ];
+    const groups = todayDialogGroups(more, NOW_DATE);
+    expect(groups.pending.map((r) => r.id)).toEqual(['vencida', 'por-aceptar']);
+    expect(groups.today.map((r) => r.id)).toEqual([
+      'adentro',
+      'temprano',
+      'hoy',
+      'tarde',
+    ]);
+    expect(groups.resolved.map((r) => r.id)).toEqual([
+      'completada',
+      'cancelada',
+    ]);
+  });
+
+  it('detalle: código, conductor, vehículo, franja, pagado y cómo llegó', () => {
+    const lines = reservationDetailLines(
+      res({
+        status: 'checked_in',
+        enteredAt: '2026-10-03T20:10:00Z',
+        arrival: 'early',
+        minutesEarly: 50,
+        stayPrepaidArs: 4500,
+      }),
+      'Auto',
+      NOW_DATE,
+    );
+    expect(lines).toEqual([
+      { label: 'Código', value: 'R-4F2K9A' },
+      { label: 'Conductor', value: 'Lucía M.' },
+      { label: 'Vehículo', value: 'AB123CD · Auto' },
+      { label: 'Franja', value: 'Hoy 18:00–21:00' },
+      { label: 'Pagado', value: expect.stringContaining('4.500') as string },
+      { label: 'Ingresó', value: '17:10 · llegó 50 min antes' },
+    ]);
+  });
+
+  it('detalle sin categoría ni ingreso', () => {
+    const lines = reservationDetailLines(res(), '—', NOW_DATE);
+    expect(lines.find((l) => l.label === 'Vehículo')?.value).toBe('AB123CD');
+    expect(lines.some((l) => l.label === 'Ingresó')).toBe(false);
+  });
+
+  it('política en frases (y nada si la foto no la trae)', () => {
+    expect(
+      policySummaryLines({
+        freeCancelMinutes: 60,
+        lateCancelRefundPct: 0,
+        earlyArrivalMinutes: 15,
+        graceMinutes: 30,
+        acceptanceMode: 'manual',
+        approvalWindowMinutes: 15,
+        earlyArrivalMaxMinutes: 60,
+      }),
+    ).toEqual([
+      'Puede llegar desde 15 min antes; tolerancia 30 min.',
+      'Si llega antes, hasta 1 h antes entra con la reserva y el extra se cobra al salir.',
+      'Cancelación gratis hasta 1 h antes; después no se devuelve nada.',
+    ]);
+    expect(policySummaryLines(undefined)).toEqual([]);
   });
 });
