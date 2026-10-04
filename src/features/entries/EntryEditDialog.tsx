@@ -25,6 +25,10 @@ import {
   describePrintFailure,
   printEntryTicket,
 } from '../../lib/print/printTicket';
+import {
+  dedupePaymentMethods,
+  needsPaymentPlaceholder,
+} from './paymentOptions';
 import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
 import { calcAmountDue } from './pricing';
 import { prepaidOf } from './reservationUtils';
@@ -32,6 +36,7 @@ import { InvoiceSection } from './InvoiceSection';
 import type { ArcaEmitter } from './useArcaEmitter';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
 import { AppSelect } from '../../lib/ui/AppSelect';
+import { useEscapeKey } from '../../lib/ui/useEscapeKey';
 import {
   buildVehicleTypeSnapshot,
   sortSelectableTypes,
@@ -241,6 +246,7 @@ export function EntryEditDialog({
   const readOnly = Boolean(cashSession?.closedAt);
   const isActiveEntry = !entry.leftAt;
   const [saving, setSaving] = useState(false);
+  useEscapeKey(onClose, !saving);
   const [reprinting, setReprinting] = useState(false);
   const reasonRef = useRef<HTMLLabelElement>(null);
   const [plate, setPlate] = useState(entry.plate);
@@ -318,7 +324,10 @@ export function EntryEditDialog({
     [tenantId],
   );
 
-  const pms = paymentMethods ?? [];
+  const pms = useMemo(
+    () => dedupePaymentMethods(paymentMethods ?? []),
+    [paymentMethods],
+  );
   const [paymentLines, setPaymentLines] = useState<PaymentFormLine[]>(() =>
     toPaymentLines(entry, pms),
   );
@@ -931,7 +940,9 @@ export function EntryEditDialog({
                       });
                     }}
                   >
-                    <option value="">{line.paymentMethodName}</option>
+                    {needsPaymentPlaceholder(line.paymentMethodId, pms) ? (
+                      <option value="">{line.paymentMethodName}</option>
+                    ) : null}
                     {pms.map((pm) => (
                       <option value={pm.id} key={pm.id}>
                         {pm.name}

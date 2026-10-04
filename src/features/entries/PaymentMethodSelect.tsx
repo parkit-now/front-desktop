@@ -61,7 +61,8 @@ export function PaymentMethodSelect({
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       setOpen((v) => !v);
-    } else if (event.key === 'Escape') {
+    } else if (event.key === 'Escape' && open) {
+      event.preventDefault();
       setOpen(false);
     }
   }

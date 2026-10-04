@@ -37,9 +37,36 @@ export function CashSessionStats({ session, onSaveNotes }: Props) {
     [session.id],
   );
 
+  // Estadías con reserva que salieron, de cualquier turno, con sus pagos: la
+  // regla de a qué turno pertenece el prepago está en
+  // `computeReservationsCollected` (pagos primero, ventana del turno si no hay).
+  const reservationExits = useLiveQuery(async () => {
+    const exited = await localDb.entries
+      .where('tenantId')
+      .equals(session.tenantId)
+      .filter((entry) => Boolean(entry.leftAt) && Boolean(entry.reservationId))
+      .toArray();
+    const payments =
+      exited.length > 0
+        ? await localDb.paymentTransactions
+            .where('entryId')
+            .anyOf(exited.map((entry) => entry.id))
+            .toArray()
+        : [];
+    return { exited, payments };
+  }, [session.tenantId]);
+
   const stats = useMemo(
-    () => computeSessionStats(session, entries ?? [], transactions ?? []),
-    [session, entries, transactions],
+    () =>
+      computeSessionStats(
+        session,
+        entries ?? [],
+        transactions ?? [],
+        Date.now(),
+        reservationExits?.exited ?? [],
+        reservationExits?.payments ?? [],
+      ),
+    [session, entries, transactions, reservationExits],
   );
 
   if (transactions === undefined || entries === undefined) {
@@ -197,6 +224,20 @@ export function CashSessionStats({ session, onSaveNotes }: Props) {
             </div>
           ) : null}
         </dl>
+        {stats.reservationsCollected > 0 ? (
+          <>
+            <dl className="csd-recon">
+              <div className="csd-recon-row">
+                <dt>Cobrado por reservas (Mercado Pago)</dt>
+                <dd>{formatArs(stats.reservationsCollected)}</dd>
+              </div>
+            </dl>
+            <p className="muted">
+              Informativo: se pagó online al reservar, no pasó por la caja y no
+              suma al efectivo esperado.
+            </p>
+          </>
+        ) : null}
         {stats.handoffStatus === 'over' ? (
           <p className="csd-note csd-note--warning">
             <TriangleAlert size={15} aria-hidden="true" />

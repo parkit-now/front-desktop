@@ -4,6 +4,7 @@ import type {
   LocalPaymentTransaction,
 } from '../../lib/db/localDb';
 import { isCashMethod } from '../entries/entryUtils';
+import { prepaidOf } from '../entries/reservationUtils';
 
 export interface PmSummary {
   pmId: string;
@@ -34,6 +35,11 @@ export interface SessionStats {
   shiftDurationMinutes: number | null;
   topRate: { name: string; count: number } | null;
   withdrawnCash: number | null;
+  /**
+   * Prepago por Mercado Pago de los ingresos con reserva que salieron en el
+   * turno. Informativo: NO entra en `grandTotal` ni en `cashTotal`.
+   */
+  reservationsCollected: number;
   handoffStatus: CashHandoffStatus;
 }
 
@@ -139,11 +145,57 @@ function computeTopRate(
   return top;
 }
 
+/**
+ * REGLA ÚNICA (web, desktop y backend): el prepago de una reserva se acredita
+ * cuando el auto SALE, así que pertenece a la caja bajo la cual salió.
+ *  1. Si la estadía tiene pagos, la caja de salida es la de sus pagos
+ *     (`paymentTransactions.cashSessionId`).
+ *  2. Si no tiene pagos (salida de $0 por prepago), se usa la ventana del
+ *     turno: `leftAt ∈ [openedAt, closedAt ?? ahora)`. Hay a lo sumo una caja
+ *     abierta por estacionamiento, así que las ventanas no se solapan.
+ * No usar `entry.cashSessionId`: es la caja de entrada y se reasigna al cerrar.
+ *
+ * Es plata informativa: no pasó por la caja y nunca suma al efectivo esperado
+ * ni al total del cajón. `transactions` debe incluir los pagos de TODAS las
+ * estadías de `exitedEntries` (de cualquier turno).
+ */
+export function computeReservationsCollected(
+  exitedEntries: LocalEntry[],
+  session: Pick<LocalCashSession, 'id' | 'openedAt' | 'closedAt'>,
+  transactions: LocalPaymentTransaction[] = [],
+  now: number = Date.now(),
+): number {
+  const from = Date.parse(session.openedAt);
+  const to = session.closedAt ? Date.parse(session.closedAt) : now;
+  const sessionsByEntry = new Map<string, Set<string>>();
+  for (const tx of transactions) {
+    if (!tx.cashSessionId || tx.deletedAt) continue;
+    const set = sessionsByEntry.get(tx.entryId) ?? new Set<string>();
+    set.add(tx.cashSessionId);
+    sessionsByEntry.set(tx.entryId, set);
+  }
+  let total = 0;
+  for (const entry of exitedEntries) {
+    if (!entry.leftAt) continue;
+    const paidIn = sessionsByEntry.get(entry.id);
+    if (paidIn) {
+      if (!paidIn.has(session.id)) continue;
+    } else {
+      const left = Date.parse(entry.leftAt);
+      if (Number.isNaN(left) || left < from || left >= to) continue;
+    }
+    total += prepaidOf(entry) ?? 0;
+  }
+  return total;
+}
+
 export function computeSessionStats(
   session: LocalCashSession,
   entries: LocalEntry[],
   transactions: LocalPaymentTransaction[],
   now: number = Date.now(),
+  exitedEntries: LocalEntry[] = [],
+  exitedEntriesTransactions: LocalPaymentTransaction[] = [],
 ): SessionStats {
   const summary = computeSessionSummary(transactions, session.openingCash);
 
@@ -178,6 +230,12 @@ export function computeSessionStats(
     ),
     topRate: computeTopRate(entries),
     withdrawnCash,
+    reservationsCollected: computeReservationsCollected(
+      exitedEntries,
+      session,
+      exitedEntriesTransactions,
+      now,
+    ),
     handoffStatus:
       withdrawnCash === null
         ? 'unknown'
