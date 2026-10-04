@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { CAMERA_BASE_URL } from '../../lib/camera/constants';
+import { MjpegImage } from './MjpegImage';
 
 export type Roi = [number, number, number, number];
 
@@ -126,7 +127,7 @@ export function RoiEditor({ value, onChange }: Props) {
           onPointerMove={handleMove}
           onPointerUp={handleUp}
         >
-          <img
+          <MjpegImage
             ref={imgRef}
             key={streamKey}
             className="roi-editor__video"
