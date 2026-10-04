@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '../../lib/api/client';
 import {
   arrivalNoticeText,
   arrivalSuffix,
@@ -10,6 +11,7 @@ import {
   formatReservationWindow,
   isLinkableMatch,
   matchArrivalText,
+  unlinkErrorMessage,
   upcomingTodayText,
   matchesPlate,
   normalizePlate,
@@ -304,5 +306,27 @@ describe('llegada anticipada o tardía (6c)', () => {
     ])('%s: no', (_label, input) => {
       expect(canUnlinkReservation(input)).toBe(false);
     });
+  });
+});
+
+describe('unlinkErrorMessage', () => {
+  const problem = (code: string) => ({ code }) as never;
+  it('409 por versión: explica que otra caja lo cambió', () => {
+    expect(
+      unlinkErrorMessage(new ApiError(409, 'Conflict', problem('CONFLICT'))),
+    ).toBe(
+      'Este ingreso cambió en otra caja. Esperá a que se sincronice y volvé a intentar.',
+    );
+  });
+  it('el auto ya salió', () => {
+    expect(
+      unlinkErrorMessage(
+        new ApiError(
+          409,
+          'Conflict',
+          problem('ENTRY_RESERVATION_UNLINK_CLOSED'),
+        ),
+      ),
+    ).toBe('El auto ya salió: la reserva no se puede desvincular.');
   });
 });

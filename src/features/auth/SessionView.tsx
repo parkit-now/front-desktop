@@ -21,6 +21,7 @@ import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { TodayReservationsPanel } from '../entries/TodayReservationsPanel';
+import { ArrivalNotices } from '../entries/ArrivalNotices';
 import { ReservationsPanel } from '../reservations/ReservationsPanel';
 import { useReservationsFeed } from '../reservations/useReservationsFeed';
 import { ExitControls } from '../entries/ExitControls';
@@ -908,6 +909,11 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         }
                         onDraftChange={handleManualEntryDraftChange}
                         onDraftReset={resetManualEntryDraft}
+                      />
+                      <ArrivalNotices
+                        tenantId={activeTenantId}
+                        accessToken={session.access_token}
+                        onReservationsChanged={reservationsFeed.refresh}
                       />
                       <TodayReservationsPanel
                         tenantId={activeTenantId}

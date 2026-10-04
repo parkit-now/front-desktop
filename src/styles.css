@@ -6655,6 +6655,84 @@ h2 {
   color: var(--color-muted);
 }
 
+/* Fase 6c: llega antes (dentro del tope) o tarde. */
+.reservation-banner-note {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-weight: 600;
+}
+
+/* Fase 6c: reserva hoy, pero todavía muy temprano para vincular. */
+.reservation-banner--info {
+  border-color: var(--color-border);
+}
+
+.reservation-banner--info .reservation-banner-head {
+  color: var(--color-text, inherit);
+}
+
+.arrival-notices {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.arrival-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: 10px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 13px;
+}
+
+.arrival-notice-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.arrival-notice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.arrival-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.arrival-notice-unlink {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.arrival-notice-close {
+  display: inline-flex;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.arrival-notice-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .reservation-pill {
   flex-shrink: 0;
   padding: 2px 8px;
