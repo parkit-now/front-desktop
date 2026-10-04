@@ -117,6 +117,16 @@ export interface LocalReservation {
   cancelledBy?: 'driver' | 'owner' | 'system';
   /** Cuándo entró el auto (checked_in / completed), del ingreso vinculado. */
   enteredAt?: string;
+  /** El ingreso vinculado (fase 6c: el aviso "llegó antes" lo cruza con él). */
+  stayEntryId?: string;
+  /**
+   * Cómo llegó el auto vinculado (fase 6c): antes de la ventana (dentro del
+   * tope, "llegó antes"), a tiempo o tarde. Lo calcula el backend; un backend
+   * anterior no lo manda. Sin índice: no hace falta subir la versión de Dexie.
+   */
+  arrival?: 'early' | 'on_time' | 'late';
+  minutesEarly?: number;
+  minutesLate?: number;
   /** Cuándo se leyó del servidor (ISO). */
   fetchedAt: string;
 }
