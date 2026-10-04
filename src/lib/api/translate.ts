@@ -158,6 +158,19 @@ const CODE_MESSAGES: Record<string, string> = {
   PAYMENT_INTENT_NOT_CONSUMABLE:
     'Ese cobro con QR no se puede aplicar a esta estadía: ya se usó, es de otro vehículo o el monto no coincide. Fijate cómo quedó y, si hace falta, generá uno nuevo o cobrá en efectivo.',
 
+  // Reservas: aceptar y rechazar desde la caja. Mismo catálogo que front-web,
+  // pero le hablamos a quien esté en la caja (dueño u operador), no sólo al
+  // dueño. Los "ya no está esperando" son carreras normales —la resolvieron
+  // desde la web u otra caja, o venció—: la lista se refresca sola.
+  RESERVATION_NOT_FOUND: 'No encontramos la reserva.',
+  RESERVATION_NOT_PENDING_APPROVAL:
+    'Esta reserva ya no está esperando respuesta: la resolvieron desde la web o desde otra caja. Actualizamos la lista.',
+  RESERVATION_APPROVAL_EXPIRED:
+    'Se pasó el plazo para responder: la reserva se rechaza sola y se le devuelve todo al conductor.',
+  RESERVATION_REASON_REQUIRED: 'Escribí el motivo para continuar.',
+  RESERVATION_NOT_CANCELLABLE:
+    'Esta reserva ya no se puede cancelar. Actualizá la lista para ver cómo quedó.',
+
   // Validacion (envoltorio — el detalle por campo se traduce con
   // translateValidationCode).
   VALIDATION_FAILED: 'Revisá los datos del formulario.',
