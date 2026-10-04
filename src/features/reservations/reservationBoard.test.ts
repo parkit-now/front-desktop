@@ -24,6 +24,7 @@ const {
   reservationDetailLines,
   rowsOf,
   statusChip,
+  todayCountLabel,
   todayDialogGroups,
   todaySummary,
 } = await import('./reservationBoard');
@@ -457,14 +458,60 @@ describe('modal "Reservas de hoy" del operativo', () => {
     res({ id: 'manana', status: 'confirmed', entryAt: TOMORROW }),
   ];
 
-  it('el ítem cuenta las de hoy y las por aceptar a tiempo', () => {
-    expect(todaySummary(rows, NOW_DATE)).toEqual({ today: 2, pending: 1 });
+  it('el ítem cuenta las vigentes (por aceptar a tiempo + confirmadas + en curso)', () => {
+    expect(todaySummary(rows, NOW_DATE)).toEqual({ today: 3, pending: 1 });
   });
 
-  it('grupos: primero por aceptar (de cualquier día), después hoy; sin próximas', () => {
-    const groups = todayDialogGroups(rows, NOW_DATE);
+  it('el ítem no cuenta canceladas, rechazadas, vencidas, completadas ni no-show', () => {
+    const resolved = (
+      ['completed', 'cancelled', 'rejected', 'expired', 'no_show'] as const
+    ).map((status) => res({ id: status, status }));
+    expect(todaySummary(resolved, NOW_DATE)).toEqual({ today: 0, pending: 0 });
+    expect(todaySummary([...rows, ...resolved], NOW_DATE).today).toBe(3);
+  });
+
+  it('sin vigentes el ítem dice "Sin reservas hoy"', () => {
+    expect(todayCountLabel(0)).toBe('Sin reservas hoy');
+    expect(todayCountLabel(4)).toBe('4');
+  });
+
+  it('grupos: por aceptar, después en curso, confirmadas por hora y al final las resueltas', () => {
+    const more = [
+      ...rows,
+      res({
+        id: 'tarde',
+        status: 'confirmed',
+        entryAt: '2026-10-04T01:00:00Z',
+      }),
+      res({
+        id: 'temprano',
+        status: 'confirmed',
+        entryAt: '2026-10-03T17:00:00Z',
+      }),
+      res({
+        id: 'cancelada',
+        status: 'cancelled',
+        entryAt: '2026-10-03T15:00:00Z',
+      }),
+      res({
+        id: 'completada',
+        status: 'completed',
+        entryAt: '2026-10-03T14:00:00Z',
+      }),
+      res({ id: 'ayer-cancelada', status: 'cancelled', entryAt: YESTERDAY }),
+    ];
+    const groups = todayDialogGroups(more, NOW_DATE);
     expect(groups.pending.map((r) => r.id)).toEqual(['vencida', 'por-aceptar']);
-    expect(groups.today.map((r) => r.id)).toEqual(['adentro', 'hoy']);
+    expect(groups.today.map((r) => r.id)).toEqual([
+      'adentro',
+      'temprano',
+      'hoy',
+      'tarde',
+    ]);
+    expect(groups.resolved.map((r) => r.id)).toEqual([
+      'completada',
+      'cancelada',
+    ]);
   });
 
   it('detalle: código, conductor, vehículo, franja, pagado y cómo llegó', () => {

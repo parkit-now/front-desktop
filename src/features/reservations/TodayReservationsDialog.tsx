@@ -54,7 +54,7 @@ export function TodayReservationsDialog({
     [rows, nowDate],
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const all = [...groups.pending, ...groups.today];
+  const all = [...groups.pending, ...groups.today, ...groups.resolved];
   const selected = all.find((r) => r.id === selectedId) ?? all[0] ?? null;
   const rejectOpen = actions.rejectDialog !== null;
 
@@ -112,13 +112,13 @@ export function TodayReservationsDialog({
     );
   }
 
-  function row(r: LocalReservation) {
+  function row(r: LocalReservation, resolved = false) {
     const chip = statusChip(r);
     const isSelected = selected?.id === r.id;
     return (
       <li key={r.id}>
         <div
-          className={`today-res-row${isSelected ? ' is-selected' : ''}`}
+          className={`today-res-row${isSelected ? ' is-selected' : ''}${resolved ? ' is-resolved' : ''}`}
           data-reservation-id={r.id}
         >
           <button
@@ -204,17 +204,25 @@ export function TodayReservationsDialog({
                   <h4 className="today-res-dialog__group">
                     Por aceptar · {groups.pending.length}
                   </h4>
-                  <ul>{groups.pending.map(row)}</ul>
+                  <ul>{groups.pending.map((r) => row(r))}</ul>
                 </>
               ) : null}
               <h4 className="today-res-dialog__group">
-                Hoy · {groups.today.length}
+                Hoy · vigentes · {groups.today.length}
               </h4>
               {groups.today.length === 0 ? (
-                <p className="muted mini">No hay reservas para hoy.</p>
+                <p className="muted mini">No hay reservas vigentes hoy.</p>
               ) : (
-                <ul>{groups.today.map(row)}</ul>
+                <ul>{groups.today.map((r) => row(r))}</ul>
               )}
+              {groups.resolved.length > 0 ? (
+                <>
+                  <h4 className="today-res-dialog__group today-res-dialog__group--resolved">
+                    Resueltas · {groups.resolved.length}
+                  </h4>
+                  <ul>{groups.resolved.map((r) => row(r, true))}</ul>
+                </>
+              ) : null}
             </div>
 
             <aside

@@ -3953,6 +3953,14 @@ h2 {
   color: #fff;
 }
 
+.exit-controls__list-count--empty {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .exit-controls__list-label {
   flex: 1;
   text-align: left;
@@ -6921,6 +6929,20 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-card);
+}
+
+.today-res-row.is-resolved {
+  background: transparent;
+  opacity: 0.72;
+}
+
+.today-res-row.is-resolved:hover,
+.today-res-row.is-resolved.is-selected {
+  opacity: 1;
+}
+
+.today-res-dialog__group--resolved {
+  margin-top: 16px;
 }
 
 .today-res-row.is-selected {

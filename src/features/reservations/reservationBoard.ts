@@ -407,10 +407,18 @@ export function classifyActionError(error: unknown): {
 
 // ─── Modal "Reservas de hoy" del operativo ──────────────────────────────────
 
+/** Reservas vigentes: esperan respuesta, confirmadas o en curso. */
+const LIVE: readonly Status[] = ['pending_approval', 'confirmed', 'checked_in'];
+
+export function isLiveStatus(status: Status): boolean {
+  return LIVE.includes(status);
+}
+
 /**
- * Lo que dice el ítem del operativo: cuántas reservas hay hoy (pestaña Hoy) y
- * cuántas esperan respuesta y siguen a tiempo (el mismo número que el badge
- * del menú).
+ * Lo que dice el ítem del operativo: cuántas reservas VIGENTES hay hoy (por
+ * aceptar a tiempo + confirmadas + en curso; no cuentan las canceladas,
+ * rechazadas, vencidas, completadas ni las que no se presentaron) y cuántas
+ * esperan respuesta (el mismo número que el badge del menú).
  */
 export function todaySummary(
   rows: readonly Pick<
@@ -419,22 +427,39 @@ export function todaySummary(
   >[],
   now: Date = new Date(),
 ): { today: number; pending: number } {
-  return {
-    today: countByBucket(rows, now).today,
-    pending: pendingCount(rows, now.getTime()),
-  };
+  const pending = pendingCount(rows, now.getTime());
+  const live = rowsOf(rows, 'today', now).filter((r) =>
+    isLiveStatus(r.status),
+  ).length;
+  return { today: live + pending, pending };
+}
+
+/** Texto del número del ítem: la cuenta, o "Sin reservas hoy" si no hay. */
+export function todayCountLabel(count: number): string {
+  return count > 0 ? String(count) : 'Sin reservas hoy';
 }
 
 /**
- * Grupos del modal: primero las por aceptar (de cualquier día: tienen plazo),
- * después las de hoy. Mismo orden que las pestañas de la sección Reservas.
+ * Grupos del modal, en el orden en que se muestran:
+ * 1. `pending`: por aceptar (de cualquier día: tienen plazo), la que vence antes primero.
+ * 2. `today`: las vigentes de hoy: en curso primero, después las confirmadas por hora.
+ * 3. `resolved`: las ya resueltas de hoy (completada, cancelada, etc.), por hora.
  */
 export function todayDialogGroups<
   T extends Pick<LocalReservation, 'status' | 'entryAt' | 'approvalDeadlineAt'>,
->(rows: readonly T[], now: Date = new Date()): { pending: T[]; today: T[] } {
+>(
+  rows: readonly T[],
+  now: Date = new Date(),
+): { pending: T[]; today: T[]; resolved: T[] } {
+  const day = rowsOf(rows, 'today', now);
+  const live = day.filter((r) => isLiveStatus(r.status));
   return {
     pending: rowsOf(rows, 'pending', now),
-    today: rowsOf(rows, 'today', now),
+    today: [
+      ...live.filter((r) => r.status === 'checked_in'),
+      ...live.filter((r) => r.status !== 'checked_in'),
+    ],
+    resolved: day.filter((r) => !isLiveStatus(r.status)),
   };
 }
 

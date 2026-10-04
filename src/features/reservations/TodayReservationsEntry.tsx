@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CalendarClock } from 'lucide-react';
 import { localDb } from '../../lib/db/localDb';
-import { todaySummary } from './reservationBoard';
+import { todayCountLabel, todaySummary } from './reservationBoard';
 import { TodayReservationsDialog } from './TodayReservationsDialog';
 import { useReservationActions } from './useReservationActions';
 import type { ReservationsFeed } from './useReservationsFeed';
@@ -18,7 +18,7 @@ interface Props {
 /**
  * Ítem "Reservas de hoy" de la pantalla principal (fase 6c). Reemplaza al
  * panel que estaba siempre a la vista: ahora es una tarjeta como la de
- * "Registrar egreso", con un botón que muestra cuántas hay hoy (y cuántas
+ * "Registrar egreso", con un botón que muestra cuántas vigentes hay hoy (y cuántas
  * esperan respuesta) y abre el modal con el detalle.
  */
 export function TodayReservationsEntry({
@@ -59,7 +59,11 @@ export function TodayReservationsEntry({
             {summary.pending} por aceptar
           </span>
         ) : null}
-        <span className="exit-controls__list-count">{summary.today}</span>
+        <span
+          className={`exit-controls__list-count${summary.today === 0 ? ' exit-controls__list-count--empty' : ''}`}
+        >
+          {todayCountLabel(summary.today)}
+        </span>
       </button>
 
       {open ? (
