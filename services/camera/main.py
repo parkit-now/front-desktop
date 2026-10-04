@@ -277,6 +277,24 @@ def _known_plates() -> set[str]:
     return _known_plates_value
 
 
+# Modo prueba: el renderer lo prende desde Configurar cámara para poder probar
+# siempre con el mismo auto. Con él no se descarta nada: ni las patentes que el
+# renderer da por conocidas ni las repetidas dentro de COOLDOWN.
+#
+# Viaja en el mismo POST /known-plates y vence igual que la lista, a propósito.
+# Un modo prueba que quede prendido en producción llena el disco y la cola de
+# tarjetas, así que no puede depender de que alguien se acuerde de apagarlo: si
+# el renderer deja de reafirmarlo —lo apagaron, se cerró la app, se colgó—, a
+# los 30 s el servicio vuelve solo al comportamiento normal.
+_testing_mode_at: float | None = None
+
+
+def _testing_mode() -> bool:
+    if _testing_mode_at is None:
+        return False
+    return time.monotonic() - _testing_mode_at <= _KNOWN_PLATES_TTL
+
+
 # Ya se avisó que esta cámara corre sin zona de detección. Se rearma al cambiar
 # el ROI desde la config, para que el aviso vuelva si lo borran.
 _warned_no_roi = False
@@ -744,14 +762,16 @@ def _persist_cluster(cluster: dict) -> dict | None:
     # suprime por texto exacto, así que esto no cambia nada de lo que ve el
     # operador, sólo evita el gasto. Por parecido, un auto distinto con patente
     # similar a una tarjeta abierta desaparecería sin que nadie se entere.
-    if normalized and normalized in _known_plates():
+    testing = _testing_mode()
+
+    if normalized and not testing and normalized in _known_plates():
         print(
             f"[{_ts()}]  DUPLICATE {normalized:<12}  reason=known-by-operator",
             flush=True,
         )
         return None
 
-    if normalized:
+    if normalized and not testing:
         last_saved = _last_saved_by_plate.get(normalized, 0)
         remaining = COOLDOWN - (now - last_saved)
         if remaining > 0:
@@ -1445,10 +1465,14 @@ def set_known_plates(payload: dict):
         )
         if normalized
     }
+    testing = payload.get("testingMode") is True
     g = globals()
+    if testing != _testing_mode():
+        logger.warning("testing_mode_on" if testing else "testing_mode_off")
     g["_known_plates_value"] = plates
     g["_known_plates_at"] = time.monotonic()
-    return {"count": len(plates)}
+    g["_testing_mode_at"] = time.monotonic() if testing else None
+    return {"count": len(plates), "testingMode": testing}
 
 
 @app.post("/detections/{event_id}/uploaded")

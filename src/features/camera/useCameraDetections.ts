@@ -15,6 +15,7 @@ import { CAMERA_BASE_URL } from '../../lib/camera/constants';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useSync } from '../../lib/sync/SyncContext';
 import { parsePlateBbox } from './plateBbox';
+import { useCameraTestingMode } from './testingMode';
 
 export { CAMERA_BASE_URL };
 export const LPR_RECENT_EXIT_SUPPRESSION_MINUTES = 30;
@@ -604,7 +605,10 @@ function suppressionReason(
   keepers: Map<string, string>,
   activePlates: Set<string>,
   recentExitPlates: Set<string>,
+  testingMode = false,
 ): SuppressionStatus | null {
+  // Modo prueba: se ve todo. Ver `testingMode.ts`.
+  if (testingMode) return null;
   const plate = event.normalizedText;
   if (plate && activePlates.has(plate)) return 'suppressed_active_entry';
   if (keepers.has(event.id) && keepers.get(event.id) !== event.id) {
@@ -653,16 +657,24 @@ export function platesToSuppress(
   return Array.from(plates).sort();
 }
 
+/**
+ * En modo prueba la lista va vacía y con `testingMode: true`, que además le
+ * apaga al servicio su propio cooldown por patente. El servicio lo da por
+ * vencido si deja de llegar, así que el reenvío periódico es lo que lo mantiene.
+ */
 export async function pushKnownPlatesSnapshot(
   activePlates: Set<string>,
   pendingEvents: LocalLprDetectionEvent[],
   fetchImpl: typeof fetch = fetch,
+  testingMode = false,
 ): Promise<void> {
-  const plates = platesToSuppress(activePlates, pendingEvents);
+  const plates = testingMode
+    ? []
+    : platesToSuppress(activePlates, pendingEvents);
   await fetchImpl(`${CAMERA_BASE_URL}/known-plates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plates }),
+    body: JSON.stringify({ plates, testingMode }),
   });
 }
 
@@ -689,6 +701,7 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const { isOnline } = useNetwork();
   const { triggerSync } = useSync();
+  const testingMode = useCameraTestingMode();
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), RECENT_EXIT_TICK_MS);
@@ -813,6 +826,8 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
         await pushKnownPlatesSnapshot(
           currentActivePlates,
           currentPendingEvents,
+          fetch,
+          testingMode,
         );
       } catch {
         // El servicio de cámara puede no estar levantado. No es un error.
@@ -826,7 +841,7 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
       cancelled = true;
       clearInterval(id);
     };
-  }, [tenantId, activePlates, pendingEvents]);
+  }, [tenantId, activePlates, pendingEvents, testingMode]);
 
   useEffect(() => {
     if (!tenantId || !pendingEvents || !activePlates || !recentExitPlates)
@@ -837,24 +852,35 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
         keepers,
         activePlates,
         recentExitPlates,
+        testingMode,
       );
       if (!reason) continue;
       void queueStatusUpdate(tenantId, event, reason);
       void patchCameraEvent(event.id, reason);
     }
-  }, [tenantId, pendingEvents, activePlates, recentExitPlates, keepers]);
+  }, [
+    tenantId,
+    pendingEvents,
+    activePlates,
+    recentExitPlates,
+    keepers,
+    testingMode,
+  ]);
 
   const detections = useMemo(() => {
     const events = pendingEvents ?? [];
     const active = activePlates ?? new Set<string>();
     const recent = recentExitPlates ?? new Set<string>();
     return events
-      .filter((event) => !suppressionReason(event, keepers, active, recent))
+      .filter(
+        (event) =>
+          !suppressionReason(event, keepers, active, recent, testingMode),
+      )
       .sort(
         (a, b) =>
           new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
       );
-  }, [pendingEvents, activePlates, recentExitPlates, keepers]);
+  }, [pendingEvents, activePlates, recentExitPlates, keepers, testingMode]);
 
   const dismiss = useCallback(
     (eventId: string) => {

@@ -2,6 +2,7 @@ import {
   Camera,
   Cctv,
   Cog,
+  FlaskConical,
   Info,
   Play,
   PlugZap,
@@ -22,6 +23,7 @@ import { AppSelect } from '../../lib/ui/AppSelect';
 import { useWebcamDevices } from './useWebcamDevices';
 import { useCameraStatus } from './useCameraStatus';
 import { RoiEditor } from './RoiEditor';
+import { useCameraTestingMode, writeCameraTestingMode } from './testingMode';
 import {
   DEFAULT_CAMERA_PORT,
   DEFAULT_STREAM_PATH,
@@ -346,6 +348,7 @@ export function CameraSettingsPanel({
   const [hasStoredPassword, setHasStoredPassword] = useState(false);
   const [tuning, setTuning] = useState<DesktopCameraTuning | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const testingMode = useCameraTestingMode();
   const [resetTarget, setResetTarget] = useState<ResetTarget>(null);
   const [resetting, setResetting] = useState(false);
   const [serviceStatus, setServiceStatus] =
@@ -1134,6 +1137,42 @@ export function CameraSettingsPanel({
               </section>
             </>
           ) : null}
+
+          <section className="camera-settings-card">
+            <div className="camera-settings-card-head">
+              <div>
+                <p className="camera-settings-kicker">Pruebas</p>
+                <h3>Modo prueba</h3>
+              </div>
+            </div>
+            <label
+              className="camera-testing-toggle"
+              htmlFor="camera-testing-mode"
+            >
+              <input
+                id="camera-testing-mode"
+                type="checkbox"
+                checked={testingMode}
+                onChange={(event) =>
+                  writeCameraTestingMode(event.target.checked)
+                }
+              />
+              <span>Mostrar todas las patentes detectadas</span>
+            </label>
+            <p className="muted camera-card-note">
+              Para probar la cámara pasando siempre el mismo auto. Con el modo
+              activo aparece en Operativo una tarjeta por cada detección, aunque
+              el auto ya esté adentro, haya salido hace poco o ya tenga otra
+              tarjeta abierta. Se aplica al instante y solo en esta computadora.
+            </p>
+            {testingMode ? (
+              <p className="csd-note csd-note--warning">
+                <FlaskConical size={15} aria-hidden="true" />
+                Apagalo al terminar: en uso normal llena Operativo de tarjetas
+                repetidas.
+              </p>
+            ) : null}
+          </section>
 
           <section className="camera-settings-actions">
             <div>

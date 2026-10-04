@@ -22,3 +22,11 @@ def clusters_limpios():
     main._clusters.clear()
     yield
     main._clusters.clear()
+
+
+@pytest.fixture(autouse=True)
+def sin_modo_prueba():
+    """`set_known_plates` lo deja prendido: que no se filtre al test siguiente."""
+    main._testing_mode_at = None
+    yield
+    main._testing_mode_at = None

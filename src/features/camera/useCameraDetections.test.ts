@@ -395,12 +395,52 @@ describe('platesToSuppress', () => {
       expect.stringContaining('/known-plates'),
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ plates: ['AA111AA', 'BB222BB'] }),
+        body: JSON.stringify({
+          plates: ['AA111AA', 'BB222BB'],
+          testingMode: false,
+        }),
       }),
     );
   });
 
   it('reenvía known-plates holgadamente antes del TTL del servicio', () => {
     expect(KNOWN_PLATES_PUSH_MS).toBeLessThan(CAMERA_KNOWN_PLATES_TTL_MS / 2);
+  });
+});
+
+describe('modo prueba', () => {
+  it('no descarta ninguna detección', () => {
+    const enUso = event('e1', 'ABC123');
+    const repetida = event('e2', 'ABC123');
+    const keepers = keeperByPlate([enUso, repetida]);
+    const adentro = new Set(['ABC123']);
+    const salioRecien = new Set(['ABC123']);
+
+    // Sin modo prueba, las tres reglas descartan...
+    expect(
+      suppressionReason(repetida, keepers, adentro, salioRecien),
+    ).not.toBeNull();
+    // ...y con modo prueba no descarta ninguna.
+    for (const detection of [enUso, repetida]) {
+      expect(
+        suppressionReason(detection, keepers, adentro, salioRecien, true),
+      ).toBeNull();
+    }
+  });
+
+  it('manda la lista vacía y avisa al servicio para que apague su cooldown', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    await pushKnownPlatesSnapshot(
+      new Set(['aa 111 aa']),
+      [event('e1', 'BB-222-BB')],
+      fetchMock,
+      true,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/known-plates'),
+      expect.objectContaining({
+        body: JSON.stringify({ plates: [], testingMode: true }),
+      }),
+    );
   });
 });
