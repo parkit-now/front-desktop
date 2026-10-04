@@ -118,11 +118,11 @@ export function ExitModal({
     [entry.enteredAt, nowMs, prices, prepaid],
   );
   const suggested = charge.due;
-  // La franja sale de la foto de "Reservas de hoy", si la tenemos.
+  // La franja sale de la foto de reservas de la caja, si la tenemos.
   const reservation = useLiveQuery(
     () =>
       entry.reservationId
-        ? localDb.todayReservations.get(entry.reservationId)
+        ? localDb.reservations.get(entry.reservationId)
         : undefined,
     [entry.reservationId],
   );

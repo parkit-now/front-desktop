@@ -99,6 +99,11 @@ export function formatTime(value: string | Date): string {
   return Number.isNaN(date.getTime()) ? '--:--' : TIME_FORMATTER.format(date);
 }
 
+/** Día civil de Buenos Aires (YYYY-MM-DD). */
+export function arDayKey(value: string | Date = new Date()): string {
+  return DAY_FORMATTER.format(value instanceof Date ? value : new Date(value));
+}
+
 /** "18:00 – 21:00", con "Hoy" adelante si empieza hoy. */
 export function formatReservationWindow(
   entryAt: string,

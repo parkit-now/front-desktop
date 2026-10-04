@@ -87,21 +87,34 @@ export interface LocalEntry {
 }
 
 /**
- * Reserva de hoy para el panel "Reservas de hoy" de la caja (v18). Es una
- * FOTO de la última lectura online (`GET /reservations`), no un feed: se
- * reemplaza entera por playa en cada lectura y sin conexión se muestra la
- * última, marcada como desactualizada. La caja nunca la edita.
+ * Reserva de la playa vista desde la caja (v19): la sección "Reservas" (por
+ * aceptar, hoy, próximas) y el panel "Reservas de hoy" del operativo leen de
+ * acá. Es una FOTO de la última lectura online (`GET /reservations`), no un
+ * feed: se reemplaza entera por playa en cada lectura y sin conexión se
+ * muestra la última, marcada como desactualizada y SÓLO LECTURA.
+ *
+ * La caja nunca la edita offline: aceptar y rechazar mueven plata y tienen
+ * plazo, así que no se encolan. Sólo se pisa una fila con la respuesta del
+ * servidor después de una acción online, para que la lista cambie al toque.
  */
-export interface LocalTodayReservation {
+export interface LocalReservation {
   id: string;
   tenantId: string;
   code: string;
-  status: string;
+  status: components['schemas']['ReservationStatus'];
   vehiclePlate: string;
+  vehicleCategory?: string;
   driverName?: string;
   entryAt: string;
   exitAt: string;
   totalArs: number;
+  /** Hasta cuándo se puede aceptar o rechazar (`pending_approval`). */
+  approvalDeadlineAt?: string;
+  refundStatus: components['schemas']['OwnerReservationDto']['refundStatus'];
+  refundedAmountArs?: number;
+  /** Motivo de rechazo o cancelación (texto libre o código del sistema). */
+  reason?: string;
+  cancelledBy?: 'driver' | 'owner' | 'system';
   /** Cuándo entró el auto (checked_in / completed), del ingreso vinculado. */
   enteredAt?: string;
   /** Cuándo se leyó del servidor (ISO). */
@@ -363,7 +376,7 @@ class ParkitLocalDb extends Dexie {
   cashSessions!: Table<LocalCashSession>;
   paymentTransactions!: Table<LocalPaymentTransaction>;
   invoices!: Table<LocalInvoice>;
-  todayReservations!: Table<LocalTodayReservation>;
+  reservations!: Table<LocalReservation>;
   syncState!: Table<SyncState>;
   pendingOps!: Table<PendingOp>;
 
@@ -692,6 +705,18 @@ class ParkitLocalDb extends Dexie {
           )
           .delete();
       });
+
+    // v19: la caja acepta y rechaza reservas (fase 6b).
+    //
+    // `todayReservations` (sólo las de hoy, con lo justo para el panel) se
+    // reemplaza por `reservations`: la foto de todo lo que le importa a la caja
+    // (por aceptar con su plazo, hoy y próximas, con el estado del reembolso).
+    // No se migra nada: es una foto descartable que la próxima lectura online
+    // vuelve a llenar, y sin conexión el panel queda vacío hasta reconectar.
+    this.version(19).stores({
+      todayReservations: null,
+      reservations: 'id, tenantId',
+    });
   }
 }
 
