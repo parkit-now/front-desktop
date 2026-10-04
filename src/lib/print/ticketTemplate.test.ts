@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   defaultTicketTemplateSettings,
   fontSizeToOption,
+  linkVehicleFields,
+  normalizeTicketTemplateSettings,
   readTicketTemplateSettings,
   resetTicketTemplateSettings,
   writeTicketTemplateSettings,
@@ -110,5 +112,35 @@ describe('ticketTemplate', () => {
     expect(fontSizeToOption(8)).toBe('small');
     expect(fontSizeToOption(12)).toBe('large');
     expect(fontSizeToOption(24)).toBe('hero');
+  });
+
+  it('el modelo copia la configuración de la marca y va detrás de ella', () => {
+    const template = normalizeTicketTemplateSettings('tenant-1', {
+      fields: [
+        { id: 'vehicleModel', visible: true, fontSizePt: 13, emphasis: 'bold' },
+        { id: 'plate' },
+        {
+          id: 'vehicleBrand',
+          visible: false,
+          fontSizePt: 8,
+          emphasis: 'normal',
+        },
+      ],
+    });
+    const ids = template.fields.map((field) => field.id);
+    expect(ids.slice(0, 3)).toEqual(['plate', 'vehicleBrand', 'vehicleModel']);
+    expect(template.fields[2]).toMatchObject({
+      visible: false,
+      fontSizePt: 8,
+      emphasis: 'normal',
+    });
+  });
+
+  it('mover la marca arrastra al modelo', () => {
+    const fields = defaultTicketTemplateSettings('t').fields;
+    const brand = fields.find((field) => field.id === 'vehicleBrand')!;
+    const moved = [brand, ...fields.filter((field) => field !== brand)];
+    const ids = linkVehicleFields(moved).map((field) => field.id);
+    expect(ids.slice(0, 2)).toEqual(['vehicleBrand', 'vehicleModel']);
   });
 });

@@ -157,8 +157,9 @@ export function buildPaymentReceiptHtml(
       : options.bodyWidthMm;
   const bodyWidthCss =
     bodyWidthMm === null
-      ? 'width: 100%; max-width: 80mm;'
-      : `width: ${bodyWidthMm}mm;`;
+      ? // Pegado a la izquierda: ver el comentario en entryTicket.ts.
+        'width: 100%; max-width: 72mm; margin: 0;'
+      : `width: ${bodyWidthMm}mm; margin: 0 auto;`;
 
   const template =
     options.template ??
@@ -190,8 +191,7 @@ export function buildPaymentReceiptHtml(
   html, body { margin: 0; padding: 0; background: #fff; }
   body {
     ${bodyWidthCss}
-    margin: 0 auto;
-    padding: 1.5mm 0 2mm;
+    padding: 0 0 .5mm;
     color: #000;
     font-family: "Segoe UI", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif;
     font-size: 8.5pt;
