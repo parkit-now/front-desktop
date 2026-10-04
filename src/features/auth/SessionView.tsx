@@ -20,6 +20,7 @@ import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { TodayReservationsPanel } from '../entries/TodayReservationsPanel';
+import { useReservationsFeed } from '../reservations/useReservationsFeed';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
 import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
@@ -370,6 +371,13 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const canShowRatesNav =
     hasMemberships ||
     (effectiveGlobalRole === 'admin' && activeTenantId !== null);
+  // Reservas: el dueño y el operador ven y responden (el backend no restringe
+  // por rol). Un admin sin membresía, con la playa elegida.
+  const canShowReservasNav = activeTenantId !== null && canShowRatesNav;
+  const reservationsFeed = useReservationsFeed({
+    tenantId: canShowReservasNav ? activeTenantId : null,
+    accessToken: session.access_token,
+  });
 
   useEffect(() => {
     const cachedProfile = readCachedProfile(session.user.id);
@@ -870,7 +878,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                       />
                       <TodayReservationsPanel
                         tenantId={activeTenantId}
-                        accessToken={session.access_token}
+                        pendingCount={reservationsFeed.pendingCount}
                       />
                       <ExitControls
                         tenantId={activeTenantId}
