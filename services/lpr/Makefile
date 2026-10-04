@@ -28,7 +28,7 @@ PORT    ?= 8765
 PIDFILE := .lpr.pid
 LOGFILE := .lpr.log
 
-.PHONY: help lpr-install lpr-download-models lpr-dev lpr-up lpr-down lpr-logs lpr-test lpr-build clean
+.PHONY: help lpr-install lpr-download-models lpr-dev lpr-up lpr-down lpr-logs lpr-test lpr-unit lpr-build clean
 
 help: ## Mostrar comandos disponibles
 	@awk 'BEGIN {FS = ":.*?## "} \
@@ -90,6 +90,9 @@ lpr-logs: ## Ver los logs del servicio en background (tail -f)
 	@tail -f $(LOGFILE)
 
 # ── Test ──────────────────────────────────────────────────────────────────────
+
+lpr-unit: lpr-install ## Correr los tests unitarios (no necesita el servicio ni los modelos): make lpr-unit
+	@$(PYTHON) -m pytest tests -q
 
 lpr-test: ## Probar /process con una imagen: make lpr-test FILE=/ruta/abs/patente.jpg
 	@test -n "$(FILE)" || { echo "✗ Falta FILE. Uso: make lpr-test FILE=/ruta/abs/patente.jpg"; exit 1; }

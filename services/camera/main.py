@@ -360,6 +360,63 @@ def _levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+def _substring_distance(needle: str, haystack: str) -> int:
+    """Menor levenshtein entre `needle` y CUALQUIER tramo contiguo de `haystack`.
+
+    Es levenshtein con los extremos de `haystack` gratis (alineamiento
+    semi-global): "G577" contra "IAG574" da 1, porque el mejor tramo es "G574".
+    """
+    if not needle:
+        return 0
+    prev = [0] * (len(haystack) + 1)  # arrancar en cualquier columna no cuesta
+    for i, cn in enumerate(needle, 1):
+        cur = [i]
+        for j, ch in enumerate(haystack, 1):
+            cur.append(
+                min(
+                    cur[j - 1] + 1,
+                    prev[j] + 1,
+                    prev[j - 1] + (0 if cn == ch else 1),
+                )
+            )
+        prev = cur
+    return min(prev)  # terminar en cualquier columna tampoco
+
+
+# Un fragmento de menos caracteres ya no dice a qué patente pertenece: "AB"
+# está adentro de miles. Con 3 y a lo sumo 1 error, la chance de que el pedazo
+# de OTRA patente caiga justo adentro de la del cluster es baja, y encima tiene
+# que pasar el veto de posición.
+FRAGMENT_MIN_LEN = 3
+FRAGMENT_MAX_DISTANCE = 1
+
+
+def _is_fragment_of(fragment: dict, full: dict) -> bool:
+    """Si `fragment` es un pedazo mal leído de la patente de `full`.
+
+    EL CASO QUE ESTO ARREGLA
+
+    Con la patente chica en el cuadro, el detector a veces ubica mal el
+    recuadro: corta la mitad de la patente y agarra lo que hay al lado. El OCR
+    lee lo que quedó adentro. Medido en la instalación real: `IAG 574` al 80 %
+    y, un segundo después y del mismo auto, `G577` al 55 %. Por texto no se
+    agrupaban —son 3 ediciones y `G577` es corta, así que el límite baja a 1—
+    y el operador recibía una segunda tarjeta "Verificar patente" con basura.
+
+    Un fragmento NUNCA es una lectura con formato válido: si el OCR leyó una
+    patente argentina completa, es una patente, y decidir si es la misma la
+    tiene que hacer `_plates_similar`. Esto sólo rescata lecturas que de todas
+    formas no se pueden registrar tal cual.
+    """
+    if fragment.get("formatValid"):
+        return False
+    a = _normalised(fragment)
+    b = _normalised(full)
+    if len(a) < FRAGMENT_MIN_LEN or len(a) >= len(b):
+        return False
+    return _substring_distance(a, b) <= FRAGMENT_MAX_DISTANCE
+
+
 def _normalised(result: dict) -> str:
     return (result.get("normalizedText") or result.get("text") or "").strip().upper()
 
@@ -589,7 +646,16 @@ def _cluster_matches(cluster: dict, candidate: dict, now: float) -> float | None
     b = _normalised(candidate["result"])
     if _plates_similar(a, b, max_distance=1):
         return _candidate_distance(anchor, candidate)
-    if not _plates_similar(a, b, max_distance=PLATE_MERGE_DISTANCE):
+    # Fragmentos: el texto se compara también contra `best`, porque el ancla
+    # puede ser otro fragmento ("G577" y después "AG57"). La posición sigue
+    # siendo contra el ancla, como en el resto: es la que acompaña al auto.
+    reference = cluster["best"]["result"]
+    fragment = (
+        _is_fragment_of(candidate["result"], anchor["result"])
+        or _is_fragment_of(anchor["result"], candidate["result"])
+        or _is_fragment_of(candidate["result"], reference)
+    )
+    if not fragment and not _plates_similar(a, b, max_distance=PLATE_MERGE_DISTANCE):
         return None
     if not _bbox_close(
         anchor["bbox"], candidate["bbox"], candidate["frame_size"], MOVE_MAX_RATIO
