@@ -1,6 +1,6 @@
 {
   "name": "@parkit-now/front-desktop",
-  "version": "1.0.1",
+  "version": "1.7.0",
   "private": true,
   "description": "Parkit desktop app",
   "type": "module",

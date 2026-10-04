@@ -1,3 +1,135 @@
+# [1.7.0](https://github.com/parkit-now/front-desktop/compare/v1.6.0...v1.7.0) (2026-10-01)
+
+
+### Features
+
+* **impresión:** se agregó el comprobante no fiscal y más ajustes de impresión ([66d6fb4](https://github.com/parkit-now/front-desktop/commit/66d6fb4df967057441f0739b30a5f956af947a03))
+
+# [1.6.0](https://github.com/parkit-now/front-desktop/compare/v1.5.1...v1.6.0) (2026-10-01)
+
+
+### Bug Fixes
+
+* **impresora:** los tickets ahora se amoldan al tamaño del driver de la impresora ([9885219](https://github.com/parkit-now/front-desktop/commit/9885219f038e29377d58b05392e1943d1663407e))
+
+
+### Features
+
+* **facturas:** el PDF de la factura se arma en el desktop ([edd4e7a](https://github.com/parkit-now/front-desktop/commit/edd4e7a8fa7e6277a35b00b0acf4a1a319c088fa))
+
+## [1.5.1](https://github.com/parkit-now/front-desktop/compare/v1.5.0...v1.5.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **camara-service:** el servicio de cámara ya no muere al arrancar en Windows ([84e9085](https://github.com/parkit-now/front-desktop/commit/84e9085443b4a364487b5eb6da76eb49bc3a521a))
+
+# [1.5.0](https://github.com/parkit-now/front-desktop/compare/v1.4.0...v1.5.0) (2026-09-28)
+
+
+### Bug Fixes
+
+* **entries:** en efectivo no se confirma el cobro sin el monto recibido completo ([0d53033](https://github.com/parkit-now/front-desktop/commit/0d53033315d7e43e1473f66235595fd02cda1f43))
+* **entries:** medios de pago en orden alfabético al cobrar ([8768692](https://github.com/parkit-now/front-desktop/commit/8768692c630359c50a4ec86f7ed50f1d892354fd))
+* **entries:** mensaje corto de la factura en el resumen del egreso ([34b5b45](https://github.com/parkit-now/front-desktop/commit/34b5b45daf2cf16c1ad34dc8723cb9eaf4a7617b))
+* **entries:** no duplicar el punto final del motivo de la factura ([1e33f43](https://github.com/parkit-now/front-desktop/commit/1e33f436d615783d65fd9f235e437c9a896a4d12))
+* **entries:** resumen del egreso parejo y confirmación antes de emitir la factura ([d3b4070](https://github.com/parkit-now/front-desktop/commit/d3b407066dae574de08602eaed9a5d229925eedb))
+
+
+### Features
+
+* **arca:** aviso de facturación pausada por certificado vencido ([f4f0296](https://github.com/parkit-now/front-desktop/commit/f4f02967771f270818a317983fcfcb8fe21b3f75))
+* botón para ver contraseña en login ([730c56c](https://github.com/parkit-now/front-desktop/commit/730c56c348c08ce29e3b7e960282ccd765972d01))
+* **cámara:** una tarjeta por auto y foto completa del vehículo ([36e1dc0](https://github.com/parkit-now/front-desktop/commit/36e1dc020ed80cf63f428f92d413d1908f4f5372))
+* **camera:** implement ROI cropping for improved detection accuracy ([17ee7dc](https://github.com/parkit-now/front-desktop/commit/17ee7dc246560d0aefbb39aeb4ac5edacf9de1f9))
+* **cobro:** factura con CUIT decidida por el padrón ([79179d4](https://github.com/parkit-now/front-desktop/commit/79179d46215d09016f488790d998b30a33f01edc))
+* **data-table:** filtro por rango numérico y columnas ocultas al inicio ([a068016](https://github.com/parkit-now/front-desktop/commit/a0680161a1838d27a7fd2a6502ed1ee41e5bf6a7))
+* **electron:** «Guardar como…» por IPC (file:saveAs) ([48d7d34](https://github.com/parkit-now/front-desktop/commit/48d7d343a29162e7e74c9ba78e9d337f0331155e))
+* **entries:** elegir factura A o B al cobrar y emitir factura después del cobro ([752b0c8](https://github.com/parkit-now/front-desktop/commit/752b0c824f60dd3804f54b7c5763c528b49d9f3e))
+* **entries:** mensaje para la factura que no sale por certificado sin autorizar ([7179610](https://github.com/parkit-now/front-desktop/commit/7179610a344267407d9325d235aae7cf9235c850))
+* **entries:** mostrar el resultado de la factura al registrar el egreso ([ea2cc7b](https://github.com/parkit-now/front-desktop/commit/ea2cc7bb5ceaaf0217c7ee9a599f5e159b9aedd0))
+* **historial:** facturación en el historial del desktop ([4f36cf4](https://github.com/parkit-now/front-desktop/commit/4f36cf46b88d750a879c5be50d77a7bade28a528))
+* **sync:** sincronizar solo y poder curar la base local ([1885868](https://github.com/parkit-now/front-desktop/commit/1885868112df4bd4139422d43aaa3dbcc490efcb))
+
+# [1.4.0](https://github.com/parkit-now/front-desktop/compare/v1.3.0...v1.4.0) (2026-09-22)
+
+
+### Bug Fixes
+
+* el operador no puede ver cajas anteriores ni historial de ingresos de cajas anteriores ([ecdf76b](https://github.com/parkit-now/front-desktop/commit/ecdf76b8a01be1381e94a43c77daa125b705bb94))
+
+
+### Features
+
+* ahora la app es más responsive en cualquier tamaño de pantalla ([2e55a2a](https://github.com/parkit-now/front-desktop/commit/2e55a2a63f50e1fc8e86723f7dfa1c5729bc2197))
+* ahora se puede editar autos en base. Además se puede buscar por marca y modelo y se mejoró partes del front ([0fa270c](https://github.com/parkit-now/front-desktop/commit/0fa270cab57137279abf5326f1d277b16b2f89ca))
+* al cerrar una caja no se inicia la siguiente automáticamente ([84be0b4](https://github.com/parkit-now/front-desktop/commit/84be0b43646adc874676b6833bd0f136a366e69b))
+* mejoras en el diseño del panel operativo ([3f9ba43](https://github.com/parkit-now/front-desktop/commit/3f9ba43a6e3c605319ebf3c0e68c90967304d25d))
+* se agregó un sistema para configurar qué campos se quieren imprimir en el ticket. Además los campos de configuración de impresion y de cámara del tenant se persisten en el backend ([d95f0ac](https://github.com/parkit-now/front-desktop/commit/d95f0ac5deba0ad7e3802f8c71352860fd53a448))
+
+# [1.3.0](https://github.com/parkit-now/front-desktop/compare/v1.2.0...v1.3.0) (2026-09-21)
+
+
+### Features
+
+* **egreso:** cobrar con QR de Mercado Pago desde el modal de salida ([66ba7f7](https://github.com/parkit-now/front-desktop/commit/66ba7f7b46538d053d5a7a0711d2697e667a6c91))
+* **errores:** traducir los codes de los cobros con QR de Mercado Pago ([eef975e](https://github.com/parkit-now/front-desktop/commit/eef975e3f385526af8afb61ed3cb6c3e6c549a2f))
+* **errores:** traducir PAYMENT_INTENT_NOT_CONSUMABLE en el desktop ([6f3459e](https://github.com/parkit-now/front-desktop/commit/6f3459eef1b54d827b667951f8827dec80a8d117))
+* **mercado-pago:** agregar el cliente HTTP de los cobros con QR ([c8e68b5](https://github.com/parkit-now/front-desktop/commit/c8e68b5c182fcdd06d6ec3a50330ee095338de43))
+* se agregó cámara IP ([b042dcf](https://github.com/parkit-now/front-desktop/commit/b042dcf6ecd8e152193f79ef15b1a6e7f6e65b5e))
+* se agregó configuración de cámara completa, tanto para webCam como para cámaras IP ([9e6c527](https://github.com/parkit-now/front-desktop/commit/9e6c527280d36eb705b970c9c059e5b8858b400e))
+
+# [1.2.0](https://github.com/parkit-now/front-desktop/compare/v1.1.1...v1.2.0) (2026-09-21)
+
+
+### Bug Fixes
+
+* **payment-methods:** impedir marcar como predeterminado un medio integrado ([569f161](https://github.com/parkit-now/front-desktop/commit/569f161f70b3446060af88080d2fe6748f4dde19))
+* precommit y pipelines ([5935725](https://github.com/parkit-now/front-desktop/commit/5935725e9950ff80b13c74aa2f1b32c8dc7a01e3))
+
+
+### Features
+
+* **errores:** traducir los codes de Mercado Pago y medios integrados ([f2bafd2](https://github.com/parkit-now/front-desktop/commit/f2bafd2dfa1ad5da8a2a8bb2ba44b6abe98387ee))
+* **errores:** traducir PAYMENT_METHOD_NOT_FOUND en el desktop ([b4a4e98](https://github.com/parkit-now/front-desktop/commit/b4a4e989c10f0e78af445a876f9ad783c07712b3))
+* **payment-methods:** marcar los medios integrados como solo lectura ([ec3140b](https://github.com/parkit-now/front-desktop/commit/ec3140b2e83e71a29f6a52d946f31c6705ee0e3b))
+
+## [1.1.1](https://github.com/parkit-now/front-desktop/compare/v1.1.0...v1.1.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **release:** trigger desktop release build ([ee50ee1](https://github.com/parkit-now/front-desktop/commit/ee50ee1390918b7cd854a52727b29917406fefbe))
+
+# [1.1.0](https://github.com/parkit-now/front-desktop/compare/v1.0.4...v1.1.0) (2026-09-15)
+
+
+### Features
+
+* **impresión:** reimpresión de tickets desde el historial ([d7b4d98](https://github.com/parkit-now/front-desktop/commit/d7b4d9802fb70e3be1bbca37534219a31e3a2425))
+
+## [1.0.4](https://github.com/parkit-now/front-desktop/compare/v1.0.3...v1.0.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* **hooks:** acota prettier del pre-commit a los archivos staged ([69d9189](https://github.com/parkit-now/front-desktop/commit/69d918921de99f5480a366152b83b3ba84566a51))
+
+## [1.0.3](https://github.com/parkit-now/front-desktop/compare/v1.0.2...v1.0.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* **ci:** agrega .env.test con las variables de Supabase que el suite necesita ([611b458](https://github.com/parkit-now/front-desktop/commit/611b45841cc9690c7129fe141647d6315abf6f21))
+
+## [1.0.2](https://github.com/parkit-now/front-desktop/compare/v1.0.1...v1.0.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **arqueo:** contar el efectivo por el tipo del medio y no por su nombre ([3e4e2c8](https://github.com/parkit-now/front-desktop/commit/3e4e2c84b8013929ad75daede88cc6490d6405bc))
+* **sync:** no pisar cambios locales pendientes en los pull incrementales ([24f25a5](https://github.com/parkit-now/front-desktop/commit/24f25a5b85b70dcc315163cafffe1772f3963512))
+
 ## [1.0.1](https://github.com/parkit-now/front-desktop/compare/v1.0.0...v1.0.1) (2026-09-12)
 
 
