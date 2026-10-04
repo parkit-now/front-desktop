@@ -255,12 +255,27 @@ export interface Chip {
 }
 
 /**
- * Chip de estado. En la caja "el dueño" es la playa, no "vos". Una en curso
+ * Quién canceló, sin ambigüedad ("playa" no se entendía): el estacionamiento
+ * (dueño), el conductor, o el sistema. Si el sistema canceló porque nadie
+ * respondió a tiempo, se dice así.
+ */
+export function cancelledLabel(
+  r: Pick<LocalReservation, 'cancelledBy'> &
+    Partial<Pick<LocalReservation, 'reason'>>,
+): string {
+  if (r.cancelledBy === 'owner') return 'Cancelada por el estacionamiento';
+  if (r.cancelledBy === 'driver') return 'Cancelada por el conductor';
+  if (r.reason === 'approval_timeout') return 'Vencida sin respuesta';
+  return 'Cancelada por el sistema';
+}
+
+/**
+ * Chip de estado. En la caja el dueño es "el estacionamiento", no "vos". Una en curso
  * dice además si el auto llegó antes de su ventana o tarde (fase 6c).
  */
 export function statusChip(
   r: Pick<LocalReservation, 'status' | 'cancelledBy'> &
-    Partial<Pick<LocalReservation, 'arrival'>>,
+    Partial<Pick<LocalReservation, 'arrival' | 'reason'>>,
 ): Chip {
   switch (r.status) {
     case 'pending_approval':
@@ -286,11 +301,7 @@ export function statusChip(
         ? { label: 'Vencida sin respuesta', tone: 'neutral' }
         : { label: 'Rechazada', tone: 'neutral' };
     case 'cancelled':
-      if (r.cancelledBy === 'owner')
-        return { label: 'Cancelada · playa', tone: 'neutral' };
-      if (r.cancelledBy === 'driver')
-        return { label: 'Cancelada · conductor', tone: 'neutral' };
-      return { label: 'Cancelada · sistema', tone: 'neutral' };
+      return { label: cancelledLabel(r), tone: 'neutral' };
     case 'expired':
       return { label: 'Vencida sin pago', tone: 'neutral' };
     case 'pending_payment':

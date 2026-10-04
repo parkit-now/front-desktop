@@ -8,6 +8,7 @@ const {
   actionState,
   availableActions,
   bucketOf,
+  cancelledLabel,
   classifyActionError,
   countByBucket,
   countdownTo,
@@ -302,11 +303,41 @@ describe('formatSlot', () => {
   });
 });
 
+describe('cancelledLabel', () => {
+  it('dice quién canceló', () => {
+    expect(cancelledLabel({ cancelledBy: 'owner' })).toBe(
+      'Cancelada por el estacionamiento',
+    );
+    expect(cancelledLabel({ cancelledBy: 'driver' })).toBe(
+      'Cancelada por el conductor',
+    );
+    expect(cancelledLabel({ cancelledBy: 'system' })).toBe(
+      'Cancelada por el sistema',
+    );
+    expect(cancelledLabel({})).toBe('Cancelada por el sistema');
+  });
+
+  it('el sistema por falta de respuesta es "Vencida sin respuesta"', () => {
+    expect(
+      cancelledLabel({ cancelledBy: 'system', reason: 'approval_timeout' }),
+    ).toBe('Vencida sin respuesta');
+    expect(
+      statusChip(
+        res({
+          status: 'cancelled',
+          cancelledBy: 'system',
+          reason: 'late_payment_no_capacity',
+        }),
+      ).label,
+    ).toBe('Cancelada por el sistema');
+  });
+});
+
 describe('chips', () => {
   it('estado: en la caja el dueño es "la playa"', () => {
     expect(
       statusChip(res({ status: 'cancelled', cancelledBy: 'owner' })).label,
-    ).toBe('Cancelada · playa');
+    ).toBe('Cancelada por el estacionamiento');
     expect(
       statusChip(res({ status: 'rejected', cancelledBy: 'owner' })).label,
     ).toBe('Rechazada');

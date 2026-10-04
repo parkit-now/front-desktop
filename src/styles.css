@@ -6755,6 +6755,18 @@ h2 {
   white-space: nowrap;
 }
 
+/* Los textos largos ("Cancelada por el estacionamiento") parten en dos
+   renglones en vez de desbordar la fila. */
+.today-res-row__select .reservation-pill,
+.today-res-dialog__detail-head .reservation-pill,
+.reservations-status .reservation-pill {
+  white-space: normal;
+  text-align: center;
+  max-width: 170px;
+  line-height: 1.25;
+  text-align: center;
+}
+
 .reservation-pill--ok {
   color: var(--color-success-text);
   background: var(--color-success-bg);
