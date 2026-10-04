@@ -32,7 +32,11 @@ import {
   sortSelectableTypes,
   typeIdForCatalogSelection,
 } from './entryVehicleType';
-import { EntryReservationBanner } from './ReservationBanner';
+import {
+  EntryReservationBanner,
+  UpcomingReservationNotice,
+} from './ReservationBanner';
+import { isLinkableMatch } from './reservationUtils';
 import { useReservationMatch } from './useReservationMatch';
 
 export type EntryFormVariant = 'manual' | 'auto';
@@ -339,12 +343,16 @@ export function EntryFormCore({
   // Banner "Tiene reserva": la reserva confirmada de esta patente dentro de su
   // ventana de llegada. Sólo con conexión; sin red el backend vincula el
   // ingreso por patente cuando sincroniza.
-  const reservationMatch = useReservationMatch({
-    tenantId,
-    accessToken,
-    plate,
-    enabled: isOnline && !plateHasActiveEntry,
-  });
+  //
+  // Fase 6c: también si llega antes (hasta el tope) o tarde; y si es demasiado
+  // temprano, el aviso de la reserva de hoy (`upcoming`), que NO se vincula.
+  const { match: reservationMatch, upcoming: upcomingReservation } =
+    useReservationMatch({
+      tenantId,
+      accessToken,
+      plate,
+      enabled: isOnline && !plateHasActiveEntry,
+    });
 
   // Highlighted suggestion index for keyboard navigation
   const [highlightedSuggestionIdx, setHighlightedSuggestionIdx] = useState(0);
@@ -1122,7 +1130,9 @@ export function EntryFormCore({
       // backend la busca por patente al sincronizar. Si ya no vale, el backend
       // la ignora y busca igual: nunca rechaza el ingreso por esto.
       reservationId:
-        isOnline && reservationMatch ? reservationMatch.id : undefined,
+        isOnline && reservationMatch && isLinkableMatch(reservationMatch)
+          ? reservationMatch.id
+          : undefined,
     };
 
     setSaving(true);
@@ -1285,6 +1295,8 @@ export function EntryFormCore({
           {plateError && <p className="field-error">{plateError}</p>}
           {reservationMatch ? (
             <EntryReservationBanner match={reservationMatch} />
+          ) : upcomingReservation ? (
+            <UpcomingReservationNotice upcoming={upcomingReservation} />
           ) : null}
         </div>
 
