@@ -88,7 +88,7 @@ export function RatePropagationDialog({
               <strong>
                 {openEntries} {plural ? 'autos adentro' : 'auto adentro'}
               </strong>{' '}
-              con esta tasa.
+              con esta tarifa.
             </p>
             <p>
               Si {plural ? 'los pasás' : 'lo pasás'} al precio nuevo, cuando{' '}

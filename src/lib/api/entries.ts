@@ -102,26 +102,3 @@ export function correctEntry(input: {
     bearer: input.bearer,
   });
 }
-
-/**
- * POST …/entries/:id/reservation/unlink — desvincula la reserva de un ingreso
- * ABIERTO (fase 6c): el ingreso queda como estadía común (sin `reservationId`
- * ni prepago) y la reserva vuelve a confirmada (o a no-show, pasada su
- * ventana). Sólo online y con la versión que tiene la caja; devuelve el
- * ingreso con la versión nueva, que hay que guardar en la base local.
- * Idempotente: si ya estaba desvinculado devuelve el ingreso tal cual.
- */
-export function unlinkEntryReservation(input: {
-  tenantId: string;
-  entryId: string;
-  expectedVersion: number;
-  bearer: string;
-}): Promise<EntryDto> {
-  const basePath = `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/reservation/unlink`;
-  const path = withQuery(basePath, { expectedVersion: input.expectedVersion });
-  return apiRequest<EntryDto>({
-    method: 'POST',
-    path,
-    bearer: input.bearer,
-  });
-}

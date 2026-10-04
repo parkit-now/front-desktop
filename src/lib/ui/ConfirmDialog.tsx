@@ -1,4 +1,5 @@
 import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { useEscapeKey } from './useEscapeKey';
 
 export type ConfirmDialogVariant = 'default' | 'warning' | 'danger';
 
@@ -25,6 +26,8 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
+  useEscapeKey(onCancel, !isPending, open);
+
   if (!open) return null;
 
   const Icon = variant === 'danger' ? Trash2 : AlertTriangle;

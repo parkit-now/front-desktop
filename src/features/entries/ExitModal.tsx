@@ -23,6 +23,7 @@ import {
   type ReceiptData,
 } from '../../lib/print/receipt';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
+import { useEscapeKey } from '../../lib/ui/useEscapeKey';
 import { PaymentMethodSelect } from './PaymentMethodSelect';
 import { MercadoPagoQrPanel } from './MercadoPagoQrPanel';
 import { useMercadoPagoIntent } from './useMercadoPagoIntent';
@@ -159,6 +160,7 @@ export function ExitModal({
   const [selectedPmId, setSelectedPmId] = useState('');
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  useEscapeKey(onClose, !saving);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [invoiceNotice, setInvoiceNotice] = useState<InvoiceNotice | null>(

@@ -15,7 +15,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CameraPanel } from '../camera/CameraPanel';
-import { CameraSettingsPanel } from '../camera/CameraSettingsPanel';
 import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
@@ -60,6 +59,7 @@ import {
 } from '../../lib/print/ticketTemplate';
 import { SyncProvider } from '../../lib/sync/SyncContext';
 import { signOut } from '../../lib/supabase/session';
+import { ConfigNavGroup, type ConfigNavItem } from './ConfigNavGroup';
 import { getErrorMessage } from './errors';
 
 type Props = {
@@ -84,8 +84,7 @@ type WorkspaceSection =
   | 'vehicle-types'
   | 'caja'
   | 'reservas'
-  | 'impresora'
-  | 'camara-config';
+  | 'impresora';
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -445,15 +444,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
     }
   }, [ratesAllowed, section]);
 
-  // Cambiar a un estacionamiento donde sos operador no debe dejarte adentro de
-  // la configuración de cámara: el botón desaparece del sidebar, pero el panel
-  // seguiría montado porque `section` no cambia solo.
-  useEffect(() => {
-    if (!ratesManageAllowed && section === 'camara-config') {
-      setSection('operativo');
-    }
-  }, [ratesManageAllowed, section]);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -641,14 +631,13 @@ export function SessionView({ session, sessionStale = false }: Props) {
     operativo: 'Panel Operativo',
     camara: 'Cámara',
     historial: 'Historial',
-    rates: 'Gestión de Tasas',
+    rates: 'Gestión de Tarifas',
     'payment-methods': 'Métodos de Pago',
     vehicles: 'Catálogo de Vehículos',
     'vehicle-types': 'Tipos de Vehículo',
     caja: 'Caja',
     reservas: 'Reservas',
     impresora: 'Impresora',
-    'camara-config': 'Configuración de cámara',
   };
 
   const sectionIcon = (s: WorkspaceSection) => {
@@ -661,9 +650,40 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'caja') return <Archive size={20} aria-hidden />;
     if (s === 'reservas') return <CalendarClock size={20} aria-hidden />;
     if (s === 'impresora') return <Printer size={20} aria-hidden />;
-    if (s === 'camara-config') return <Cctv size={20} aria-hidden />;
     return <Home size={20} aria-hidden />;
   };
+
+  const configNavItems: ConfigNavItem<WorkspaceSection>[] = [
+    ...(canShowRatesNav
+      ? [
+          {
+            section: 'rates' as const,
+            label: 'Tarifas',
+            icon: <DollarSign size={18} aria-hidden="true" />,
+          },
+          {
+            section: 'payment-methods' as const,
+            label: 'Métodos de pago',
+            icon: <CreditCard size={18} aria-hidden="true" />,
+          },
+          {
+            section: 'vehicles' as const,
+            label: 'Vehículos',
+            icon: <Truck size={18} aria-hidden="true" />,
+          },
+          {
+            section: 'vehicle-types' as const,
+            label: 'Tipos de vehículo',
+            icon: <Layers size={18} aria-hidden="true" />,
+          },
+        ]
+      : []),
+    {
+      section: 'impresora' as const,
+      label: 'Impresora',
+      icon: <Printer size={18} aria-hidden="true" />,
+    },
+  ];
 
   return (
     <SyncProvider
@@ -773,75 +793,18 @@ export function SessionView({ session, sessionStale = false }: Props) {
               </button>
             ) : null}
 
-            {canShowRatesNav ? (
-              <button
-                type="button"
-                className={`nav-item ${section === 'rates' ? 'active' : ''}`}
-                onClick={() => setSection('rates')}
-              >
-                <DollarSign size={18} aria-hidden="true" />
-                {!sidebarCollapsed ? <span>Tasas</span> : null}
-              </button>
-            ) : null}
-
-            {canShowRatesNav ? (
-              <button
-                type="button"
-                className={`nav-item ${section === 'payment-methods' ? 'active' : ''}`}
-                onClick={() => setSection('payment-methods')}
-              >
-                <CreditCard size={18} aria-hidden="true" />
-                {!sidebarCollapsed ? <span>Métodos de pago</span> : null}
-              </button>
-            ) : null}
-
-            {canShowRatesNav ? (
-              <button
-                type="button"
-                className={`nav-item ${section === 'vehicles' ? 'active' : ''}`}
-                onClick={() => setSection('vehicles')}
-              >
-                <Truck size={18} aria-hidden="true" />
-                {!sidebarCollapsed ? <span>Vehículos</span> : null}
-              </button>
-            ) : null}
-
-            {canShowRatesNav ? (
-              <button
-                type="button"
-                className={`nav-item ${section === 'vehicle-types' ? 'active' : ''}`}
-                onClick={() => setSection('vehicle-types')}
-              >
-                <Layers size={18} aria-hidden="true" />
-                {!sidebarCollapsed ? <span>Tipos de vehículo</span> : null}
-              </button>
-            ) : null}
-
-            {/* Sin gating: es configuración de esta computadora, no del tenant. */}
-            <button
-              type="button"
-              className={`nav-item ${section === 'impresora' ? 'active' : ''}`}
-              onClick={() => setSection('impresora')}
-            >
-              <Printer size={18} aria-hidden="true" />
-              {!sidebarCollapsed ? <span>Impresora</span> : null}
-            </button>
-
-            {/* Única sección oculta para el operador. La cámara es hardware del
-                estacionamiento y tocarla mal deja la detección automática sin
-                funcionar, así que la decisión es del dueño. `ratesManageAllowed`
-                es la flag que significa "owner o admin" — NO `canShowRatesNav`,
-                que no distingue owner de operator. */}
-            {ratesManageAllowed ? (
-              <button
-                type="button"
-                className={`nav-item ${section === 'camara-config' ? 'active' : ''}`}
-                onClick={() => setSection('camara-config')}
-              >
-                <Cctv size={18} aria-hidden="true" />
-                {!sidebarCollapsed ? <span>Configurar cámara</span> : null}
-              </button>
-            ) : null}
+            {/* Grupo desplegable. Cada hija conserva su regla de visibilidad:
+                Impresora es configuración de esta computadora (sin gating) y
+                el resto sigue a `canShowRatesNav`. La configuración de la
+                cámara ya no es un ítem: vive en el engranaje de Cámara
+                (sólo owner/admin). */}
+            <ConfigNavGroup
+              label="Configuración"
+              items={configNavItems}
+              activeSection={section}
+              collapsed={sidebarCollapsed}
+              onSelect={setSection}
+            />
           </nav>
 
           <div className="sidebar-foot">
@@ -910,11 +873,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         onDraftChange={handleManualEntryDraftChange}
                         onDraftReset={resetManualEntryDraft}
                       />
-                      <ArrivalNotices
-                        tenantId={activeTenantId}
-                        accessToken={session.access_token}
-                        onReservationsChanged={reservationsFeed.refresh}
-                      />
+                      <ArrivalNotices tenantId={activeTenantId} />
                       <TodayReservationsEntry
                         tenantId={activeTenantId}
                         accessToken={session.access_token}
@@ -966,7 +925,11 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 </section>
               )
             ) : section === 'camara' ? (
-              <CameraPanel />
+              <CameraPanel
+                tenantId={activeTenantId}
+                accessToken={session.access_token}
+                canConfigure={ratesManageAllowed}
+              />
             ) : section === 'historial' ? (
               activeTenantId ? (
                 <EntryHistoryPanel
@@ -1100,11 +1063,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   </p>
                 </section>
               )
-            ) : section === 'camara-config' ? (
-              <CameraSettingsPanel
-                tenantId={activeTenantId}
-                accessToken={session.access_token}
-              />
             ) : section === 'impresora' ? (
               <PrinterSettingsPanel
                 tenantId={activeTenantId}
@@ -1141,7 +1099,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 <section className="dashboard-card warning">
                   <h2>Falta estacionamiento activo</h2>
                   <p className="muted">
-                    Seleccioná un estacionamiento para consultar sus tasas.
+                    Seleccioná un estacionamiento para consultar sus tarifas.
                   </p>
                 </section>
               )
@@ -1150,7 +1108,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 <h2>Acceso restringido</h2>
                 <p className="muted">
                   Solo usuarios vinculados a este estacionamiento pueden acceder
-                  al módulo de tasas.
+                  al módulo de tarifas.
                 </p>
               </section>
             )}

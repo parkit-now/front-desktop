@@ -53,6 +53,27 @@ type FormErrors = {
   shortcutNumber?: string;
 };
 
+/** Orden visual del formulario: el primero inválido recibe el foco. */
+const FORM_FIELD_ORDER: (keyof FormErrors)[] = [
+  'shortcutNumber',
+  'name',
+  'hourPriceArs',
+  'fractionPriceArs',
+  'mediaEstadiaPriceArs',
+  'stayPriceArs',
+];
+
+const FIELD_INPUT_ID: Record<keyof FormErrors, string> = {
+  shortcutNumber: 'rate-shortcut',
+  name: 'rate-name',
+  hourPriceArs: 'rate-hour-price',
+  fractionPriceArs: 'rate-fraction-price',
+  mediaEstadiaPriceArs: 'rate-media-estadia-price',
+  stayPriceArs: 'rate-stay-price',
+};
+
+const FORM_ERROR_MESSAGE = 'Completá los campos marcados en rojo.';
+
 const FRACTIONS_PER_HOUR = 12;
 
 function derivedFractionPrice(hourPriceRaw: string): string {
@@ -226,6 +247,7 @@ export function RatesPanel({
   );
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [errors, setErrors] = useState<FormErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Local-first: rates come from IndexedDB, updated reactively via Dexie.
   // Soft-deleted rows are dropped by `pullRates`; filtering here too keeps a
@@ -260,33 +282,12 @@ export function RatesPanel({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [editorOpen, saving]);
 
-  const canSubmitForm = useMemo(() => {
-    const name = form.name.trim();
-    const n = parseInt(form.shortcutNumber.trim(), 10);
-    return (
-      name.length > 0 &&
-      name.length <= 120 &&
-      !validateMoney(form.hourPriceArs).error &&
-      !validateMoney(form.stayPriceArs).error &&
-      !validateMoney(form.fractionPriceArs).error &&
-      !validateMoney(form.mediaEstadiaPriceArs).error &&
-      Number.isInteger(n) &&
-      n >= 1
-    );
-  }, [
-    form.fractionPriceArs,
-    form.hourPriceArs,
-    form.mediaEstadiaPriceArs,
-    form.name,
-    form.shortcutNumber,
-    form.stayPriceArs,
-  ]);
-
   function resetEditor(): void {
     setEditorMode('create');
     setEditingRate(null);
     setForm(emptyForm());
     setErrors({});
+    setFormError(null);
   }
 
   function closeEditor(): void {
@@ -300,6 +301,7 @@ export function RatesPanel({
     setEditorMode('create');
     setEditingRate(null);
     setErrors({});
+    setFormError(null);
     const used = new Set(
       (localRates ?? [])
         .filter((r) => r.shortcutNumber != null)
@@ -317,10 +319,12 @@ export function RatesPanel({
     setEditingRate(rate);
     setForm(fromRate(rate));
     setErrors({});
+    setFormError(null);
     setEditorOpen(true);
   }
 
-  function validateForm(): {
+  function computeValidation(): {
+    errors: FormErrors;
     payload?: {
       name: string;
       hourPriceArs: number;
@@ -386,13 +390,12 @@ export function RatesPanel({
       }
     }
 
-    setErrors(nextErrors);
-
     if (Object.keys(nextErrors).length > 0) {
-      return {};
+      return { errors: nextErrors };
     }
 
     return {
+      errors: nextErrors,
       payload: {
         name,
         hourPriceArs: hour.value ?? 0,
@@ -402,6 +405,28 @@ export function RatesPanel({
         shortcutNumber,
       },
     };
+  }
+
+  function validateForm() {
+    const result = computeValidation();
+    setErrors(result.errors);
+    const firstInvalid = FORM_FIELD_ORDER.find((field) => result.errors[field]);
+    if (firstInvalid) {
+      setFormError(FORM_ERROR_MESSAGE);
+      // Después del render, para que el input ya muestre el estado inválido.
+      window.setTimeout(() => {
+        document.getElementById(FIELD_INPUT_ID[firstInvalid])?.focus();
+      }, 0);
+    } else {
+      setFormError(null);
+    }
+    return result;
+  }
+
+  /** Valida un solo campo al salir de él, sin marcar los que todavía no tocó. */
+  function validateField(field: keyof FormErrors): void {
+    const { errors: all } = computeValidation();
+    setErrors((prev) => ({ ...prev, [field]: all[field] }));
   }
 
   async function handleSubmit(
@@ -473,7 +498,7 @@ export function RatesPanel({
         }
 
         showToast({
-          message: isOnline ? 'Tasa creada.' : 'Tasa guardada localmente.',
+          message: isOnline ? 'Tarifa creada.' : 'Tarifa guardada localmente.',
           kind: 'success',
         });
       } else if (editingRate) {
@@ -625,7 +650,9 @@ export function RatesPanel({
     }
 
     showToast({
-      message: isOnline ? 'Tasa actualizada.' : 'Cambios guardados localmente.',
+      message: isOnline
+        ? 'Tarifa actualizada.'
+        : 'Cambios guardados localmente.',
       kind: 'success',
     });
   }
@@ -700,7 +727,7 @@ export function RatesPanel({
           );
         }
         showToast({
-          message: isOnline ? 'Tasa desactivada.' : 'Desactivada localmente.',
+          message: isOnline ? 'Tarifa desactivada.' : 'Desactivada localmente.',
           kind: 'success',
         });
       } else if (confirmAction.kind === 'activate') {
@@ -738,7 +765,7 @@ export function RatesPanel({
           );
         }
         showToast({
-          message: isOnline ? 'Tasa reactivada.' : 'Reactivada localmente.',
+          message: isOnline ? 'Tarifa reactivada.' : 'Reactivada localmente.',
           kind: 'success',
         });
       } else {
@@ -761,7 +788,7 @@ export function RatesPanel({
         }
         await localDb.rates.delete(confirmAction.rate.id);
         showToast({
-          message: isOnline ? 'Tasa eliminada.' : 'Eliminada localmente.',
+          message: isOnline ? 'Tarifa eliminada.' : 'Eliminada localmente.',
           kind: 'success',
         });
       }
@@ -778,7 +805,7 @@ export function RatesPanel({
     ? confirmAction.kind === 'activate'
       ? {
           title: `Reactivar "${confirmAction.rate.name}"`,
-          message: 'La tasa volverá a estar disponible para operar.',
+          message: 'La tarifa volverá a estar disponible para operar.',
           confirmLabel: 'Reactivar',
           variant: 'warning' as const,
         }
@@ -786,14 +813,14 @@ export function RatesPanel({
         ? {
             title: `Desactivar "${confirmAction.rate.name}"`,
             message:
-              'La tasa quedará oculta de la operación activa. Podés volver a activarla desde la tabla.',
+              'La tarifa quedará oculta de la operación activa. Podés volver a activarla desde la tabla.',
             confirmLabel: 'Desactivar',
             variant: 'warning' as const,
           }
         : {
             title: `Eliminar "${confirmAction.rate.name}"`,
             message:
-              'Esta acción es permanente e irreversible. La tasa será eliminada definitivamente.',
+              'Esta acción es permanente e irreversible. La tarifa será eliminada definitivamente.',
             confirmLabel: 'Eliminar',
             variant: 'danger' as const,
           }
@@ -890,7 +917,7 @@ export function RatesPanel({
                 className="table-icon-action"
                 onClick={() => beginEdit(rate)}
                 disabled={saving}
-                title="Editar tasa"
+                title="Editar tarifa"
                 aria-label={`Editar ${rate.name}`}
               >
                 <Pencil size={16} />
@@ -905,7 +932,7 @@ export function RatesPanel({
                   })
                 }
                 disabled={saving}
-                title={inactive ? 'Reactivar tasa' : 'Desactivar tasa'}
+                title={inactive ? 'Reactivar tarifa' : 'Desactivar tarifa'}
                 aria-label={
                   inactive
                     ? `Reactivar ${rate.name}`
@@ -919,7 +946,7 @@ export function RatesPanel({
                 className="table-icon-action danger"
                 onClick={() => setConfirmAction({ kind: 'delete', rate })}
                 disabled={saving}
-                title="Eliminar tasa"
+                title="Eliminar tarifa"
                 aria-label={`Eliminar ${rate.name}`}
               >
                 <Trash2 size={16} />
@@ -943,10 +970,10 @@ export function RatesPanel({
             isLoading={loading}
             emptyMessage={
               canManage
-                ? 'Creá la primera tasa para empezar a operar con precios desde la app.'
-                : 'Todavía no hay tasas configuradas para este estacionamiento.'
+                ? 'Creá la primera tarifa para empezar a operar con precios desde la app.'
+                : 'Todavía no hay tarifas configuradas para este estacionamiento.'
             }
-            searchPlaceholder="Buscar tasa por nombre..."
+            searchPlaceholder="Buscar tarifa por nombre..."
             searchableKeys={['name']}
             filterableColumns={['status']}
             filterOptionsByColumn={{ status: STATUS_FILTER_OPTIONS }}
@@ -968,7 +995,7 @@ export function RatesPanel({
                   disabled={saving}
                 >
                   <Plus size={17} />
-                  Nueva tasa
+                  Nueva tarifa
                 </button>
               )
             }
@@ -992,9 +1019,9 @@ export function RatesPanel({
           >
             <header className="rate-dialog-header">
               <div>
-                <p className="rate-dialog-kicker">Tasas</p>
+                <p className="rate-dialog-kicker">Tarifas</p>
                 <h3 id="rate-dialog-title">
-                  {editorMode === 'create' ? 'Nueva tasa' : 'Editar tasa'}
+                  {editorMode === 'create' ? 'Nueva tarifa' : 'Editar tarifa'}
                 </h3>
                 <p className="muted">
                   {editorMode === 'create'
@@ -1007,7 +1034,7 @@ export function RatesPanel({
                 className="rate-dialog-close"
                 onClick={closeEditor}
                 disabled={saving}
-                aria-label="Cerrar editor de tasa"
+                aria-label="Cerrar editor de tarifa"
               >
                 <X size={18} />
               </button>
@@ -1015,17 +1042,29 @@ export function RatesPanel({
 
             <form
               className="auth-form rate-dialog-form"
+              noValidate
               onSubmit={(event) => {
                 void handleSubmit(event);
               }}
             >
+              {formError ? (
+                <p className="field-error" role="alert">
+                  {formError}
+                </p>
+              ) : null}
               <div className="rate-dialog-grid">
                 <div className="form-field">
                   <label className="form-label" htmlFor="rate-shortcut">
                     Nº atajo
+                    <span aria-hidden="true" className="required-mark">
+                      {' '}
+                      *
+                    </span>
                   </label>
                   <input
                     id="rate-shortcut"
+                    aria-invalid={errors.shortcutNumber ? true : undefined}
+                    onBlur={() => validateField('shortcutNumber')}
                     type="text"
                     inputMode="numeric"
                     placeholder="ej. 1"
@@ -1049,9 +1088,15 @@ export function RatesPanel({
                 <div className="form-field" style={{ gridColumn: 'span 2' }}>
                   <label className="form-label" htmlFor="rate-name">
                     Nombre
+                    <span aria-hidden="true" className="required-mark">
+                      {' '}
+                      *
+                    </span>
                   </label>
                   <input
                     id="rate-name"
+                    aria-invalid={errors.name ? true : undefined}
+                    onBlur={() => validateField('name')}
                     type="text"
                     placeholder="ej. DIA AUTO"
                     value={form.name}
@@ -1073,9 +1118,15 @@ export function RatesPanel({
                 <div className="form-field">
                   <label className="form-label" htmlFor="rate-hour-price">
                     Precio hora
+                    <span aria-hidden="true" className="required-mark">
+                      {' '}
+                      *
+                    </span>
                   </label>
                   <input
                     id="rate-hour-price"
+                    aria-invalid={errors.hourPriceArs ? true : undefined}
+                    onBlur={() => validateField('hourPriceArs')}
                     type="text"
                     inputMode="decimal"
                     placeholder="0,00"
@@ -1103,9 +1154,15 @@ export function RatesPanel({
                 <div className="form-field">
                   <label className="form-label" htmlFor="rate-fraction-price">
                     Precio fracción (5 min)
+                    <span aria-hidden="true" className="required-mark">
+                      {' '}
+                      *
+                    </span>
                   </label>
                   <input
                     id="rate-fraction-price"
+                    aria-invalid={errors.fractionPriceArs ? true : undefined}
+                    onBlur={() => validateField('fractionPriceArs')}
                     type="text"
                     inputMode="decimal"
                     placeholder="0,00"
@@ -1132,9 +1189,17 @@ export function RatesPanel({
                     htmlFor="rate-media-estadia-price"
                   >
                     Precio media estadía (12 h)
+                    <span aria-hidden="true" className="required-mark">
+                      {' '}
+                      *
+                    </span>
                   </label>
                   <input
                     id="rate-media-estadia-price"
+                    aria-invalid={
+                      errors.mediaEstadiaPriceArs ? true : undefined
+                    }
+                    onBlur={() => validateField('mediaEstadiaPriceArs')}
                     type="text"
                     inputMode="decimal"
                     placeholder="0,00"
@@ -1157,9 +1222,15 @@ export function RatesPanel({
                 <div className="form-field">
                   <label className="form-label" htmlFor="rate-stay-price">
                     Precio estadía (24 h)
+                    <span aria-hidden="true" className="required-mark">
+                      {' '}
+                      *
+                    </span>
                   </label>
                   <input
                     id="rate-stay-price"
+                    aria-invalid={errors.stayPriceArs ? true : undefined}
+                    onBlur={() => validateField('stayPriceArs')}
                     type="text"
                     inputMode="decimal"
                     placeholder="0,00"
@@ -1204,8 +1275,8 @@ export function RatesPanel({
 
               <p className="form-helper">
                 {editorMode === 'create'
-                  ? 'Las tasas nuevas se crean activas. Podés activarlas o desactivarlas desde la tabla.'
-                  : 'Para cambiar el estado de la tasa usá el botón de activar/desactivar en la tabla.'}
+                  ? 'Las tarifas nuevas se crean activas. Podés activarlas o desactivarlas desde la tabla.'
+                  : 'Para cambiar el estado de la tarifa usá el botón de activar/desactivar en la tabla.'}
               </p>
 
               <div className="rate-dialog-actions">
@@ -1220,12 +1291,12 @@ export function RatesPanel({
                 <button
                   type="submit"
                   className="primary-button compact"
-                  disabled={saving || !canSubmitForm}
+                  disabled={saving}
                 >
                   {saving
                     ? 'Guardando...'
                     : editorMode === 'create'
-                      ? 'Crear tasa'
+                      ? 'Crear tarifa'
                       : 'Guardar cambios'}
                 </button>
               </div>

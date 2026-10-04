@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useEscapeKey } from '../../lib/ui/useEscapeKey';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { closeCashSession } from '../../lib/api/cash-sessions';
 import { translateApiError } from '../../lib/api/translate';
@@ -28,6 +29,7 @@ export function CloseCashSessionDialog({
   const [leavingCash, setLeavingCash] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  useEscapeKey(onClose, !saving);
 
   const transactions = useLiveQuery(
     () =>
