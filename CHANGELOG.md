@@ -1,3 +1,43 @@
+# [1.8.0](https://github.com/parkit-now/front-desktop/compare/v1.7.0...v1.8.0) (2026-10-04)
+
+
+### Bug Fixes
+
+* **egresos:** la salida con reserva separa la reserva del cobro, con chip de llegada y montos alineados; el modal scrollea si no entra ([9e471f5](https://github.com/parkit-now/front-desktop/commit/9e471f53f7b1ea1a72236d36911f4103c0a73e36))
+* **ingresos:** el aviso de reserva más tarde dice hoy o mañana (campo upcoming, próximas 24 h) ([4a02cd8](https://github.com/parkit-now/front-desktop/commit/4a02cd81a97fa0309c8993a0adc954874d555aa7))
+* **reservas:** aclarar quién canceló en el chip de estado ([5083c78](https://github.com/parkit-now/front-desktop/commit/5083c78eb8ee234539596da5f416868bc3f9c9f2))
+* **reservas:** el diálogo de rechazo resuelto en otro lado no pide motivo ([2846c62](https://github.com/parkit-now/front-desktop/commit/2846c62b15fafae352f527327a36e667aade87f5))
+* **sync:** el banner sin conexión no estira el encabezado de la sección ([3af6ea9](https://github.com/parkit-now/front-desktop/commit/3af6ea97a00ef476c7c491689d8240b791c47e00))
+
+
+### Features
+
+* **cobro:** excedente de una estadía con reserva prepaga ([49634b6](https://github.com/parkit-now/front-desktop/commit/49634b655cfc7b8273f2022b70abfa6f4ec82e8e))
+* **desktop:** ejemplo bajo el campo de email del registro ([1d23866](https://github.com/parkit-now/front-desktop/commit/1d238664c4b5f4331be3a2a9c7ab5e1b4a23ac61))
+* **desktop:** extraer PasswordInput con botón para ver la contraseña ([466c4a9](https://github.com/parkit-now/front-desktop/commit/466c4a9001466f838565cb412a0292db39f7268d))
+* **desktop:** pedir nombre y apellido en el registro ([85f39a6](https://github.com/parkit-now/front-desktop/commit/85f39a6e850ae7fe819eb6df55e33817cbafcd3a))
+* **desktop:** pedir repetir contraseña y ver contraseña en el registro ([bccd86a](https://github.com/parkit-now/front-desktop/commit/bccd86a4f2cb96ca681b352d4e3d9d0c5d0493f7))
+* **desktop:** validar la repetición de contraseña en el registro ([ad8e120](https://github.com/parkit-now/front-desktop/commit/ad8e120deff2d2e5e9ec7c9223ffa58873cd5c33))
+* **desktop:** validar nombre y apellido en el registro ([463ecfa](https://github.com/parkit-now/front-desktop/commit/463ecfaa3ae1972964f2192a1924eddcff863c74))
+* **egresos:** con reserva se cobra sólo el excedente ([78279fc](https://github.com/parkit-now/front-desktop/commit/78279fce2d3cc26e146e3383d35af326199bd9f2))
+* **egresos:** desglose de tiempo reservado y tiempo extra al salir con reserva ([fd376f1](https://github.com/parkit-now/front-desktop/commit/fd376f13a0cefd013d6c04e0247a22e4c980c7ea))
+* **ingresos:** banner "Tiene reserva" al cargar la patente ([182fbb4](https://github.com/parkit-now/front-desktop/commit/182fbb45a39ecce8ae61e36ff4286f869a7ff806))
+* **ingresos:** el banner avisa si llega antes o tarde, y si la reserva de hoy todavía no se vincula ([f8d36c4](https://github.com/parkit-now/front-desktop/commit/f8d36c40a892507f9cd48885cd857ca5af978f03))
+* **ingresos:** el ingreso guarda tipo y categoría y avisa si no se acepta en caja ([8a25624](https://github.com/parkit-now/front-desktop/commit/8a256240da2348a1f793e722321e66195c3798bc))
+* **reservas:** aceptar y rechazar reservas desde la API de la caja ([99ac2de](https://github.com/parkit-now/front-desktop/commit/99ac2de6ae638d67f8ddb58ac5a131d3febe38b8))
+* **reservas:** API para desvincular la reserva y la foto local guarda cómo llegó el auto ([a083e40](https://github.com/parkit-now/front-desktop/commit/a083e40723c70d01d8e1de7f1a922b8d55fa5abc))
+* **reservas:** aviso no bloqueante de llegada anticipada o tardía con botón Desvincular ([650a3df](https://github.com/parkit-now/front-desktop/commit/650a3dfd1f7a13670e396aec9e1d191197ed0b76))
+* **reservas:** contar sólo las vigentes en el ítem Reservas de hoy y ordenar el modal ([5fc7109](https://github.com/parkit-now/front-desktop/commit/5fc7109d5f4f510c9f75114d9dd2b6fcc204ea4a))
+* **reservas:** el chip En curso dice si llegó antes o tarde ([775d7dc](https://github.com/parkit-now/front-desktop/commit/775d7dc1dbde68ddba474ef35d59095b5174a4ca))
+* **reservas:** foto local de reservas y aviso de nuevas por aceptar (Dexie v19) ([d03f20c](https://github.com/parkit-now/front-desktop/commit/d03f20c52a014d3609e3b158c6ff79f7657a0719))
+* **reservas:** panel "Reservas de hoy" en la caja ([4ef06ce](https://github.com/parkit-now/front-desktop/commit/4ef06cef4607902cc21438c7e7a84d3ed8414aa4))
+* **reservas:** Reservas de hoy pasa a un ítem del operativo que abre un modal con detalle y aceptar/rechazar ([3e7539e](https://github.com/parkit-now/front-desktop/commit/3e7539e86a4e9db9ad84044d1cbce004eb8618ce))
+* **reservas:** sección Reservas en la caja para aceptar y rechazar ([8936026](https://github.com/parkit-now/front-desktop/commit/89360262ab9e964c32a20bd804bee881f06dbaf7))
+* **reservas:** textos de llegada anticipada o tardía, desglose de la salida y reglas para desvincular ([566a1a8](https://github.com/parkit-now/front-desktop/commit/566a1a80cf45fd68118182d162e8efbb44d83166))
+* **sync:** ingresos con reserva y prepago en la base local (Dexie v18) ([70dc765](https://github.com/parkit-now/front-desktop/commit/70dc765e2d7c2357c1c979ca29e98b588aae849c))
+* **sync:** sincroniza la categoría de los tipos y la lista de categorías ([bcb91e4](https://github.com/parkit-now/front-desktop/commit/bcb91e44a1de53bac3c730bb8d1d79750eb26d11))
+* **tipos-de-vehiculo:** pide categoría al crear o editar un tipo ([b989f95](https://github.com/parkit-now/front-desktop/commit/b989f956df42a020bca31d01c33a5c62af652e5a))
+
 # [1.7.0](https://github.com/parkit-now/front-desktop/compare/v1.6.0...v1.7.0) (2026-10-01)
 
 
