@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  arrivalNoticeText,
+  arrivalSuffix,
+  canUnlinkReservation,
+  exitBreakdown,
   exitCharge,
+  formatExtraTime,
+  formatMinutes,
   formatReservationWindow,
+  isLinkableMatch,
+  matchArrivalText,
+  upcomingTodayText,
   matchesPlate,
   normalizePlate,
   prepaidOf,
@@ -138,5 +147,162 @@ describe('fechas en hora de Buenos Aires', () => {
     expect(todayRangeIso(new Date('2026-10-07T02:30:00.000Z')).from).toBe(
       '2026-10-06T03:00:00.000Z',
     );
+  });
+});
+
+describe('llegada anticipada o tardía (6c)', () => {
+  // 20:30 en Buenos Aires.
+  const RES_AT = '2026-10-06T23:30:00.000Z';
+
+  it('formatMinutes', () => {
+    expect(formatMinutes(50)).toBe('50 min');
+    expect(formatMinutes(60)).toBe('1 h');
+    expect(formatMinutes(90)).toBe('1 h 30 min');
+    expect(formatMinutes(-3)).toBe('0 min');
+  });
+
+  it('aviso de un ingreso vinculado que llegó antes', () => {
+    expect(
+      arrivalNoticeText({
+        arrival: 'early',
+        minutesEarly: 50,
+        entryAt: RES_AT,
+      }),
+    ).toBe(
+      'Llegó 50 min antes de su reserva de 20:30. El tiempo extra se cobra al salir.',
+    );
+  });
+
+  it('aviso de un ingreso vinculado que llegó tarde', () => {
+    expect(
+      arrivalNoticeText({ arrival: 'late', minutesLate: 45, entryAt: RES_AT }),
+    ).toBe('Llegó tarde (reserva 20:30).');
+  });
+
+  it('a tiempo, o sin dato del backend, no hay aviso', () => {
+    expect(arrivalNoticeText({ arrival: 'on_time', entryAt: RES_AT })).toBe(
+      null,
+    );
+    expect(arrivalNoticeText({ entryAt: RES_AT })).toBeNull();
+  });
+
+  it('el banner del ingreso habla en presente', () => {
+    expect(
+      matchArrivalText({ arrival: 'early', minutesEarly: 75, entryAt: RES_AT }),
+    ).toBe(
+      'Llega 1 h 15 min antes de su reserva de 20:30. El tiempo extra se cobra al salir.',
+    );
+    expect(matchArrivalText({ arrival: 'late', entryAt: RES_AT })).toBe(
+      'Llega tarde (reserva 20:30).',
+    );
+    expect(matchArrivalText({ arrival: 'on_time', entryAt: RES_AT })).toBe(
+      null,
+    );
+  });
+
+  it('aviso de reserva hoy demasiado temprano', () => {
+    expect(
+      upcomingTodayText({
+        entryAt: RES_AT,
+        linkableFrom: '2026-10-06T22:30:00.000Z',
+      }),
+    ).toBe(
+      'Esta patente tiene una reserva hoy a las 20:30. Si entra ahora, es una estadía común: la reserva se toma sola desde las 19:30.',
+    );
+    expect(upcomingTodayText({ entryAt: RES_AT })).toBe(
+      'Esta patente tiene una reserva hoy a las 20:30. Si entra ahora, es una estadía común.',
+    );
+  });
+
+  it('isLinkableMatch: un backend viejo sin `linkable` vincula todo lo que devuelve', () => {
+    expect(isLinkableMatch({})).toBe(true);
+    expect(isLinkableMatch({ linkable: true })).toBe(true);
+    expect(isLinkableMatch({ linkable: false })).toBe(false);
+  });
+
+  it('arrivalSuffix', () => {
+    expect(arrivalSuffix('early')).toBe('llegó antes');
+    expect(arrivalSuffix('late')).toBe('llegó tarde');
+    expect(arrivalSuffix('on_time')).toBe('');
+    expect(arrivalSuffix(undefined)).toBe('');
+  });
+
+  it('desglose de la salida: reservado, extra antes y después', () => {
+    const breakdown = exitBreakdown({
+      enteredAt: '2026-10-06T22:40:00.000Z', // 19:40, 50' antes
+      leftAt: '2026-10-07T02:45:00.000Z', // 23:45, 15' después
+      reservationEntryAt: RES_AT,
+      reservationExitAt: '2026-10-07T02:30:00.000Z', // 23:30
+    });
+    expect(breakdown).toEqual({
+      reservedMinutes: 180,
+      extraBeforeMinutes: 50,
+      extraAfterMinutes: 15,
+      extraMinutes: 65,
+    });
+    expect(formatExtraTime(breakdown)).toBe('50 min antes + 15 min después');
+  });
+
+  it('dentro de la franja no hay tiempo extra', () => {
+    const breakdown = exitBreakdown({
+      enteredAt: '2026-10-06T23:35:00.000Z',
+      leftAt: '2026-10-07T01:00:00.000Z',
+      reservationEntryAt: RES_AT,
+      reservationExitAt: '2026-10-07T02:30:00.000Z',
+    });
+    expect(breakdown.extraMinutes).toBe(0);
+    expect(formatExtraTime(breakdown)).toBeNull();
+  });
+
+  it('el excedente con llegada anticipada sale de la estadía real menos el prepago', () => {
+    // Reserva de 3 h a $1.500/h + $125 la fracción = $4.500. Entró 50' antes
+    // y salió a la hora: 3 h 50 min = $5.750 → cobra $1.250.
+    expect(
+      exitCharge({
+        enteredAt: '2026-10-06T22:40:00.000Z',
+        leftAt: '2026-10-07T02:30:00.000Z',
+        prices: PRICES,
+        prepaid: 4500,
+      }),
+    ).toMatchObject({ stayTotal: 5750, due: 1250 });
+  });
+
+  describe('canUnlinkReservation', () => {
+    const entry = { reservationId: 'r-1', syncSeq: 12 };
+    it('con conexión, adentro, sincronizado y sin ops encoladas: sí', () => {
+      expect(
+        canUnlinkReservation({ isOnline: true, entry, pendingOpsForEntry: 0 }),
+      ).toBe(true);
+    });
+    it.each([
+      ['sin conexión', { isOnline: false, entry, pendingOpsForEntry: 0 }],
+      [
+        'ya salió',
+        {
+          isOnline: true,
+          entry: { ...entry, leftAt: '2026-10-07T02:30:00.000Z' },
+          pendingOpsForEntry: 0,
+        },
+      ],
+      [
+        'sin reserva',
+        {
+          isOnline: true,
+          entry: { syncSeq: 12 },
+          pendingOpsForEntry: 0,
+        },
+      ],
+      [
+        'todavía no sincronizado',
+        {
+          isOnline: true,
+          entry: { ...entry, syncSeq: 0 },
+          pendingOpsForEntry: 0,
+        },
+      ],
+      ['con ops encoladas', { isOnline: true, entry, pendingOpsForEntry: 1 }],
+    ])('%s: no', (_label, input) => {
+      expect(canUnlinkReservation(input)).toBe(false);
+    });
   });
 });

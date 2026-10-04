@@ -156,3 +156,151 @@ export function isPanelStatus(
 ): status is ReservationPanelStatus {
   return (PANEL_STATUSES as readonly string[]).includes(status);
 }
+
+// ─── Llegada anticipada o tardía (fase 6c) ───────────────────────────────────
+
+/** Cómo llegó (o llega) el auto respecto de la ventana de su reserva. */
+export type ArrivalKind = 'early' | 'on_time' | 'late';
+
+/** "50 min", "1 h", "1 h 30 min". */
+export function formatMinutes(minutes: number): string {
+  const total = Math.max(Math.round(minutes), 0);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+type ArrivalInput = {
+  arrival?: string | null;
+  minutesEarly?: number | null;
+  minutesLate?: number | null;
+  entryAt: string;
+};
+
+/**
+ * Aviso de un ingreso YA vinculado que llegó antes o tarde (no bloquea nada).
+ * `null` si llegó a tiempo o el backend no informó cómo llegó.
+ */
+export function arrivalNoticeText(input: ArrivalInput): string | null {
+  if (input.arrival === 'early') {
+    return `Llegó ${formatMinutes(input.minutesEarly ?? 0)} antes de su reserva de ${formatTime(input.entryAt)}. El tiempo extra se cobra al salir.`;
+  }
+  if (input.arrival === 'late') {
+    return `Llegó tarde (reserva ${formatTime(input.entryAt)}).`;
+  }
+  return null;
+}
+
+/**
+ * La misma idea en el banner del ingreso, ANTES de registrarlo (por eso en
+ * presente). `null` si llega a tiempo.
+ */
+export function matchArrivalText(input: ArrivalInput): string | null {
+  if (input.arrival === 'early') {
+    return `Llega ${formatMinutes(input.minutesEarly ?? 0)} antes de su reserva de ${formatTime(input.entryAt)}. El tiempo extra se cobra al salir.`;
+  }
+  if (input.arrival === 'late') {
+    return `Llega tarde (reserva ${formatTime(input.entryAt)}).`;
+  }
+  return null;
+}
+
+/**
+ * Aviso de una reserva de HOY a la que todavía es muy temprano para vincular:
+ * el ingreso de ahora es una estadía común.
+ */
+export function upcomingTodayText(input: {
+  entryAt: string;
+  linkableFrom?: string | null;
+}): string {
+  const head = `Esta patente tiene una reserva hoy a las ${formatTime(input.entryAt)}.`;
+  const tail = input.linkableFrom
+    ? ` Si entra ahora, es una estadía común: la reserva se toma sola desde las ${formatTime(input.linkableFrom)}.`
+    : ' Si entra ahora, es una estadía común.';
+  return head + tail;
+}
+
+/**
+ * ¿El ingreso de ahora se vincularía a la reserva del banner? Un backend
+ * anterior a la 6c no manda `linkable`: todo lo que devolvía se vinculaba.
+ */
+export function isLinkableMatch(match: { linkable?: boolean | null }): boolean {
+  return match.linkable !== false;
+}
+
+/** Sufijo del estado "En curso" según cómo llegó: "llegó antes" / "llegó tarde". */
+export function arrivalSuffix(arrival: string | null | undefined): string {
+  if (arrival === 'early') return 'llegó antes';
+  if (arrival === 'late') return 'llegó tarde';
+  return '';
+}
+
+export type ExitBreakdown = {
+  /** Duración de la franja reservada (lo que cubre el prepago), en minutos. */
+  reservedMinutes: number;
+  /** Minutos adentro antes de la hora de la reserva. */
+  extraBeforeMinutes: number;
+  /** Minutos adentro después del fin de la reserva. */
+  extraAfterMinutes: number;
+  /** Tiempo fuera de la franja reservada. */
+  extraMinutes: number;
+};
+
+/**
+ * Desglose de la salida con reserva: cuánto se reservó y cuánto tiempo estuvo
+ * fuera de la franja (antes y después). Los montos no se reparten por tramo:
+ * la tarifa no es lineal (primera hora entera, fracciones, topes), así que el
+ * cobro sigue siendo `calcStayPrice(estadía real) − prepago`.
+ */
+export function exitBreakdown(input: {
+  enteredAt: string;
+  leftAt: string;
+  reservationEntryAt: string;
+  reservationExitAt: string;
+}): ExitBreakdown {
+  const minutes = (from: string, to: string) =>
+    Math.max(Math.round((Date.parse(to) - Date.parse(from)) / 60_000), 0);
+  const extraBeforeMinutes = minutes(input.enteredAt, input.reservationEntryAt);
+  const extraAfterMinutes = minutes(input.reservationExitAt, input.leftAt);
+  return {
+    reservedMinutes: minutes(input.reservationEntryAt, input.reservationExitAt),
+    extraBeforeMinutes,
+    extraAfterMinutes,
+    extraMinutes: extraBeforeMinutes + extraAfterMinutes,
+  };
+}
+
+/** "50 min antes + 15 min después", o null si no hubo tiempo extra. */
+export function formatExtraTime(breakdown: ExitBreakdown): string | null {
+  const parts: string[] = [];
+  if (breakdown.extraBeforeMinutes > 0) {
+    parts.push(`${formatMinutes(breakdown.extraBeforeMinutes)} antes`);
+  }
+  if (breakdown.extraAfterMinutes > 0) {
+    parts.push(`${formatMinutes(breakdown.extraAfterMinutes)} después`);
+  }
+  return parts.length > 0 ? parts.join(' + ') : null;
+}
+
+/**
+ * ¿Se puede desvincular la reserva de este ingreso desde la caja? Sólo con
+ * conexión (lo decide el backend, con la versión del ingreso), con el auto
+ * todavía adentro, con el ingreso ya en el servidor (`syncSeq > 0`) y sin
+ * operaciones encoladas encima: si hubiera un cierre o una corrección sin
+ * sincronizar, desvincular cambiaría la versión y ese cambio terminaría en
+ * conflicto.
+ */
+export function canUnlinkReservation(input: {
+  isOnline: boolean;
+  entry: { reservationId?: string; leftAt?: string; syncSeq: number };
+  pendingOpsForEntry: number;
+}): boolean {
+  return (
+    input.isOnline &&
+    Boolean(input.entry.reservationId) &&
+    !input.entry.leftAt &&
+    input.entry.syncSeq > 0 &&
+    input.pendingOpsForEntry === 0
+  );
+}
