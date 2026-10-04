@@ -56,6 +56,7 @@ import {
 } from '../../lib/print/receiptTemplate';
 import {
   fontSizeToOption,
+  linkVehicleFields,
   normalizeTicketTemplateSettings,
   readTicketTemplateSettings,
   resetTicketTemplateSettings,
@@ -382,15 +383,17 @@ export function PrinterSettingsPanel({
 
       const normalized: TicketTemplateSettings = {
         ...next,
-        fields: next.fields.map((field) => {
-          const hasValue =
-            field.id === 'parkingCuit'
-              ? Boolean(tenantCuit?.trim() || next.cuitOverride.trim())
-              : field.id === 'grossIncome'
-                ? Boolean(next.grossIncomeText.trim())
-                : true;
-          return hasValue ? field : { ...field, visible: false };
-        }),
+        fields: linkVehicleFields(
+          next.fields.map((field) => {
+            const hasValue =
+              field.id === 'parkingCuit'
+                ? Boolean(tenantCuit?.trim() || next.cuitOverride.trim())
+                : field.id === 'grossIncome'
+                  ? Boolean(next.grossIncomeText.trim())
+                  : true;
+            return hasValue ? field : { ...field, visible: false };
+          }),
+        ),
       };
       setTemplate(normalized);
       writeTicketTemplateSettings(normalized);
@@ -662,8 +665,11 @@ export function PrinterSettingsPanel({
       ? [{ value: selected, label: `${selected} (no disponible)` }]
       : []),
   ];
+  // El modelo no tiene fila propia: lo maneja la de "Marca y modelo".
   const activeFields =
-    activeTemplateKind === 'receipt' ? receiptTemplate.fields : template.fields;
+    activeTemplateKind === 'receipt'
+      ? receiptTemplate.fields
+      : template.fields.filter((field) => field.id !== 'vehicleModel');
   const templateTitle =
     activeTemplateKind === 'receipt'
       ? 'Plantilla no fiscal'

@@ -90,10 +90,19 @@ function valueForField(
       return data.ticketNumber != null ? String(data.ticketNumber) : 'S/N';
     case 'plate':
       return clean(data.plate ?? null);
-    case 'vehicleBrand':
-      return clean(data.vehicleBrand ?? null);
+    // Marca y modelo comparten renglón (ver `linkVehicleFields`): la fila la
+    // pone la marca y el modelo no imprime nada propio.
+    case 'vehicleBrand': {
+      const vehicle = [
+        clean(data.vehicleBrand ?? null),
+        clean(data.vehicleModel ?? data.vehicle ?? null),
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return vehicle || null;
+    }
     case 'vehicleModel':
-      return clean(data.vehicleModel ?? data.vehicle ?? null);
+      return null;
     case 'color':
       return clean(data.color);
     case 'rate':
@@ -126,7 +135,10 @@ function renderField(
   value: string,
   first: boolean,
 ): string {
-  const label = TICKET_TEMPLATE_FIELD_LABELS[field.id];
+  const label =
+    field.id === 'vehicleBrand'
+      ? 'Vehículo'
+      : TICKET_TEMPLATE_FIELD_LABELS[field.id];
   const style =
     `font-size:${field.fontSizePt}pt;` +
     `font-weight:${field.emphasis === 'bold' ? 800 : 400};`;
@@ -187,8 +199,13 @@ export function buildEntryTicketHtml(
       : options.bodyWidthMm;
   const bodyWidthCss =
     bodyWidthMm === null
-      ? 'width: 100%; max-width: 80mm;'
-      : `width: ${bodyWidthMm}mm;`;
+      ? // Sin tamaño declarado, Chromium en Windows arma la página con ancho
+        // tipo Carta aunque el driver tenga un rollo de 80 mm. Centrado, el
+        // ticket caía a ~70 mm del borde y el rollo imprimía solo su primera
+        // columna. Pegado a la izquierda y al ancho imprimible de un rollo de
+        // 80 mm (72 mm) entra sea cual sea el ancho de la página.
+        'width: 100%; max-width: 72mm; margin: 0;'
+      : `width: ${bodyWidthMm}mm; margin: 0 auto;`;
 
   const template =
     options.template ?? defaultTicketTemplateSettings(data.parkingName ?? '');
@@ -244,8 +261,7 @@ export function buildEntryTicketHtml(
   html, body { margin: 0; padding: 0; background: #fff; }
   body {
     ${bodyWidthCss}
-    margin: 0 auto;
-    padding: 1.2mm 0 2mm;
+    padding: 0 0 .5mm;
     color: #000;
     font-family: "Segoe UI", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif;
     font-size: 9pt;
