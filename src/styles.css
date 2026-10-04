@@ -6778,52 +6778,170 @@ h2 {
   font-size: 16px;
 }
 
-.today-reservations {
+/* ── Ítem y modal "Reservas de hoy" del operativo (fase 6c) ─────────────── */
+
+/* La tarjeta se ve como "Registrar egreso" (comparte .exit-controls) y las
+   dos quedan juntas abajo de la columna: el margen automático lo toma la
+   primera. */
+.today-res-entry + .exit-controls {
+  margin-top: 0;
+}
+
+.today-res-entry__pending {
   flex: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  padding: 14px 18px;
-  background: var(--color-card);
-  box-shadow: var(--shadow-card);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.today-res-dialog {
+  width: min(960px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-.today-reservations__title {
+.today-res-dialog__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.today-res-dialog__list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.today-res-dialog__list ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.today-res-dialog__group {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.today-res-row {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-card);
+}
+
+.today-res-row.is-selected {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
+.today-res-row__select {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.today-res-row__plate {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.today-res-row__slot,
+.today-res-row__paid {
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.today-res-row__pending {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin: 0;
-  font-size: 15px;
+  padding: 0 12px 8px;
 }
 
-.today-reservations__table {
-  width: 100%;
-  border-collapse: collapse;
+.today-res-dialog__detail {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 14px;
+  background: var(--color-bg-start);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   font-size: 13px;
 }
 
-.today-reservations__table th {
-  text-align: left;
-  font-weight: 600;
+.today-res-dialog__detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 16px;
+}
+
+.today-res-dialog__dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.today-res-dialog__dl > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.today-res-dialog__dl dt {
   color: var(--color-muted);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--color-border);
 }
 
-.today-reservations__table td {
-  padding: 6px;
-  border-bottom: 1px solid var(--color-border);
+.today-res-dialog__dl dd {
+  margin: 0;
+  font-weight: 600;
 }
 
-.today-reservations__table tr:last-child td {
-  border-bottom: none;
+.today-res-dialog__policy {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-muted);
 }
 
-.today-reservations__plate {
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.today-res-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .today-res-dialog__body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
 }
 
 /* ── Reservas: aceptar y rechazar desde la caja (fase 6b) ─────────────────── */
@@ -7102,24 +7220,6 @@ h2 {
 
 .required-mark {
   color: var(--color-danger-text);
-}
-
-.today-reservations__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 8px;
-}
-
-.today-reservations__head .today-reservations__title {
-  white-space: nowrap;
-}
-
-.today-reservations__head .link-button {
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

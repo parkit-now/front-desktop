@@ -10,7 +10,12 @@
 import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import type { LocalReservation } from '../../lib/db/localDb';
-import { arDayKey, formatTime } from '../entries/reservationUtils';
+import { formatArs } from '../../lib/format/argentina';
+import {
+  arDayKey,
+  formatMinutes,
+  formatTime,
+} from '../entries/reservationUtils';
 
 export type ReservationBucket = 'pending' | 'today' | 'upcoming';
 
@@ -398,4 +403,121 @@ export function classifyActionError(error: unknown): {
     message: translateApiError(error),
     stale: typeof code === 'string' && RACE_CODES.has(code),
   };
+}
+
+// ─── Modal "Reservas de hoy" del operativo ──────────────────────────────────
+
+/**
+ * Lo que dice el ítem del operativo: cuántas reservas hay hoy (pestaña Hoy) y
+ * cuántas esperan respuesta y siguen a tiempo (el mismo número que el badge
+ * del menú).
+ */
+export function todaySummary(
+  rows: readonly Pick<
+    LocalReservation,
+    'status' | 'entryAt' | 'approvalDeadlineAt'
+  >[],
+  now: Date = new Date(),
+): { today: number; pending: number } {
+  return {
+    today: countByBucket(rows, now).today,
+    pending: pendingCount(rows, now.getTime()),
+  };
+}
+
+/**
+ * Grupos del modal: primero las por aceptar (de cualquier día: tienen plazo),
+ * después las de hoy. Mismo orden que las pestañas de la sección Reservas.
+ */
+export function todayDialogGroups<
+  T extends Pick<LocalReservation, 'status' | 'entryAt' | 'approvalDeadlineAt'>,
+>(rows: readonly T[], now: Date = new Date()): { pending: T[]; today: T[] } {
+  return {
+    pending: rowsOf(rows, 'pending', now),
+    today: rowsOf(rows, 'today', now),
+  };
+}
+
+export type DetailLine = { label: string; value: string };
+
+/** "Hasta 60 min antes" / "1 h" para la política. */
+function minutesPhrase(minutes: number): string {
+  return formatMinutes(minutes);
+}
+
+/**
+ * Reglas de la playa al reservar, en frases cortas para el detalle. Vacío si
+ * la foto no las trae (backend anterior).
+ */
+export function policySummaryLines(
+  policy: LocalReservation['policy'] | undefined,
+): string[] {
+  if (!policy) return [];
+  const lines = [
+    `Puede llegar desde ${minutesPhrase(policy.earlyArrivalMinutes)} antes; tolerancia ${minutesPhrase(policy.graceMinutes)}.`,
+  ];
+  if (
+    typeof policy.earlyArrivalMaxMinutes === 'number' &&
+    policy.earlyArrivalMaxMinutes > policy.earlyArrivalMinutes
+  ) {
+    lines.push(
+      `Si llega antes, hasta ${minutesPhrase(policy.earlyArrivalMaxMinutes)} antes entra con la reserva y el extra se cobra al salir.`,
+    );
+  }
+  lines.push(
+    policy.lateCancelRefundPct > 0
+      ? `Cancelación gratis hasta ${minutesPhrase(policy.freeCancelMinutes)} antes; después se devuelve el ${policy.lateCancelRefundPct} %.`
+      : `Cancelación gratis hasta ${minutesPhrase(policy.freeCancelMinutes)} antes; después no se devuelve nada.`,
+  );
+  return lines;
+}
+
+/**
+ * Filas del detalle de una reserva en el modal: código, conductor, vehículo,
+ * franja, lo pagado y, si entró, cuándo y cómo llegó.
+ */
+export function reservationDetailLines(
+  r: Pick<
+    LocalReservation,
+    | 'code'
+    | 'driverName'
+    | 'vehiclePlate'
+    | 'entryAt'
+    | 'exitAt'
+    | 'totalArs'
+    | 'enteredAt'
+    | 'arrival'
+    | 'minutesEarly'
+    | 'minutesLate'
+    | 'stayPrepaidArs'
+  >,
+  vehicleLabel: string,
+  now: Date = new Date(),
+): DetailLine[] {
+  const lines: DetailLine[] = [
+    { label: 'Código', value: r.code },
+    { label: 'Conductor', value: r.driverName ?? '—' },
+    {
+      label: 'Vehículo',
+      value:
+        vehicleLabel && vehicleLabel !== '—'
+          ? `${r.vehiclePlate} · ${vehicleLabel}`
+          : r.vehiclePlate,
+    },
+    { label: 'Franja', value: formatSlot(r.entryAt, r.exitAt, now) },
+    {
+      label: 'Pagado',
+      value: `${formatArs(r.stayPrepaidArs ?? r.totalArs)} por Mercado Pago`,
+    },
+  ];
+  if (r.enteredAt) {
+    const how =
+      r.arrival === 'early'
+        ? ` · llegó ${formatMinutes(r.minutesEarly ?? 0)} antes`
+        : r.arrival === 'late'
+          ? ` · llegó ${formatMinutes(r.minutesLate ?? 0)} tarde`
+          : '';
+    lines.push({ label: 'Ingresó', value: `${formatTime(r.enteredAt)}${how}` });
+  }
+  return lines;
 }

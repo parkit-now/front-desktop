@@ -1,24 +1,16 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CalendarClock, RefreshCw, WifiOff } from 'lucide-react';
-import {
-  acceptReservation,
-  rejectReservation,
-} from '../../lib/api/reservations';
-import { localDb, type LocalReservation } from '../../lib/db/localDb';
+import { localDb } from '../../lib/db/localDb';
 import { formatArs } from '../../lib/format/argentina';
 import { useNetwork } from '../../lib/network/NetworkContext';
-import { useToast } from '../../lib/notifications/ToastProvider';
-import { applyReservationResult } from '../../lib/sync/reservationsSnapshot';
 import { formatTime } from '../entries/reservationUtils';
 import { ReservationCountdown } from './ReservationCountdown';
-import { RejectReservationDialog } from './RejectReservationDialog';
+import { useReservationActions } from './useReservationActions';
 import {
   actionState,
   BUCKET_LABELS,
   BUCKETS,
-  bucketOf,
-  classifyActionError,
   countByBucket,
   countdownTo,
   formatSlot,
@@ -27,7 +19,6 @@ import {
   refundChip,
   rowsOf,
   statusChip,
-  type ReservationAction,
   type ReservationBucket,
 } from './reservationBoard';
 import type { ReservationsFeed } from './useReservationsFeed';
@@ -64,7 +55,6 @@ interface Props {
  */
 export function ReservationsPanel({ tenantId, accessToken, feed }: Props) {
   const { isOnline } = useNetwork();
-  const { showToast } = useToast();
   const ids = useId();
   const offlineNoteId = `${ids}-offline`;
 
@@ -116,89 +106,12 @@ export function ReservationsPanel({ tenantId, accessToken, feed }: Props) {
     [rows, nowDate, now],
   );
 
-  const [busy, setBusy] = useState<{
-    id: string;
-    action: ReservationAction;
-  } | null>(null);
-  const [rejecting, setRejecting] = useState<LocalReservation | null>(null);
-  const [rejectError, setRejectError] = useState<string | null>(null);
-
-  // Si la reserva del diálogo se resolvió en otro lado (el dueño desde la web,
-  // otra caja, el barrido), el diálogo lo dice en vez de dejar rechazar.
-  const rejectingLive = rejecting
-    ? (rows?.find((r) => r.id === rejecting.id) ?? null)
-    : null;
-  const rejectingStale =
-    rejecting !== null && rejectingLive?.status !== 'pending_approval';
-
-  async function handleStale(message: string) {
-    showToast({ message, kind: 'info' });
-    await feed.refresh();
-  }
-
-  async function accept(r: LocalReservation) {
-    if (!isOnline) {
-      showToast({ message: OFFLINE_ACTIONS_MESSAGE, kind: 'info' });
-      return;
-    }
-    setBusy({ id: r.id, action: 'accept' });
-    try {
-      const updated = await acceptReservation({
-        tenantId,
-        bearer: accessToken,
-        reservationId: r.id,
-      });
-      await applyReservationResult(updated, tenantId);
-      const bucket = bucketOf(updated, new Date());
-      showToast({
-        message: `Aceptaste la reserva de ${r.vehiclePlate}.${
-          bucket && bucket !== 'pending'
-            ? ` Pasó a ${BUCKET_LABELS[bucket]}.`
-            : ''
-        }`,
-        kind: 'success',
-      });
-      void feed.refresh();
-    } catch (error) {
-      const { message, stale } = classifyActionError(error);
-      if (stale) await handleStale(message);
-      else showToast({ message, kind: 'error' });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function reject(reason: string) {
-    if (!rejecting) return;
-    const r = rejecting;
-    setBusy({ id: r.id, action: 'reject' });
-    setRejectError(null);
-    try {
-      const updated = await rejectReservation({
-        tenantId,
-        bearer: accessToken,
-        reservationId: r.id,
-        reason,
-      });
-      await applyReservationResult(updated, tenantId);
-      setRejecting(null);
-      showToast({
-        message: `Rechazaste la reserva de ${r.vehiclePlate}. Le devolvemos ${formatArs(r.totalArs)} al conductor.`,
-        kind: 'success',
-      });
-      void feed.refresh();
-    } catch (error) {
-      const { message, stale } = classifyActionError(error);
-      if (stale) {
-        setRejecting(null);
-        await handleStale(message);
-      } else {
-        setRejectError(message);
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { busy, accept, openReject, rejectDialog } = useReservationActions({
+    tenantId,
+    accessToken,
+    feed,
+    rows,
+  });
 
   return (
     <div className="reservations-panel">
@@ -422,10 +335,7 @@ export function ReservationsPanel({ tenantId, accessToken, feed }: Props) {
                                   state.disabled ? offlineNoteId : undefined
                                 }
                                 aria-label={`Rechazar la reserva de ${r.vehiclePlate}`}
-                                onClick={() => {
-                                  setRejectError(null);
-                                  setRejecting(r);
-                                }}
+                                onClick={() => openReject(r)}
                               >
                                 Rechazar
                               </button>
@@ -442,18 +352,7 @@ export function ReservationsPanel({ tenantId, accessToken, feed }: Props) {
         </div>
       </section>
 
-      {rejecting ? (
-        <RejectReservationDialog
-          reservation={rejecting}
-          refundArs={rejecting.totalArs}
-          saving={busy?.id === rejecting.id && busy.action === 'reject'}
-          isOnline={isOnline}
-          stale={rejectingStale}
-          error={rejectError}
-          onConfirm={(reason) => void reject(reason)}
-          onClose={() => setRejecting(null)}
-        />
-      ) : null}
+      {rejectDialog}
     </div>
   );
 }

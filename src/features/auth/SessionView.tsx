@@ -20,7 +20,7 @@ import { AutoEntriesColumns } from '../camera/AutoEntriesColumns';
 import { useCameraStatus, type CameraStatus } from '../camera/useCameraStatus';
 import { EntryForm } from '../entries/EntryForm';
 import type { ManualEntryDraft } from '../entries/EntryFormCore';
-import { TodayReservationsPanel } from '../entries/TodayReservationsPanel';
+import { TodayReservationsEntry } from '../reservations/TodayReservationsEntry';
 import { ArrivalNotices } from '../entries/ArrivalNotices';
 import { ReservationsPanel } from '../reservations/ReservationsPanel';
 import { useReservationsFeed } from '../reservations/useReservationsFeed';
@@ -915,9 +915,10 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         accessToken={session.access_token}
                         onReservationsChanged={reservationsFeed.refresh}
                       />
-                      <TodayReservationsPanel
+                      <TodayReservationsEntry
                         tenantId={activeTenantId}
-                        pendingCount={reservationsFeed.pendingCount}
+                        accessToken={session.access_token}
+                        feed={reservationsFeed}
                         onOpenReservations={() => setSection('reservas')}
                       />
                       <ExitControls

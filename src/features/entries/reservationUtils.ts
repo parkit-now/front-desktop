@@ -1,6 +1,6 @@
 /**
- * Reservas en la caja (fase 6): lógica pura del banner del ingreso, del cobro
- * del excedente al salir y del panel "Reservas de hoy". Sin React ni Dexie,
+ * Reservas en la caja (fase 6): lógica pura del banner del ingreso y del cobro
+ * del excedente al salir. Sin React ni Dexie,
  * para testearla sola.
  */
 import { ApiError } from '../../lib/api/client';
@@ -127,36 +127,6 @@ export function todayRangeIso(now = new Date()): { from: string; to: string } {
   const from = new Date(`${day}T00:00:00-03:00`);
   const to = new Date(from.getTime() + 24 * 60 * 60_000 - 1);
   return { from: from.toISOString(), to: to.toISOString() };
-}
-
-export type ReservationPanelStatus =
-  | 'pending_approval'
-  | 'confirmed'
-  | 'checked_in'
-  | 'completed'
-  | 'no_show';
-
-/** Los estados que interesan en la caja: lo que puede llegar, lo que está adentro y lo que ya pasó. */
-export const PANEL_STATUSES: readonly ReservationPanelStatus[] = [
-  'pending_approval',
-  'confirmed',
-  'checked_in',
-  'completed',
-  'no_show',
-];
-
-export const STATUS_LABELS: Record<ReservationPanelStatus, string> = {
-  pending_approval: 'Por aceptar',
-  confirmed: 'Confirmada',
-  checked_in: 'En curso',
-  completed: 'Completada',
-  no_show: 'No se presentó',
-};
-
-export function isPanelStatus(
-  status: string,
-): status is ReservationPanelStatus {
-  return (PANEL_STATUSES as readonly string[]).includes(status);
 }
 
 // ─── Llegada anticipada o tardía (fase 6c) ───────────────────────────────────

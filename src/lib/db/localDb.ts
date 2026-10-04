@@ -127,6 +127,10 @@ export interface LocalReservation {
   arrival?: 'early' | 'on_time' | 'late';
   minutesEarly?: number;
   minutesLate?: number;
+  /** Prepago descontado en la caja (snapshot del ingreso vinculado). */
+  stayPrepaidArs?: number;
+  /** Las reglas de la playa al reservar (detalle del modal "Reservas de hoy"). */
+  policy?: components['schemas']['OwnerReservationPolicyDto'];
   /** Cuándo se leyó del servidor (ISO). */
   fetchedAt: string;
 }

@@ -82,6 +82,7 @@ describe('toLocalReservation', () => {
       arrival: 'early',
       minutesEarly: 50,
       minutesLate: 0,
+      stayPrepaidArs: 4500,
     });
   });
 

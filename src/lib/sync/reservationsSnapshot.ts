@@ -37,6 +37,8 @@ export function toLocalReservation(
     arrival: dto.stay?.arrival ?? undefined,
     minutesEarly: dto.stay?.minutesEarly ?? undefined,
     minutesLate: dto.stay?.minutesLate ?? undefined,
+    stayPrepaidArs: dto.stay?.prepaidAmountArs ?? undefined,
+    policy: dto.policy ?? undefined,
     fetchedAt,
   };
 }

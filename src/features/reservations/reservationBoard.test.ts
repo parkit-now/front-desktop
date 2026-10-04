@@ -20,8 +20,12 @@ const {
   pendingIdSet,
   reasonLabel,
   refundChip,
+  policySummaryLines,
+  reservationDetailLines,
   rowsOf,
   statusChip,
+  todayDialogGroups,
+  todaySummary,
 } = await import('./reservationBoard');
 
 // 13:00 en Buenos Aires.
@@ -432,5 +436,81 @@ describe('classifyActionError (carreras con la web)', () => {
     expect(classifyActionError(new TypeError('fetch')).message).toContain(
       'No pudimos conectarnos',
     );
+  });
+});
+
+describe('modal "Reservas de hoy" del operativo', () => {
+  const rows = [
+    res({ id: 'hoy', status: 'confirmed' }),
+    res({ id: 'adentro', status: 'checked_in', entryAt: YESTERDAY }),
+    res({
+      id: 'por-aceptar',
+      status: 'pending_approval',
+      entryAt: TOMORROW,
+      approvalDeadlineAt: new Date(NOW + 5 * 60_000).toISOString(),
+    }),
+    res({
+      id: 'vencida',
+      status: 'pending_approval',
+      approvalDeadlineAt: new Date(NOW - 60_000).toISOString(),
+    }),
+    res({ id: 'manana', status: 'confirmed', entryAt: TOMORROW }),
+  ];
+
+  it('el ítem cuenta las de hoy y las por aceptar a tiempo', () => {
+    expect(todaySummary(rows, NOW_DATE)).toEqual({ today: 2, pending: 1 });
+  });
+
+  it('grupos: primero por aceptar (de cualquier día), después hoy; sin próximas', () => {
+    const groups = todayDialogGroups(rows, NOW_DATE);
+    expect(groups.pending.map((r) => r.id)).toEqual(['vencida', 'por-aceptar']);
+    expect(groups.today.map((r) => r.id)).toEqual(['adentro', 'hoy']);
+  });
+
+  it('detalle: código, conductor, vehículo, franja, pagado y cómo llegó', () => {
+    const lines = reservationDetailLines(
+      res({
+        status: 'checked_in',
+        enteredAt: '2026-10-03T20:10:00Z',
+        arrival: 'early',
+        minutesEarly: 50,
+        stayPrepaidArs: 4500,
+      }),
+      'Auto',
+      NOW_DATE,
+    );
+    expect(lines).toEqual([
+      { label: 'Código', value: 'R-4F2K9A' },
+      { label: 'Conductor', value: 'Lucía M.' },
+      { label: 'Vehículo', value: 'AB123CD · Auto' },
+      { label: 'Franja', value: 'Hoy 18:00–21:00' },
+      { label: 'Pagado', value: expect.stringContaining('4.500') as string },
+      { label: 'Ingresó', value: '17:10 · llegó 50 min antes' },
+    ]);
+  });
+
+  it('detalle sin categoría ni ingreso', () => {
+    const lines = reservationDetailLines(res(), '—', NOW_DATE);
+    expect(lines.find((l) => l.label === 'Vehículo')?.value).toBe('AB123CD');
+    expect(lines.some((l) => l.label === 'Ingresó')).toBe(false);
+  });
+
+  it('política en frases (y nada si la foto no la trae)', () => {
+    expect(
+      policySummaryLines({
+        freeCancelMinutes: 60,
+        lateCancelRefundPct: 0,
+        earlyArrivalMinutes: 15,
+        graceMinutes: 30,
+        acceptanceMode: 'manual',
+        approvalWindowMinutes: 15,
+        earlyArrivalMaxMinutes: 60,
+      }),
+    ).toEqual([
+      'Puede llegar desde 15 min antes; tolerancia 30 min.',
+      'Si llega antes, hasta 1 h antes entra con la reserva y el extra se cobra al salir.',
+      'Cancelación gratis hasta 1 h antes; después no se devuelve nada.',
+    ]);
+    expect(policySummaryLines(undefined)).toEqual([]);
   });
 });
