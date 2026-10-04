@@ -49,8 +49,13 @@ import {
 } from './entryUtils';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
 import {
+  arrivalSuffix,
+  exitBreakdown,
   exitCharge,
+  formatExtraTime,
+  formatMinutes,
   formatReservationWindow,
+  formatTime,
   prepaidOf,
   reservationCode,
 } from './reservationUtils';
@@ -125,6 +130,20 @@ export function ExitModal({
         ? localDb.reservations.get(entry.reservationId)
         : undefined,
     [entry.reservationId],
+  );
+  // Fase 6c: desglose de la franja reservada y del tiempo fuera de ella (llegó
+  // antes, se pasó). Sólo con la foto de la reserva; sin ella queda el resumen.
+  const breakdown = useMemo(
+    () =>
+      reservation
+        ? exitBreakdown({
+            enteredAt: entry.enteredAt,
+            leftAt: new Date(nowMs).toISOString(),
+            reservationEntryAt: reservation.entryAt,
+            reservationExitAt: reservation.exitAt,
+          })
+        : null,
+    [reservation, entry.enteredAt, nowMs],
   );
 
   const [amount, setAmount] = useState(
@@ -841,8 +860,29 @@ export function ExitModal({
                         ? `Cubre ${formatReservationWindow(reservation.entryAt, reservation.exitAt)} · `
                         : ''}
                       ya pagó {formatArs(prepaid)}
+                      {reservation && arrivalSuffix(reservation.arrival)
+                        ? ` · ${arrivalSuffix(reservation.arrival)}`
+                        : ''}
                     </span>
                   </div>
+                  {reservation && breakdown ? (
+                    <>
+                      <div className="exit-info-row">
+                        <span className="muted">Tiempo reservado</span>
+                        <span>
+                          {formatTime(reservation.entryAt)}–
+                          {formatTime(reservation.exitAt)} (
+                          {formatMinutes(breakdown.reservedMinutes)})
+                        </span>
+                      </div>
+                      <div className="exit-info-row">
+                        <span className="muted">Tiempo extra</span>
+                        <span>
+                          {formatExtraTime(breakdown) ?? 'Sin tiempo extra'}
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
                   <div className="exit-info-row">
                     <span className="muted">Estadía total</span>
                     <span>{formatArs(charge.stayTotal)}</span>
