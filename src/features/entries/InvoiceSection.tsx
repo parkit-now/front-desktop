@@ -86,7 +86,12 @@ export function InvoiceSection({
   const [confirmOpen, setConfirmOpen] = useState(false);
   // «Emitir factura» abre primero el receptor (consumidor final o CUIT).
   const [issueOpen, setIssueOpen] = useState(false);
-  const receiver = useInvoiceReceiver({ tenantId, accessToken, isOnline });
+  const receiver = useInvoiceReceiver({
+    tenantId,
+    accessToken,
+    isOnline,
+    plate: entry.plate,
+  });
   const invoice = useLiveQuery(
     () => localDb.invoices.where('entryId').equals(entry.id).first(),
     [entry.id],

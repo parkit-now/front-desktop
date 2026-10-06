@@ -6,9 +6,18 @@ import { useCameraTestingMode } from './testingMode';
 interface Props {
   tenantId: string;
   accessToken: string;
+  parkingName?: string | null;
+  parkingAddress?: string | null;
+  parkingCuit?: string | null;
 }
 
-export function AutoEntriesColumns({ tenantId, accessToken }: Props) {
+export function AutoEntriesColumns({
+  tenantId,
+  accessToken,
+  parkingName = null,
+  parkingAddress = null,
+  parkingCuit = null,
+}: Props) {
   const { detections, dismiss, ack } = useCameraDetections(tenantId);
   const testingMode = useCameraTestingMode();
 
@@ -50,6 +59,9 @@ export function AutoEntriesColumns({ tenantId, accessToken }: Props) {
               detection={detection}
               tenantId={tenantId}
               accessToken={accessToken}
+              parkingName={parkingName}
+              parkingAddress={parkingAddress}
+              parkingCuit={parkingCuit}
               onRegistered={ack}
               onDismiss={dismiss}
             />

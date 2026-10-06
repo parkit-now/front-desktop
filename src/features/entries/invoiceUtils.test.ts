@@ -6,6 +6,7 @@ import {
   describeTaxpayerLookup,
   expectedLetter,
   isReceiverReady,
+  latestInvoiceReceiverForPlate,
   receiverCuitToSend,
   describeInvoiceResult,
   describeIssueConfirmation,
@@ -373,6 +374,147 @@ describe('receptor con CUIT (padrón)', () => {
       tone: 'info',
       text: 'Factura A · CUIT 30-71234567-1',
     });
+  });
+});
+
+describe('último receptor facturado por patente', () => {
+  const entries = [
+    { id: 'entry-old', tenantId: 'tenant-1', plate: 'IAG574' },
+    { id: 'entry-new', tenantId: 'tenant-1', plate: ' iag574 ' },
+    { id: 'entry-other-plate', tenantId: 'tenant-1', plate: 'ABC123' },
+    { id: 'entry-other-tenant', tenantId: 'tenant-2', plate: 'IAG574' },
+  ];
+
+  it('devuelve el CUIT emitido más reciente de la misma patente y playa', () => {
+    expect(
+      latestInvoiceReceiverForPlate({
+        tenantId: 'tenant-1',
+        plate: 'iag574',
+        entries,
+        invoices: [
+          {
+            entryId: 'entry-old',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '30712345671',
+            issuedAt: '2026-10-01T10:00:00.000Z',
+            updatedAt: '2026-10-01T10:01:00.000Z',
+          },
+          {
+            entryId: 'entry-new',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '20427205208',
+            issuedAt: '2026-10-05T10:00:00.000Z',
+            updatedAt: '2026-10-05T10:01:00.000Z',
+          },
+        ],
+      }),
+    ).toEqual({
+      cuit: '20427205208',
+      usedAt: '2026-10-05T10:00:00.000Z',
+    });
+  });
+
+  it('ignora consumidor final, facturas no emitidas y CUIT inválidos', () => {
+    expect(
+      latestInvoiceReceiverForPlate({
+        tenantId: 'tenant-1',
+        plate: 'IAG574',
+        entries,
+        invoices: [
+          {
+            entryId: 'entry-new',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 99,
+            receptorDocNro: '0',
+            issuedAt: '2026-10-06T10:00:00.000Z',
+            updatedAt: '2026-10-06T10:00:00.000Z',
+          },
+          {
+            entryId: 'entry-new',
+            tenantId: 'tenant-1',
+            status: 'pending',
+            receptorDocTipo: 80,
+            receptorDocNro: '20427205208',
+            issuedAt: null,
+            updatedAt: '2026-10-05T10:00:00.000Z',
+          },
+          {
+            entryId: 'entry-new',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '30712345670',
+            issuedAt: '2026-10-04T10:00:00.000Z',
+            updatedAt: '2026-10-04T10:00:00.000Z',
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it('no mezcla tenants ni patentes', () => {
+    expect(
+      latestInvoiceReceiverForPlate({
+        tenantId: 'tenant-1',
+        plate: 'IAG574',
+        entries,
+        invoices: [
+          {
+            entryId: 'entry-other-tenant',
+            tenantId: 'tenant-2',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '20427205208',
+            issuedAt: '2026-10-06T10:00:00.000Z',
+            updatedAt: '2026-10-06T10:00:00.000Z',
+          },
+          {
+            entryId: 'entry-other-plate',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '20427205208',
+            issuedAt: '2026-10-06T10:00:00.000Z',
+            updatedAt: '2026-10-06T10:00:00.000Z',
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it('usa updatedAt como fallback cuando issuedAt falta', () => {
+    expect(
+      latestInvoiceReceiverForPlate({
+        tenantId: 'tenant-1',
+        plate: 'IAG574',
+        entries,
+        invoices: [
+          {
+            entryId: 'entry-old',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '30712345671',
+            issuedAt: '2026-10-01T10:00:00.000Z',
+            updatedAt: '2026-10-01T10:00:00.000Z',
+          },
+          {
+            entryId: 'entry-new',
+            tenantId: 'tenant-1',
+            status: 'issued',
+            receptorDocTipo: 80,
+            receptorDocNro: '20222222223',
+            issuedAt: null,
+            updatedAt: '2026-10-06T10:00:00.000Z',
+          },
+        ],
+      })?.cuit,
+    ).toBe('20222222223');
   });
 });
 

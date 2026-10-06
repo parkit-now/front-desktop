@@ -1,7 +1,11 @@
 import type { ArcaTaxCondition, TaxpayerDto } from '../../lib/api/arca';
 import type { InvoiceSummaryDto } from '../../lib/api/entries';
 import { translateErrorCode } from '../../lib/api/translate';
-import type { PaymentMethodInvoiceMode } from '../../lib/db/localDb';
+import type {
+  LocalEntry,
+  LocalInvoice,
+  PaymentMethodInvoiceMode,
+} from '../../lib/db/localDb';
 
 /**
  * Lógica pura de la factura en el cobro y en el historial. Gemela de la del
@@ -199,6 +203,77 @@ export function expectedLetter(input: {
   const consumer = consumerFinalLetter(input.emitter);
   if (input.choice === 'final' || consumer === 'C') return consumer;
   return input.lookup.status === 'done' ? input.lookup.taxpayer.letter : null;
+}
+
+export interface PreviousInvoiceReceiver {
+  readonly cuit: string;
+  readonly usedAt: string;
+}
+
+function normalizedPlate(value: string | null | undefined): string {
+  return value?.trim().toUpperCase() ?? '';
+}
+
+function invoiceReceiverUsedAt(
+  invoice: Pick<LocalInvoice, 'issuedAt' | 'updatedAt'>,
+): string {
+  return invoice.issuedAt || invoice.updatedAt;
+}
+
+/**
+ * Último CUIT facturado para una patente dentro de una misma playa. Recibe los
+ * datos ya leídos de Dexie para mantener la regla testeable y sin acoplarla a
+ * IndexedDB.
+ */
+export function latestInvoiceReceiverForPlate(input: {
+  readonly tenantId: string;
+  readonly plate: string | null | undefined;
+  readonly entries: readonly Pick<LocalEntry, 'id' | 'tenantId' | 'plate'>[];
+  readonly invoices: readonly Pick<
+    LocalInvoice,
+    | 'entryId'
+    | 'tenantId'
+    | 'status'
+    | 'receptorDocTipo'
+    | 'receptorDocNro'
+    | 'issuedAt'
+    | 'updatedAt'
+  >[];
+}): PreviousInvoiceReceiver | null {
+  const plate = normalizedPlate(input.plate);
+  if (!plate) return null;
+
+  const entryIds = new Set(
+    input.entries
+      .filter(
+        (entry) =>
+          entry.tenantId === input.tenantId &&
+          normalizedPlate(entry.plate) === plate,
+      )
+      .map((entry) => entry.id),
+  );
+  if (entryIds.size === 0) return null;
+
+  let latest: PreviousInvoiceReceiver | null = null;
+  for (const invoice of input.invoices) {
+    if (
+      invoice.tenantId !== input.tenantId ||
+      !entryIds.has(invoice.entryId) ||
+      invoice.status !== 'issued' ||
+      invoice.receptorDocTipo !== 80
+    ) {
+      continue;
+    }
+    const cuit = normalizeCuit(invoice.receptorDocNro ?? '');
+    if (!isValidCuit(cuit)) continue;
+
+    const usedAt = invoiceReceiverUsedAt(invoice);
+    if (!latest || usedAt > latest.usedAt) {
+      latest = { cuit, usedAt };
+    }
+  }
+
+  return latest;
 }
 
 export interface TaxpayerNotice {

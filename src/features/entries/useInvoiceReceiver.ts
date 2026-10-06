@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listInvoiceReceivers,
   lookupTaxpayer,
@@ -6,9 +6,11 @@ import {
   type TaxpayerDto,
 } from '../../lib/api/arca';
 import { translateApiError } from '../../lib/api/translate';
+import { localDb } from '../../lib/db/localDb';
 import {
   isReceiverReady,
   isValidCuit,
+  latestInvoiceReceiverForPlate,
   normalizeCuit,
   receiverCuitError,
   receiverCuitToSend,
@@ -36,17 +38,61 @@ export function useInvoiceReceiver(input: {
   readonly tenantId: string;
   readonly accessToken: string;
   readonly isOnline: boolean;
+  readonly plate?: string | null;
 }) {
-  const { tenantId, accessToken, isOnline } = input;
+  const { tenantId, accessToken, isOnline, plate = null } = input;
   const [choice, setChoiceState] = useState<ReceiverChoice>('final');
   const [cuit, setCuit] = useState('');
   const [touched, setTouched] = useState(false);
   const [lookup, setLookup] = useState<TaxpayerLookup>({ status: 'idle' });
   const [suggestions, setSuggestions] = useState<InvoiceReceiverDto[]>([]);
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
+  const autofillKeyRef = useRef<string | null>(null);
+  const userEditedRef = useRef(false);
 
   const digits = normalizeCuit(cuit);
   const wantsCuit = choice === 'cuit' && isOnline;
+
+  useEffect(() => {
+    if (!isOnline || !plate) return;
+    const normalizedPlate = plate.trim().toUpperCase();
+    if (!normalizedPlate) return;
+
+    const key = `${tenantId}:${normalizedPlate}`;
+    if (autofillKeyRef.current === key || userEditedRef.current) return;
+    autofillKeyRef.current = key;
+
+    let cancelled = false;
+    Promise.all([
+      localDb.entries
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((entry) => entry.plate.trim().toUpperCase() === normalizedPlate)
+        .toArray(),
+      localDb.invoices.where('tenantId').equals(tenantId).toArray(),
+    ])
+      .then(([entries, invoices]) => {
+        if (cancelled || userEditedRef.current) return;
+        const previous = latestInvoiceReceiverForPlate({
+          tenantId,
+          plate: normalizedPlate,
+          entries,
+          invoices,
+        });
+        if (!previous) return;
+        setChoiceState('cuit');
+        setCuit(previous.cuit);
+        setTouched(false);
+      })
+      .catch(() => {
+        // Sin autocompletado se puede facturar igual: el operador tipea o usa
+        // las sugerencias generales del estacionamiento.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOnline, plate, tenantId]);
 
   useEffect(() => {
     if (!wantsCuit || !isValidCuit(digits) || !accessToken) {
@@ -105,11 +151,15 @@ export function useInvoiceReceiver(input: {
       /** Lo elegido; offline es siempre consumidor final. */
       choice: effectiveChoice,
       setChoice: (next: ReceiverChoice) => {
+        userEditedRef.current = true;
         setChoiceState(next);
         setTouched(false);
       },
       cuit,
-      setCuit,
+      setCuit: (next: string) => {
+        userEditedRef.current = true;
+        setCuit(next);
+      },
       markTouched: () => setTouched(true),
       lookup,
       suggestions,
