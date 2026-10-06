@@ -24,6 +24,7 @@ import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { TodayReservationsEntry } from '../reservations/TodayReservationsEntry';
 import { ArrivalNotices } from '../entries/ArrivalNotices';
 import { ReservationsPanel } from '../reservations/ReservationsPanel';
+import { useReservationServiceAvailability } from '../reservations/useReservationServiceAvailability';
 import { useReservationsFeed } from '../reservations/useReservationsFeed';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
@@ -433,9 +434,14 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const canShowRatesNav =
     hasMemberships ||
     (effectiveGlobalRole === 'admin' && activeTenantId !== null);
+  const reservationsAvailable = useReservationServiceAvailability({
+    tenantId: activeTenantId,
+    accessToken: session.access_token,
+  });
   // Reservas: el dueño y el operador ven y responden (el backend no restringe
-  // por rol). Un admin sin membresía, con la playa elegida.
-  const canShowReservasNav = activeTenantId !== null && canShowRatesNav;
+  // por rol), siempre que la playa tenga el servicio configurado.
+  const canShowReservasNav =
+    activeTenantId !== null && canShowRatesNav && reservationsAvailable;
   const reservationsFeed = useReservationsFeed({
     tenantId: canShowReservasNav ? activeTenantId : null,
     accessToken: session.access_token,
@@ -508,6 +514,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
       setSection('operativo');
     }
   }, [ratesAllowed, section]);
+
+  useEffect(() => {
+    if (!canShowReservasNav && section === 'reservas') {
+      setSection('operativo');
+    }
+  }, [canShowReservasNav, section]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1008,12 +1020,14 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         parkingAddress={activeTenantAddress}
                         parkingCuit={activeTenantCuit}
                       />
-                      <TodayReservationsEntry
-                        tenantId={activeTenantId}
-                        accessToken={session.access_token}
-                        feed={reservationsFeed}
-                        onOpenReservations={() => setSection('reservas')}
-                      />
+                      {canShowReservasNav ? (
+                        <TodayReservationsEntry
+                          tenantId={activeTenantId}
+                          accessToken={session.access_token}
+                          feed={reservationsFeed}
+                          onOpenReservations={() => setSection('reservas')}
+                        />
+                      ) : null}
                     </div>
                     <AutoEntriesColumns
                       tenantId={activeTenantId}
