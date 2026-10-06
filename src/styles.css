@@ -817,15 +817,34 @@ h2 {
 
 .sidebar-foot {
   display: grid;
-  gap: 10px;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
-.sidebar-user {
+.sidebar-session-card {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(208, 217, 230, 0.2);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.13),
+      rgba(255, 255, 255, 0.06)
+    ),
+    rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-session-email {
+  margin: 0 0 1px;
+  overflow: hidden;
+  color: rgba(234, 242, 255, 0.56);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini {
@@ -854,7 +873,7 @@ h2 {
 
 .entity-switcher-kicker {
   color: rgba(234, 242, 255, 0.72);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -876,8 +895,8 @@ h2 {
 .entity-current {
   min-width: 0;
   display: grid;
-  gap: 3px;
-  padding: 8px 9px;
+  gap: 2px;
+  padding: 7px 9px;
   border-radius: 10px;
   background: rgba(9, 29, 61, 0.56);
   color: #f5f8ff;
@@ -914,11 +933,11 @@ h2 {
 
 .entity-current-role {
   color: rgba(234, 242, 255, 0.72);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .signout-button.compact {
-  min-height: 42px;
+  min-height: 38px;
   margin-top: 0;
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
@@ -987,6 +1006,7 @@ h2 {
   z-index: 1;
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 16px;
 }
@@ -1016,13 +1036,24 @@ h2 {
   letter-spacing: 0.02em;
 }
 
-.operational-camera-badge {
+.workspace-header-alerts {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspace-alert-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  max-width: min(100%, 430px);
+  max-width: min(100%, 360px);
   min-height: 38px;
   padding: 0 12px;
   border: 1px solid #fedf89;
@@ -1034,13 +1065,19 @@ h2 {
   white-space: nowrap;
 }
 
-.operational-camera-badge.down {
+.workspace-alert-badge.warning {
+  border: 1px solid #fedf89;
+  background: #fffaeb;
+  color: #93370d;
+}
+
+.workspace-alert-badge.danger {
   border-color: var(--color-danger-border);
   background: var(--color-danger-bg);
   color: var(--color-danger-text);
 }
 
-.operational-camera-badge small {
+.workspace-alert-badge small {
   min-width: 0;
   overflow: hidden;
   color: inherit;
@@ -1056,6 +1093,19 @@ h2 {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+@media (max-width: 1180px) {
+  .workspace-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .workspace-header-alerts {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding-left: 62px;
+  }
 }
 
 .tenant-pill {

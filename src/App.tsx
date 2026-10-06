@@ -11,6 +11,7 @@ import {
   onSessionChange,
   restoreSession,
 } from './lib/supabase/session';
+import { takePendingAuthNotice } from './lib/sync/tenantDeleted';
 import { PARKIT_LOGO_URL } from './lib/brand';
 
 type View = 'login' | 'register' | 'forgot';
@@ -81,6 +82,11 @@ export function App() {
       setSession(null);
       setSessionStale(false);
       setView('login');
+      // Si la sesión se cerró porque dieron de baja el estacionamiento,
+      // `SessionView` dejó el aviso: es la diferencia entre una pantalla de
+      // login que explica qué pasó y una que parece un bug.
+      const pending = takePendingAuthNotice();
+      if (pending) setNotice(pending);
     });
 
     // Social login: the browser redirects to `parkit://auth/callback` and main

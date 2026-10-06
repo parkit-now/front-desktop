@@ -14,6 +14,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import {
+  hasDesktopServiceFailure,
+  type DesktopServiceName,
+} from '../system/useDesktopServiceFailures';
+import {
   fetchEntityProfileSettings,
   updateEntityDesktopCameraConfig,
   type DesktopCameraConfigPayload,
@@ -163,6 +167,7 @@ type ServiceAction = 'start' | 'restart';
 type Props = {
   tenantId?: string | null;
   accessToken?: string | null;
+  failedServices?: readonly DesktopServiceName[];
 };
 
 function serviceStatusCopy(status: DesktopCameraServiceStatus | null) {
@@ -324,6 +329,7 @@ function TuningFieldLabel({
 export function CameraSettingsPanel({
   tenantId = null,
   accessToken = null,
+  failedServices = [],
 }: Props) {
   const { showToast } = useToast();
   const status = useCameraStatus();
@@ -377,16 +383,33 @@ export function CameraSettingsPanel({
     [deviceIndex, webcams.devices],
   );
   const serviceInfo = serviceStatusCopy(serviceStatus);
+  const cameraServiceFailed = hasDesktopServiceFailure(
+    failedServices,
+    'camera-service',
+  );
+  const lprServiceFailed = hasDesktopServiceFailure(
+    failedServices,
+    'lpr-service',
+  );
+  const failedServiceCount =
+    Number(cameraServiceFailed) + Number(lprServiceFailed);
+  const hasFailedServices = failedServiceCount > 0;
   const serviceButtonLabel = serviceAction
-    ? serviceAction === 'start'
-      ? 'Iniciando...'
-      : 'Reiniciando...'
-    : serviceInfo.canStart
-      ? 'Abrir servicio'
-      : 'Reiniciar servicio';
+    ? hasFailedServices
+      ? 'Abriendo...'
+      : serviceAction === 'start'
+        ? 'Iniciando...'
+        : 'Reiniciando...'
+    : hasFailedServices
+      ? failedServiceCount > 1
+        ? 'Abrir servicios'
+        : 'Abrir servicio'
+      : serviceInfo.canStart
+        ? 'Abrir servicio'
+        : 'Reiniciar servicio';
   const serviceButtonDisabled =
     Boolean(serviceAction) ||
-    (!serviceInfo.canStart && !serviceInfo.canRestart);
+    (!hasFailedServices && !serviceInfo.canStart && !serviceInfo.canRestart);
   const cameraDownWithService =
     status?.camera === 'down' && serviceStatus?.healthy === true;
 
@@ -602,6 +625,57 @@ export function CameraSettingsPanel({
   async function handleServiceAction(): Promise<void> {
     const bridge = window.parkitDesktop;
     if (!bridge) return;
+    if (hasFailedServices) {
+      setServiceAction('start');
+      setServiceError(null);
+      try {
+        const results: DesktopCameraServiceStatus[] = [];
+        if (
+          lprServiceFailed &&
+          typeof bridge.restartDesktopService === 'function'
+        ) {
+          const lprResult = await bridge.restartDesktopService('lpr-service');
+          results.push(lprResult);
+        }
+        if (cameraServiceFailed) {
+          const run = serviceInfo.canRestart
+            ? bridge.restartCameraService
+            : bridge.startCameraService;
+          if (typeof run === 'function') {
+            const cameraResult = await run();
+            results.push(cameraResult);
+          }
+        }
+        const cameraResult = results.find(
+          (result) => result.name === 'camera-service',
+        );
+        if (cameraResult) setServiceStatus(cameraResult);
+        await refreshServiceStatus();
+        const allHealthy =
+          results.length > 0 && results.every((r) => r.healthy);
+        showToast({
+          message: allHealthy
+            ? failedServiceCount > 1
+              ? 'Servicios locales iniciados.'
+              : 'Servicio local iniciado.'
+            : 'No se pudo dejar activos todos los servicios locales.',
+          kind: allHealthy ? 'success' : 'error',
+        });
+        if (!allHealthy) {
+          setServiceError('Algún servicio local no respondió al healthcheck.');
+        }
+      } catch {
+        setServiceError('No se pudo contactar el supervisor local.');
+        showToast({
+          message: 'No se pudieron controlar los servicios locales.',
+          kind: 'error',
+        });
+      } finally {
+        setServiceAction(null);
+      }
+      return;
+    }
+
     const action: ServiceAction = serviceInfo.canStart ? 'start' : 'restart';
     const run =
       action === 'start'
@@ -858,14 +932,14 @@ export function CameraSettingsPanel({
             <button
               type="button"
               className={
-                serviceInfo.canStart
+                hasFailedServices || serviceInfo.canStart
                   ? 'primary-button compact'
                   : 'ghost-button compact'
               }
               onClick={() => void handleServiceAction()}
               disabled={serviceButtonDisabled}
             >
-              {serviceInfo.canStart ? (
+              {hasFailedServices || serviceInfo.canStart ? (
                 <Play size={15} aria-hidden="true" />
               ) : (
                 <RefreshCcw size={15} aria-hidden="true" />

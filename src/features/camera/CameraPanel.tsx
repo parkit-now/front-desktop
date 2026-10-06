@@ -1,6 +1,7 @@
 import { ArrowLeft, Cctv, RefreshCw, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { CAMERA_BASE_URL } from '../../lib/camera/constants';
+import type { DesktopServiceName } from '../system/useDesktopServiceFailures';
 import { CameraSettingsPanel } from './CameraSettingsPanel';
 import { useCameraStatus } from './useCameraStatus';
 import { MjpegImage } from './MjpegImage';
@@ -10,12 +11,14 @@ type Props = {
   accessToken?: string | null;
   /** Dueño/admin: ve el engranaje que abre la configuración de la cámara. */
   canConfigure?: boolean;
+  failedServices?: readonly DesktopServiceName[];
 };
 
 export function CameraPanel({
   tenantId = null,
   accessToken = null,
   canConfigure = false,
+  failedServices = [],
 }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   // Perder el permiso (cambio de estacionamiento) cierra la sub-vista.
@@ -47,7 +50,11 @@ export function CameraPanel({
             Volver a la cámara
           </button>
         </div>
-        <CameraSettingsPanel tenantId={tenantId} accessToken={accessToken} />
+        <CameraSettingsPanel
+          tenantId={tenantId}
+          accessToken={accessToken}
+          failedServices={failedServices}
+        />
       </section>
     );
   }
