@@ -1,3 +1,22 @@
+# [1.11.0](https://github.com/parkit-now/front-desktop/compare/v1.10.0...v1.11.0) (2026-10-06)
+
+
+### Bug Fixes
+
+* **panel-operativo:** se invirtió el orden de reservas y egresos y se mejoró el ingreso para autocompletado del tip de vehiculo ([f16c564](https://github.com/parkit-now/front-desktop/commit/f16c56440696cb966e86e390503fe7c4e2b02762))
+
+
+### Features
+
+* **active-vehicles-dialog:** add photo detection feature and enhance entry display ([4530658](https://github.com/parkit-now/front-desktop/commit/4530658e2dc630b3be6e7344287a9916e0b9b90b))
+* **advertencias y cambios de UX + reinicio de servicios desde config de cámara:** Advertencias Globales En Header Desktop (camara, camara service, lpr service fuera de sevicio) ([96d6aba](https://github.com/parkit-now/front-desktop/commit/96d6aba4549d5365177f4791d11a12025aba4eb4))
+* **egreso:** se autocompleta el monto al bajar un auto de la db ([d3b8cb1](https://github.com/parkit-now/front-desktop/commit/d3b8cb15439c2477c032ed3f666d9ee2f23beb94))
+* **entry-edit-dialog:** add ticket number display to entry edit form ([b576d6f](https://github.com/parkit-now/front-desktop/commit/b576d6fb3db228de2d84e15401860fff362a4078))
+* **entry-history-panel:** enhance invoice display with improved layout and additional information ([f6fd4d7](https://github.com/parkit-now/front-desktop/commit/f6fd4d7060b990c4b54bfd19c369481dcc16f62d))
+* **entry-history-panel:** update invoice state and letter filter options to reflect available entries ([32ecc38](https://github.com/parkit-now/front-desktop/commit/32ecc38252505d5099a1c65be4db4b8950981162))
+* **reservation-service:** implement reservation service availability checks and related hooks ([f394509](https://github.com/parkit-now/front-desktop/commit/f3945095fa7b9a35072950b09f4188a23f2d3f39))
+* **session-view:** add camera settings toggle and update styles for workspace header ([0a7d0b3](https://github.com/parkit-now/front-desktop/commit/0a7d0b32829e5b504e1378061ddc7975a4ff078b))
+
 # [1.10.0](https://github.com/parkit-now/front-desktop/compare/v1.9.0...v1.10.0) (2026-10-04)
 
 
