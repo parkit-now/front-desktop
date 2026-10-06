@@ -3,14 +3,22 @@ interface SwitchProps {
   onChange: (checked: boolean) => void;
   label?: string;
   disabled?: boolean;
+  'aria-label'?: string;
 }
 
-export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+  'aria-label': ariaLabel,
+}: SwitchProps) {
   return (
     <label className="ui-switch">
       <input
         type="checkbox"
         role="switch"
+        aria-label={ariaLabel}
         aria-checked={checked}
         checked={checked}
         disabled={disabled}

@@ -36,6 +36,7 @@ class LocalStorage:
         self._lock = Lock()
         self._closed = False
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("CREATE TABLE IF NOT EXISTS lpr_rule_snapshot (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL)")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS captures (
                 id          TEXT PRIMARY KEY,
@@ -101,6 +102,16 @@ class LocalStorage:
             pass  # column already present
         self._conn.commit()
         logger.info("storage_ready", extra={"db": db_path, "images_dir": images_dir})
+
+    def load_rule_snapshot(self) -> dict | None:
+        with self._lock:
+            row = self._conn.execute("SELECT payload FROM lpr_rule_snapshot WHERE id = 1").fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_rule_snapshot(self, snapshot: dict) -> None:
+        with self._lock:
+            self._conn.execute("INSERT INTO lpr_rule_snapshot(id, payload) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload", (json.dumps(snapshot),))
+            self._conn.commit()
 
     def save(
         self,

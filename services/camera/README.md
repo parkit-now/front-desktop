@@ -282,7 +282,14 @@ Las patentes que ya están adentro del estacionamiento. Lo manda el renderer,
 que es el único que lo sabe: las estadías viven en Dexie.
 
 ```json
-{ "plates": ["AB123CD", "NVZ087"] }
+{
+  "tenantId": "uuid-del-estacionamiento",
+  "plates": ["AB123CD", "NVZ087"],
+  "ignoredPlates": [
+    { "plate": "IAG574", "validFrom": null, "validUntil": "2026-12-31" }
+  ],
+  "testingMode": false
+}
 ```
 
 Sin esto, un auto estacionado frente a la cámara genera una imagen en disco y
@@ -290,6 +297,16 @@ una subida al bucket cada vez que algo se mueve en cuadro, aunque ya esté
 registrado. La lista **vence a los 30 segundos**: si el renderer se cae, el
 servicio vuelve a guardar de más en vez de quedarse suprimiendo contra una
 lista congelada. Por eso hay que reenviarla periódicamente aunque no cambie.
+
+La sesión desktop es el único emisor y envía las reglas en todas las secciones.
+`ignoredPlates` es la **Lista blanca**, separada de las supresiones temporales:
+se persiste en SQLite y sobrevive a reinicios. Cada envío reemplaza el conjunto
+del estacionamiento; `[]` lo borra. Las fechas opcionales son días completos de
+Argentina, ambos extremos inclusive, y se evalúan al detectar, incluso offline.
+Una patente vigente se descarta antes de guardar captura o crear evento. El
+modo testing omite estas exclusiones sin borrarlas; al vencer o apagarlo vuelven
+a aplicarse. Los clientes anteriores que no envían `ignoredPlates` no modifican
+el conjunto persistido.
 
 #### `GET /detections?limit=20`
 

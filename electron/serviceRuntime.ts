@@ -27,7 +27,7 @@ export interface ServiceLauncher {
 export interface ServiceRuntime {
   /**
    * Whether this process supervises the sidecars. `false` means someone else
-   * runs them (`make dev`, a debugger, a remote host) — the renderer still
+   * runs them (service Make targets, a debugger, a remote host) — the renderer still
    * talks to them over HTTP, it just isn't responsible for their lifecycle.
    */
   manage: boolean;
@@ -177,7 +177,7 @@ function resolveLauncher(name: ServiceName): ServiceLauncher | null {
  *
  * Precedence (12-factor III — config lives in the environment):
  *   1. `PARKIT_MANAGE_SERVICES=0` → never manage; the sidecars are someone
- *      else's responsibility (`make dev`, a debugger, a remote host).
+ *      else's responsibility (service Make targets, a debugger, a remote host).
  *   2. `PARKIT_LPR_CMD` / `PARKIT_CAMERA_CMD` → explicit launch command.
  *   3. Packaged app → bundled binary in `process.resourcesPath`.
  *   4. Unpackaged → the venv `python main.py` from source, else

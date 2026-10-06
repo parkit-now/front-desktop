@@ -16,6 +16,7 @@ import {
   type LocalRate,
   type LocalVehicle,
   type LocalVehicleType,
+  type LocalLprIgnoredPlate,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -76,6 +77,13 @@ import {
   type LprDetectionEventDto,
 } from '../api/lpr-events';
 import { pullInvoiceChanges } from '../api/arca';
+import {
+  createLprIgnoredPlate,
+  updateLprIgnoredPlate,
+  deleteLprIgnoredPlate,
+  listLprIgnoredPlates,
+  pullLprIgnoredPlateChanges,
+} from '../api/lpr-ignored-plates';
 import { ApiError } from '../api/client';
 import {
   CAMERA_BASE_URL,
@@ -498,6 +506,45 @@ class SyncService {
         lastSeq: afterSeq,
         lastSyncAt: new Date().toISOString(),
       });
+    }
+  }
+
+  async pullLprIgnoredPlates(): Promise<void> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+    if (!tenantId || !bearer) return;
+    const key = `lprIgnoredPlates:${tenantId}`;
+    let afterSeq = (await localDb.syncState.get(key))?.lastSeq ?? 0;
+    for (let page = 0; page < 20; page += 1) {
+      const response = await pullLprIgnoredPlateChanges({
+        tenantId,
+        bearer,
+        afterSeq,
+      });
+      await localDb.transaction(
+        'rw',
+        localDb.lprIgnoredPlates,
+        localDb.pendingOps,
+        localDb.syncState,
+        async () => {
+          const incoming = await this.dropLocallyDirty(
+            'lprIgnoredPlate',
+            response.items,
+          );
+          const { active, deleted } = splitTombstones(incoming);
+          await localDb.lprIgnoredPlates.bulkPut(active);
+          await localDb.lprIgnoredPlates.bulkDelete(
+            deleted.map((row) => row.id),
+          );
+          await localDb.syncState.put({
+            key,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+      if (response.items.length < 1000 || response.maxSeq <= afterSeq) return;
+      afterSeq = response.maxSeq;
     }
   }
 
@@ -1079,6 +1126,7 @@ class SyncService {
           | LocalPaymentMethod
           | LocalVehicle
           | LocalVehicleType
+          | LocalLprIgnoredPlate
           | LocalCashSession
           | LocalLprDetectionEvent
           | undefined;
@@ -1091,6 +1139,8 @@ class SyncService {
           serverEntity = await this.applyVehicleOp(op);
         } else if (op.entityType === 'vehicleType') {
           serverEntity = await this.applyVehicleTypeOp(op);
+        } else if (op.entityType === 'lprIgnoredPlate') {
+          serverEntity = await this.applyLprIgnoredPlateOp(op);
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
@@ -1107,6 +1157,7 @@ class SyncService {
             localDb.entries,
             localDb.vehicles,
             localDb.vehicleTypes,
+            localDb.lprIgnoredPlates,
             localDb.paymentMethods,
             localDb.cashSessions,
             localDb.lprDetectionEvents,
@@ -1129,6 +1180,14 @@ class SyncService {
                 await localDb.paymentMethods.put(
                   serverEntity as LocalPaymentMethod,
                 );
+              } else if (op.entityType === 'lprIgnoredPlate') {
+                const row = serverEntity as LocalLprIgnoredPlate;
+                const stillDirty = await this.dirtyIds('lprIgnoredPlate');
+                if (!stillDirty.has(row.id)) {
+                  if (row.deletedAt)
+                    await localDb.lprIgnoredPlates.delete(row.id);
+                  else await localDb.lprIgnoredPlates.put(row);
+                }
               } else if (op.entityType === 'cashSession') {
                 await localDb.cashSessions.put(
                   serverEntity as LocalCashSession,
@@ -1262,6 +1321,37 @@ class SyncService {
     }
 
     throw new Error(`Unknown vehicleType operation: ${String(op.operation)}`);
+  }
+
+  private async applyLprIgnoredPlateOp(
+    op: PendingOp,
+  ): Promise<LocalLprIgnoredPlate> {
+    const credentials = { tenantId: this.tenantId, bearer: this.accessToken };
+    if (op.operation === 'create') {
+      return createLprIgnoredPlate({
+        ...credentials,
+        body: op.payload as Parameters<typeof createLprIgnoredPlate>[0]['body'],
+      });
+    }
+    const payload = op.payload as {
+      expectedVersion: number;
+      body: Parameters<typeof updateLprIgnoredPlate>[0]['body'];
+    };
+    if (op.operation === 'update') {
+      return updateLprIgnoredPlate({
+        ...credentials,
+        id: op.entityId,
+        ...payload,
+      });
+    }
+    if (op.operation === 'delete') {
+      return deleteLprIgnoredPlate({
+        ...credentials,
+        id: op.entityId,
+        expectedVersion: payload.expectedVersion,
+      });
+    }
+    throw new Error('Unknown ignored plate operation');
   }
 
   private async applyRateOp(op: PendingOp): Promise<LocalRate | undefined> {
@@ -1498,6 +1588,7 @@ class SyncService {
   async pullOperationalChanges(): Promise<void> {
     await this.pullRates();
     await this.pullEntries();
+    await this.pullLprIgnoredPlates();
   }
 
   /**
@@ -1592,6 +1683,23 @@ class SyncService {
 
     const entities: [string, () => Promise<void>][] = [
       [
+        'lista blanca',
+        () =>
+          this.reconcileEntity({
+            entity: 'lprIgnoredPlate',
+            entityType: 'lprIgnoredPlate',
+            table: localDb.lprIgnoredPlates,
+            intervalMs: RECONCILE_INTERVAL_MS.small,
+            force,
+            fetchServerIds: async () => ({
+              ids: (await listLprIgnoredPlates({ tenantId, bearer })).map(
+                (row) => row.id,
+              ),
+              complete: true,
+            }),
+          }),
+      ],
+      [
         'medios de pago',
         () =>
           this.reconcileEntity({
@@ -1674,6 +1782,7 @@ class SyncService {
     const ignoreBackoff = options.ignoreBackoff ?? false;
     const stages: [string, () => Promise<void>][] = [
       ['cambios pendientes', () => this.pushPendingOps(ignoreBackoff)],
+      ['lista blanca', () => this.pullLprIgnoredPlates()],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
       //
       // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así

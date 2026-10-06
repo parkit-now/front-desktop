@@ -28,5 +28,7 @@ def clusters_limpios():
 def sin_modo_prueba():
     """`set_known_plates` lo deja prendido: que no se filtre al test siguiente."""
     main._testing_mode_at = None
+    main._ignored_plate_snapshot = {"tenantId": None, "ignoredPlates": []}
     yield
     main._testing_mode_at = None
+    main._ignored_plate_snapshot = {"tenantId": None, "ignoredPlates": []}

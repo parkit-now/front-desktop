@@ -51,6 +51,7 @@ import lpr_client
 from capture import CameraCapture, redact_source
 from motion import MotionDetector, roi_crop
 from storage import LocalStorage
+from ignored_plates import is_ignored, normalize_plate, parse_snapshot
 from watchdog import CameraWatchdog
 
 def _force_utf8_stdio(streams) -> None:
@@ -267,6 +268,7 @@ _lpr_executor: ThreadPoolExecutor | None = None
 _KNOWN_PLATES_TTL = 30.0
 _known_plates_value: set[str] = set()
 _known_plates_at: float = 0.0
+_ignored_plate_snapshot: dict = {"tenantId": None, "ignoredPlates": []}
 
 
 def _known_plates() -> set[str]:
@@ -436,7 +438,7 @@ def _is_fragment_of(fragment: dict, full: dict) -> bool:
 
 
 def _normalised(result: dict) -> str:
-    return (result.get("normalizedText") or result.get("text") or "").strip().upper()
+    return normalize_plate(result.get("normalizedText") or result.get("text") or "")
 
 
 def _display_plate(result: dict) -> str:
@@ -764,6 +766,9 @@ def _persist_cluster(cluster: dict) -> dict | None:
     # similar a una tarjeta abierta desaparecería sin que nadie se entere.
     testing = _testing_mode()
 
+    if normalized and not testing and is_ignored(normalized, _ignored_plate_snapshot):
+        return None
+
     if normalized and not testing and normalized in _known_plates():
         print(
             f"[{_ts()}]  DUPLICATE {normalized:<12}  reason=known-by-operator",
@@ -1029,7 +1034,7 @@ async def _process_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _capture, _storage, _watchdog, _motion, _lpr_executor, _shutting_down
+    global _capture, _storage, _watchdog, _motion, _lpr_executor, _shutting_down, _ignored_plate_snapshot
 
     # Single-worker executor: at most one ONNX inference at a time.
     # On a low-end parking-lot PC this prevents CPU saturation when multiple
@@ -1038,6 +1043,12 @@ async def lifespan(app: FastAPI):
 
     _capture  = CameraCapture(CAMERA_SOURCE, CAMERA_FPS, CAMERA_WIDTH, CAMERA_HEIGHT)
     _storage  = LocalStorage(DB_PATH, IMAGES_DIR, CAMERA_TENANT_ID)
+    stored_rules = _storage.load_rule_snapshot()
+    if stored_rules:
+        try:
+            _ignored_plate_snapshot = parse_snapshot(stored_rules.get("tenantId"), stored_rules.get("ignoredPlates"))
+        except ValueError:
+            logger.warning("invalid_stored_lpr_rules")
     _watchdog = CameraWatchdog(_capture, WATCHDOG_TIMEOUT)
     _motion   = MotionDetector(MOTION_THRESHOLD, MOTION_COOLDOWN, ROI)
 
@@ -1453,6 +1464,13 @@ def set_known_plates(payload: dict):
     divergen, la supresión no matchea nunca y el síntoma es silencioso —sigue
     guardando de más— así que conviene que estén escritas igual.
     """
+    if "ignoredPlates" in payload:
+        try:
+            snapshot = parse_snapshot(payload.get("tenantId"), payload["ignoredPlates"])
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    else:
+        snapshot = None
     raw = payload.get("plates")
     if not isinstance(raw, list):
         raise HTTPException(status_code=400, detail="plates: se esperaba una lista")
@@ -1467,6 +1485,10 @@ def set_known_plates(payload: dict):
     }
     testing = payload.get("testingMode") is True
     g = globals()
+    if snapshot is not None:
+        if snapshot != _ignored_plate_snapshot and _storage is not None:
+            _storage.save_rule_snapshot(snapshot)
+        g["_ignored_plate_snapshot"] = snapshot
     if testing != _testing_mode():
         logger.warning("testing_mode_on" if testing else "testing_mode_off")
     g["_known_plates_value"] = plates

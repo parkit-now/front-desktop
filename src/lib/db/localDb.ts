@@ -335,6 +335,8 @@ export interface SyncState {
   lastSyncAt: string;
 }
 
+export type LocalLprIgnoredPlate = components['schemas']['LprIgnoredPlateDto'];
+
 // 'unreviewed' is for audit-only ops (e.g. a freshly-detected LPR plate the
 // operator hasn't registered/dismissed yet) — they still get pushed like any
 // other op, but are excluded from the user-facing pending-changes count.
@@ -351,6 +353,7 @@ export type PendingOpEntity =
   | 'entry'
   | 'vehicle'
   | 'vehicleType'
+  | 'lprIgnoredPlate'
   | 'paymentMethod'
   | 'cashSession'
   | 'lprDetectionEvent';
@@ -384,6 +387,7 @@ class ParkitLocalDb extends Dexie {
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
   vehicleTypes!: Table<LocalVehicleType>;
+  lprIgnoredPlates!: Table<LocalLprIgnoredPlate>;
   vehicleCategories!: Table<LocalVehicleCategory>;
   paymentMethods!: Table<LocalPaymentMethod>;
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
@@ -730,6 +734,9 @@ class ParkitLocalDb extends Dexie {
     this.version(19).stores({
       todayReservations: null,
       reservations: 'id, tenantId',
+    });
+    this.version(20).stores({
+      lprIgnoredPlates: 'id, tenantId, [tenantId+plate]',
     });
   }
 }

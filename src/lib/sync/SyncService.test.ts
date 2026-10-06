@@ -14,6 +14,7 @@ import type {
   LocalVehicle,
   LocalVehicleCategory,
   LocalVehicleType,
+  LocalLprIgnoredPlate,
   PendingOp,
   PendingOpEntity,
   SyncState,
@@ -80,6 +81,7 @@ const h = vi.hoisted(() => {
   const rates = makeTable<LocalRate>();
   const vehicles = makeTable<LocalVehicle>();
   const vehicleTypes = makeTable<LocalVehicleType>();
+  const lprIgnoredPlates = makeTable<LocalLprIgnoredPlate>();
   const paymentMethods = makeTable<LocalPaymentMethod>();
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
   const invoices = makeTable<LocalInvoice>();
@@ -108,6 +110,7 @@ const h = vi.hoisted(() => {
     rates,
     vehicles,
     vehicleTypes,
+    lprIgnoredPlates,
     paymentMethods,
     lprDetectionEvents,
     invoices,
@@ -177,6 +180,7 @@ const h = vi.hoisted(() => {
     rates,
     vehicles,
     vehicleTypes,
+    lprIgnoredPlates,
     vehicleCategories,
     paymentMethods,
     lprDetectionEvents,
@@ -193,6 +197,15 @@ const h = vi.hoisted(() => {
     pullRateChanges: changesMock<RateDto>(),
     listRates: vi.fn(),
     listVehicleTypes: vi.fn(),
+    listLprIgnoredPlates: vi.fn(() =>
+      Promise.resolve([] as LocalLprIgnoredPlate[]),
+    ),
+    pullLprIgnoredPlateChanges: vi.fn((input: { afterSeq: number }) =>
+      Promise.resolve({
+        items: [] as LocalLprIgnoredPlate[],
+        maxSeq: input.afterSeq,
+      }),
+    ),
     listPaymentMethods: vi.fn(),
     pullVehicleChanges: changesMock<VehicleDto>(),
     pullVehicleTypeChanges: changesMock<VehicleTypeDto>(),
@@ -230,6 +243,11 @@ vi.mock('../api/vehicle-types', async (importOriginal) => ({
 }));
 vi.mock('../api/vehicle-categories', () => ({
   listVehicleCategories: h.listVehicleCategories,
+}));
+vi.mock('../api/lpr-ignored-plates', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/lpr-ignored-plates')>()),
+  listLprIgnoredPlates: h.listLprIgnoredPlates,
+  pullLprIgnoredPlateChanges: h.pullLprIgnoredPlateChanges,
 }));
 vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
@@ -327,6 +345,9 @@ beforeEach(() => {
   h.rates.rows.clear();
   h.vehicles.rows.clear();
   h.vehicleTypes.rows.clear();
+  h.lprIgnoredPlates.rows.clear();
+  h.pullLprIgnoredPlateChanges.mockReset();
+  h.listLprIgnoredPlates.mockReset();
   h.vehicleCategories.clear();
   h.listVehicleCategories.mockReset();
   h.paymentMethods.rows.clear();
@@ -344,6 +365,46 @@ beforeEach(() => {
   h.listPaymentMethods.mockReset();
   h.uploadLprDetectionEventImage.mockReset();
   syncService.setCredentials(TENANT, TOKEN);
+});
+
+describe('sincronización de Lista blanca', () => {
+  const rule = (
+    id: string,
+    overrides: Partial<LocalLprIgnoredPlate> = {},
+  ): LocalLprIgnoredPlate => ({
+    id,
+    tenantId: TENANT,
+    plate: 'IAG574',
+    active: true,
+    deletedAt: null,
+    version: 1,
+    syncSeq: 1,
+    createdAt: ENTERED_AT,
+    updatedAt: ENTERED_AT,
+    ...overrides,
+  });
+  it('aplica altas y bajas incrementales y actualiza el cursor', async () => {
+    h.lprIgnoredPlates.rows.set('removed', rule('removed'));
+    h.pullLprIgnoredPlateChanges.mockResolvedValueOnce({
+      items: [rule('new'), rule('removed', { deletedAt: LEFT_AT, syncSeq: 2 })],
+      maxSeq: 2,
+    });
+    await syncService.pullLprIgnoredPlates();
+    expect(h.lprIgnoredPlates.rows.has('new')).toBe(true);
+    expect(h.lprIgnoredPlates.rows.has('removed')).toBe(false);
+    expect(h.syncState.get(`lprIgnoredPlates:${TENANT}`)?.lastSeq).toBe(2);
+  });
+  it('preserva modificaciones locales aunque llegue un tombstone remoto', async () => {
+    const local = rule('dirty', { active: false, version: 2 });
+    h.lprIgnoredPlates.rows.set('dirty', local);
+    queueOp('lprIgnoredPlate', 'dirty');
+    h.pullLprIgnoredPlateChanges.mockResolvedValueOnce({
+      items: [rule('dirty', { deletedAt: LEFT_AT, syncSeq: 2 })],
+      maxSeq: 2,
+    });
+    await syncService.pullLprIgnoredPlates();
+    expect(h.lprIgnoredPlates.rows.get('dirty')).toEqual(local);
+  });
 });
 
 describe('pullEntries y los cambios locales sin sincronizar', () => {

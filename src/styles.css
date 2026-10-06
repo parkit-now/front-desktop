@@ -7608,3 +7608,43 @@ h2 {
 .auto-entries__testing {
   flex: none;
 }
+.whitelist-note {
+  display: inline-block;
+  max-width: 280px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.whitelist-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.whitelist-dialog .rate-dialog-header {
+  align-items: center;
+}
+.whitelist-dialog .rate-dialog-header h3 {
+  margin: 0;
+  font-size: 20px;
+}
+.whitelist-dialog textarea {
+  min-height: 80px;
+}
+.whitelist-dialog .rate-dialog-actions {
+  margin-top: 0;
+  padding-top: 16px;
+  border-top: 1px solid #e5ecf6;
+}
+.whitelist-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.whitelist-dates input {
+  min-width: 0;
+  width: 100%;
+}
+@media (max-width: 480px) {
+  .whitelist-dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
