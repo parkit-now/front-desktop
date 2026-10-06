@@ -2,6 +2,8 @@ import {
   Camera,
   Cctv,
   Cog,
+  Eye,
+  EyeOff,
   FlaskConical,
   Info,
   Play,
@@ -351,6 +353,7 @@ export function CameraSettingsPanel({
   const [streamPath, setStreamPath] = useState(DEFAULT_STREAM_PATH);
   const [cameraId, setCameraId] = useState('');
   const [password, setPassword] = useState<string | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [hasStoredPassword, setHasStoredPassword] = useState(false);
   const [tuning, setTuning] = useState<DesktopCameraTuning | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -1071,17 +1074,42 @@ export function CameraSettingsPanel({
                     <label className="form-label" htmlFor="camera-password">
                       Contraseña
                     </label>
-                    <input
-                      id="camera-password"
-                      type="password"
-                      placeholder={
-                        hasStoredPassword && password === null
-                          ? '•••••••• (guardada)'
-                          : 'Contraseña de la cámara'
-                      }
-                      value={password ?? ''}
-                      onChange={(event) => setPassword(event.target.value)}
-                    />
+                    <div className="password-input-wrap">
+                      <input
+                        id="camera-password"
+                        type={passwordVisible ? 'text' : 'password'}
+                        placeholder={
+                          hasStoredPassword && password === null
+                            ? '•••••••• (guardada)'
+                            : 'Contraseña de la cámara'
+                        }
+                        value={password ?? ''}
+                        onChange={(event) => setPassword(event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="password-visibility-button"
+                        aria-label={
+                          passwordVisible
+                            ? 'Ocultar contraseña'
+                            : 'Mostrar contraseña'
+                        }
+                        title={
+                          passwordVisible
+                            ? 'Ocultar contraseña'
+                            : 'Mostrar contraseña'
+                        }
+                        onClick={() =>
+                          setPasswordVisible((current) => !current)
+                        }
+                      >
+                        {passwordVisible ? (
+                          <EyeOff size={18} aria-hidden="true" />
+                        ) : (
+                          <Eye size={18} aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="printer-panel-field">
