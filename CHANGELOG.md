@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/parkit-now/front-desktop/compare/v1.11.0...v1.12.0) (2026-10-06)
+
+
+### Features
+
+* **camera-settings:** add password visibility toggle and style adjustments ([3688e92](https://github.com/parkit-now/front-desktop/commit/3688e92ecb05908c57bc43d5167b9d1ff23da9f3))
+
 # [1.11.0](https://github.com/parkit-now/front-desktop/compare/v1.10.0...v1.11.0) (2026-10-06)
 
 
