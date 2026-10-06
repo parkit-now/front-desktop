@@ -1,4 +1,4 @@
-import { ArrowLeft, Cctv, RefreshCw, Settings } from 'lucide-react';
+import { Cctv, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { CAMERA_BASE_URL } from '../../lib/camera/constants';
 import type { DesktopServiceName } from '../system/useDesktopServiceFailures';
@@ -12,6 +12,8 @@ type Props = {
   /** Dueño/admin: ve el engranaje que abre la configuración de la cámara. */
   canConfigure?: boolean;
   failedServices?: readonly DesktopServiceName[];
+  settingsOpen?: boolean;
+  onSettingsOpenChange?: (open: boolean) => void;
 };
 
 export function CameraPanel({
@@ -19,10 +21,10 @@ export function CameraPanel({
   accessToken = null,
   canConfigure = false,
   failedServices = [],
+  settingsOpen = false,
 }: Props) {
-  const [showSettings, setShowSettings] = useState(false);
   // Perder el permiso (cambio de estacionamiento) cierra la sub-vista.
-  const settingsOpen = showSettings && canConfigure;
+  const showSettings = settingsOpen && canConfigure;
 
   const status = useCameraStatus();
   const [streamKey, setStreamKey] = useState(() => Date.now());
@@ -37,19 +39,9 @@ export function CameraPanel({
     setStreamKey(Date.now());
   }
 
-  if (settingsOpen) {
+  if (showSettings) {
     return (
       <section className="camera-panel">
-        <div className="camera-panel__toolbar">
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => setShowSettings(false)}
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-            Volver a la cámara
-          </button>
-        </div>
         <CameraSettingsPanel
           tenantId={tenantId}
           accessToken={accessToken}
@@ -61,19 +53,6 @@ export function CameraPanel({
 
   return (
     <section className="camera-panel">
-      {canConfigure ? (
-        <div className="camera-panel__toolbar camera-panel__toolbar--end">
-          <button
-            type="button"
-            className="ghost-button camera-panel__gear"
-            onClick={() => setShowSettings(true)}
-            aria-label="Configurar cámara"
-            title="Configurar cámara"
-          >
-            <Settings size={18} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
       <div className="camera-panel__viewport">
         {showPlaceholder ? (
           <div className="camera-panel__placeholder">

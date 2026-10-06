@@ -11,6 +11,8 @@ import {
   Printer,
   Truck,
   Archive,
+  ArrowLeft,
+  Settings,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -334,6 +336,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
+  const [cameraSettingsOpen, setCameraSettingsOpen] = useState(false);
   const [historialFocus, setHistorialFocus] = useState<HistorialFocus | null>(
     null,
   );
@@ -437,6 +440,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
     tenantId: canShowReservasNav ? activeTenantId : null,
     accessToken: session.access_token,
   });
+
+  useEffect(() => {
+    if (section !== 'camara' || !ratesManageAllowed) {
+      setCameraSettingsOpen(false);
+    }
+  }, [ratesManageAllowed, section]);
 
   useEffect(() => {
     const cachedProfile = readCachedProfile(session.user.id);
@@ -943,10 +952,28 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 ) : null}
               </div>
             </div>
-            <WorkspaceHeaderAlerts
-              cameraStatus={cameraStatus}
-              failedServices={failedServices}
-            />
+            <div className="workspace-header-side">
+              {section === 'camara' && ratesManageAllowed ? (
+                <button
+                  type="button"
+                  className={`workspace-header-action ${
+                    cameraSettingsOpen ? 'secondary' : ''
+                  }`}
+                  onClick={() => setCameraSettingsOpen((open) => !open)}
+                >
+                  {cameraSettingsOpen ? (
+                    <ArrowLeft size={16} aria-hidden="true" />
+                  ) : (
+                    <Settings size={16} aria-hidden="true" />
+                  )}
+                  {cameraSettingsOpen ? 'Ver cámara' : 'Ajustes'}
+                </button>
+              ) : null}
+              <WorkspaceHeaderAlerts
+                cameraStatus={cameraStatus}
+                failedServices={failedServices}
+              />
+            </div>
           </header>
 
           <div className="workspace-content">
@@ -1028,6 +1055,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 accessToken={session.access_token}
                 canConfigure={ratesManageAllowed}
                 failedServices={failedServices}
+                settingsOpen={cameraSettingsOpen}
+                onSettingsOpenChange={setCameraSettingsOpen}
               />
             ) : section === 'historial' ? (
               activeTenantId ? (
