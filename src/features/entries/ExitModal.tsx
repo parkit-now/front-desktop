@@ -156,6 +156,7 @@ export function ExitModal({
     setAmount(suggested > 0 ? suggested.toFixed(2) : '');
   }, [amountEdited, suggested]);
   const [received, setReceived] = useState('');
+  const [receivedEdited, setReceivedEdited] = useState(false);
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [selectedPmId, setSelectedPmId] = useState('');
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
@@ -237,6 +238,12 @@ export function ExitModal({
     !closesWithoutCharge &&
     !!effectivePm &&
     isCashMethod(effectivePm.type, effectivePm.name);
+
+  useEffect(() => {
+    if (!isCash || receivedEdited) return;
+    setReceived(amountToCharge > 0 ? amountToCharge.toFixed(2) : '');
+  }, [amountToCharge, isCash, receivedEdited]);
+
   const change = computeChange(amountToCharge, receivedAmount);
   const shortfall = Math.max(0, amountToCharge - receivedAmount);
   const receivedEntered = received.trim() !== '';
@@ -1061,7 +1068,10 @@ export function ExitModal({
                       placeholder="0,00"
                       className="exit-money-control"
                       value={received}
-                      onChange={(e) => setReceived(e.target.value)}
+                      onChange={(e) => {
+                        setReceivedEdited(true);
+                        setReceived(e.target.value);
+                      }}
                       autoFocus
                     />
                   </div>
