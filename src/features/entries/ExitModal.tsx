@@ -174,7 +174,12 @@ export function ExitModal({
   // factura queda pendiente hasta que el dueño lo renueve).
   const invoicingPaused = emitter?.certExpired ?? false;
   const offersReceiver = emitter !== null && !invoicingPaused;
-  const receiver = useInvoiceReceiver({ tenantId, accessToken, isOnline });
+  const receiver = useInvoiceReceiver({
+    tenantId,
+    accessToken,
+    isOnline,
+    plate: entry.plate,
+  });
   const letter = expectedLetter({
     emitter: emitter?.condicionIva,
     choice: receiver.choice,
