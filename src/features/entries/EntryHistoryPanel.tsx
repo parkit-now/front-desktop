@@ -27,6 +27,7 @@ import {
   INVOICE_STATE_LABEL,
   INVOICE_STATE_ORDER,
   invoiceLetter,
+  receiverDescription,
   resolveInvoiceState,
   voucherLabel,
   type InvoiceState,
@@ -67,23 +68,35 @@ const INITIAL_COLUMN_VISIBILITY = {
 };
 function receiverLabel(invoice: LocalInvoice | null): string {
   if (!invoice || invoice.receptorDocTipo !== 80) return '';
-  const cuit = invoice.receptorDocNro ?? '';
-  return invoice.receptorNombre ? `${invoice.receptorNombre} · ${cuit}` : cuit;
+  return receiverDescription(invoice);
 }
 
 function InvoiceCell({ row }: { row: EntryHistoryRow }) {
   if (row.invoiceState === 'na') return <span className="muted">—</span>;
-  const voucher =
+  const invoice =
     row.invoice &&
     (row.invoiceState === 'issued' || row.invoiceState === 'issuing')
-      ? voucherLabel(row.invoice)
+      ? row.invoice
       : null;
+  const letter = invoiceLetter(invoice?.cbteTipo);
+  const voucherNumber =
+    invoice?.ptoVta != null && invoice.cbteNro != null
+      ? `${String(invoice.ptoVta).padStart(4, '0')}-${String(invoice.cbteNro).padStart(8, '0')}`
+      : null;
+  const voucher = invoice ? voucherLabel(invoice) : null;
   return (
     <div className="entry-invoice-cell">
       <span className={`status-badge ${INVOICE_STATE_BADGE[row.invoiceState]}`}>
         {INVOICE_STATE_LABEL[row.invoiceState]}
       </span>
-      {voucher ? <small>{voucher}</small> : null}
+      {letter ? (
+        <span className="entry-invoice-line">Factura {letter}</span>
+      ) : voucher ? (
+        <span className="entry-invoice-line">{voucher}</span>
+      ) : null}
+      {voucherNumber ? (
+        <span className="entry-invoice-number">{voucherNumber}</span>
+      ) : null}
     </div>
   );
 }
@@ -372,6 +385,7 @@ const SEARCHABLE_KEYS = [
   'plate',
   'vehicleBrand',
   'vehicleModel',
+  'invoiceReceiver',
   'notes',
 ];
 

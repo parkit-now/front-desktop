@@ -6631,15 +6631,28 @@ h2 {
 
 .entry-invoice-cell {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   justify-items: start;
+  align-content: start;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
-.entry-invoice-cell small {
+.entry-invoice-line,
+.entry-invoice-number {
+  display: block;
+  max-width: 190px;
+  min-height: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--color-muted);
   font-size: 11px;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
+}
+
+.entry-invoice-number {
+  max-width: 130px;
 }
 
 .entry-invoice-section {
