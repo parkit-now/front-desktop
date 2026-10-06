@@ -2149,29 +2149,54 @@ h2 {
   z-index: 4;
 }
 
-.entry-payment-breakdown {
+.entry-photo-button {
+  width: 32px;
+  height: 32px;
   display: grid;
-  gap: 5px;
-  min-width: 145px;
+  place-items: center;
+  border: 1px solid #bdd3f2;
+  border-radius: 11px;
+  background: #f7fbff;
+  color: var(--color-brand-strong);
+  cursor: pointer;
 }
 
-.entry-payment-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  line-height: 1.25;
+.entry-photo-button:hover:not(:disabled) {
+  border-color: #8fb5ed;
+  background: #eaf3ff;
 }
 
-.entry-payment-line span {
+.entry-photo-button:disabled {
+  border-color: #e5ecf6;
+  background: #f8fafc;
+  color: #b7c4d7;
+  cursor: not-allowed;
+}
+
+.entry-ticket-number {
+  color: #1d2939;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-payment-summary {
+  display: grid;
+  gap: 2px;
+  min-width: 118px;
+  line-height: 1.2;
+}
+
+.entry-payment-summary strong {
+  color: #1d2939;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.entry-payment-summary span {
   min-width: 0;
   color: #405773;
-  overflow-wrap: anywhere;
-}
-
-.entry-payment-line strong {
-  color: #1d2939;
-  font-weight: 800;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
