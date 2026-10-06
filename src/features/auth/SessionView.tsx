@@ -972,12 +972,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         onDraftReset={resetManualEntryDraft}
                       />
                       <ArrivalNotices tenantId={activeTenantId} />
-                      <TodayReservationsEntry
-                        tenantId={activeTenantId}
-                        accessToken={session.access_token}
-                        feed={reservationsFeed}
-                        onOpenReservations={() => setSection('reservas')}
-                      />
                       <ExitControls
                         tenantId={activeTenantId}
                         accessToken={session.access_token}
@@ -986,6 +980,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         parkingName={activeTenantName}
                         parkingAddress={activeTenantAddress}
                         parkingCuit={activeTenantCuit}
+                      />
+                      <TodayReservationsEntry
+                        tenantId={activeTenantId}
+                        accessToken={session.access_token}
+                        feed={reservationsFeed}
+                        onOpenReservations={() => setSection('reservas')}
                       />
                     </div>
                     <AutoEntriesColumns
