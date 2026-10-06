@@ -60,12 +60,6 @@ type EntryHistoryRow = LocalEntry & {
   invoiceReceiver: string;
 };
 
-const INVOICE_STATE_OPTIONS: DataTableFilterOption[] = INVOICE_STATE_ORDER.map(
-  (state) => ({ value: state, label: INVOICE_STATE_LABEL[state] }),
-);
-const INVOICE_LETTER_OPTIONS: DataTableFilterOption[] = ['A', 'B', 'C'].map(
-  (letter) => ({ value: letter, label: `Factura ${letter}` }),
-);
 /** Existen para filtrar; se muestran desde el selector de columnas. */
 const INITIAL_COLUMN_VISIBILITY = {
   invoiceLetterValue: false,
@@ -628,6 +622,27 @@ export function EntryHistoryPanel({
       .sort((left, right) => left.label.localeCompare(right.label, 'es'));
   }, [allPaymentTransactions]);
 
+  const invoiceStateFilterOptions = useMemo<DataTableFilterOption[]>(() => {
+    const states = new Set((entries ?? []).map((row) => row.invoiceState));
+    return INVOICE_STATE_ORDER.filter((state) => states.has(state)).map(
+      (state) => ({
+        value: state,
+        label: INVOICE_STATE_LABEL[state],
+      }),
+    );
+  }, [entries]);
+
+  const invoiceLetterFilterOptions = useMemo<DataTableFilterOption[]>(() => {
+    const letters = new Set(
+      (entries ?? [])
+        .map((row) => row.invoiceLetterValue)
+        .filter((letter) => letter.trim().length > 0),
+    );
+    return ['A', 'B', 'C']
+      .filter((letter) => letters.has(letter))
+      .map((letter) => ({ value: letter, label: `Factura ${letter}` }));
+  }, [entries]);
+
   const editingCashSession = editingEntry?.cashSessionId
     ? allSessions?.find((session) => session.id === editingEntry.cashSessionId)
     : undefined;
@@ -703,8 +718,8 @@ export function EntryHistoryPanel({
         filterOptionsByColumn={{
           amountPaid: paymentMethodFilterOptions,
           cashSessionId: cashSessionFilterOptions,
-          invoiceState: INVOICE_STATE_OPTIONS,
-          invoiceLetterValue: INVOICE_LETTER_OPTIONS,
+          invoiceState: invoiceStateFilterOptions,
+          invoiceLetterValue: invoiceLetterFilterOptions,
         }}
         initialColumnVisibility={INITIAL_COLUMN_VISIBILITY}
         initialColumnFilters={initialColumnFilters}
