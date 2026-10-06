@@ -3959,6 +3959,10 @@ h2 {
   outline: none;
 }
 
+.camera-settings-shell .password-input-wrap input {
+  padding-right: 46px;
+}
+
 .camera-settings-shell input:focus {
   border-color: var(--color-brand);
   outline: 2px solid var(--color-brand);
