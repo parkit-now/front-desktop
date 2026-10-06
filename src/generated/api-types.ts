@@ -1562,6 +1562,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/lpr-ignored-plates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["LprIgnoredPlatesController_list"];
+        put?: never;
+        post: operations["LprIgnoredPlatesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/lpr-ignored-plates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["LprIgnoredPlatesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["LprIgnoredPlatesController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/lpr-ignored-plates/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["LprIgnoredPlatesController_changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/mercado-pago/account": {
         parameters: {
             query?: never;
@@ -3162,6 +3210,19 @@ export interface components {
              */
             vehicleTypeId?: string;
         };
+        CreateLprIgnoredPlateDto: {
+            /** @description Defaults to true when omitted. */
+            active?: boolean;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** @example IAG574 */
+            plate: string;
+            /** Format: date */
+            validFrom?: string | null;
+            /** Format: date */
+            validUntil?: string | null;
+        };
         CreateMembershipDto: {
             /**
              * Format: uuid
@@ -4358,6 +4419,32 @@ export interface components {
              * @description Tipo del estacionamiento. Si resuelve, manda sobre `vehicleType` y `vehicleCategory`.
              */
             vehicleTypeId?: string;
+        };
+        LprIgnoredPlateChangesDto: {
+            items: components["schemas"]["LprIgnoredPlateDto"][];
+            maxSeq: number;
+        };
+        LprIgnoredPlateDto: {
+            active: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            deletedAt: string | null;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** @example IAG574 */
+            plate: string;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date */
+            validFrom?: string | null;
+            /** Format: date */
+            validUntil?: string | null;
+            version: number;
         };
         MeMembershipDto: {
             /**
@@ -6323,6 +6410,17 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "registered" | "dismissed" | "suppressed_active_entry" | "suppressed_pending_event" | "suppressed_recent_exit";
+        };
+        UpdateLprIgnoredPlateDto: {
+            /** @description Defaults to true when omitted. */
+            active?: boolean;
+            notes?: string | null;
+            /** @example IAG574 */
+            plate?: string;
+            /** Format: date */
+            validFrom?: string | null;
+            /** Format: date */
+            validUntil?: string | null;
         };
         UpdateMembershipDto: {
             /**
@@ -10253,6 +10351,8 @@ export interface operations {
             query?: {
                 /** @description When false (default), archived LPR events are hidden from review lists. Set true to list archived events instead. */
                 archived?: boolean;
+                /** @description Comma-separated entry IDs. When present, only events linked to those entries are returned. */
+                entryIds?: string;
                 /** @description Only include events first detected at or after this timestamp (ISO 8601, inclusive). */
                 firstSeenFrom?: string;
                 /** @description Only include events first detected at or before this timestamp (ISO 8601, inclusive). */
@@ -10454,6 +10554,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LprDetectionEventChangesResponseDto"];
+                };
+            };
+        };
+    };
+    LprIgnoredPlatesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprIgnoredPlateDto"][];
+                };
+            };
+        };
+    };
+    LprIgnoredPlatesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLprIgnoredPlateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprIgnoredPlateDto"];
+                };
+            };
+        };
+    };
+    LprIgnoredPlatesController_remove: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprIgnoredPlateDto"];
+                };
+            };
+        };
+    };
+    LprIgnoredPlatesController_update: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLprIgnoredPlateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprIgnoredPlateDto"];
+                };
+            };
+        };
+    };
+    LprIgnoredPlatesController_changes: {
+        parameters: {
+            query?: {
+                afterSeq?: components["schemas"]["Object"];
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LprIgnoredPlateChangesDto"];
                 };
             };
         };

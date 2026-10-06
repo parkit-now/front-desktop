@@ -236,7 +236,7 @@ if (!gotTheLock) {
     } else {
       console.log(
         '[main] service supervision disabled — camera/LPR are expected to be ' +
-          'started externally (e.g. `make dev`, PARKIT_MANAGE_SERVICES=0)',
+          'started externally (e.g. service Make targets, PARKIT_MANAGE_SERVICES=0)',
       );
     }
 
@@ -260,10 +260,9 @@ if (!gotTheLock) {
     // Aplicarle al servicio la cámara guardada, ya arrancado.
     //
     // El `env` del spawn de arriba solo alcanza cuando ES Electron el que lanza
-    // el servicio. En desarrollo no lo es: `make dev` corre con
-    // PARKIT_MANAGE_SERVICES=0 y levanta cámara y LPR por su cuenta, sin
-    // CAMERA_SOURCE — así que la cámara configurada se perdía en cada reinicio
-    // y el equipo volvía a la webcam. Empujar la configuración después hace que
+    // el servicio. Si se corre con PARKIT_MANAGE_SERVICES=0 o se adopta uno
+    // externo, puede arrancar sin CAMERA_SOURCE y volver a la webcam.
+    // Empujar la configuración después hace que
     // funcione sin importar quién arrancó el proceso.
     //
     // Es idempotente: si el servicio ya está en esa cámara, `set_source` corta

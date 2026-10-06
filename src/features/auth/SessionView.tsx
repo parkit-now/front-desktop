@@ -13,6 +13,7 @@ import {
   Archive,
   ArrowLeft,
   Settings,
+  ListChecks,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -32,6 +33,8 @@ import { PaymentMethodsPanel } from '../payment-methods/PaymentMethodsPanel';
 import { RatesPanel } from '../rates/RatesPanel';
 import { VehiclesPanel } from '../vehicles/VehiclesPanel';
 import { VehicleTypesPanel } from '../vehicle-types/VehicleTypesPanel';
+import { LprWhitelistPanel } from '../lpr-whitelist/LprWhitelistPanel';
+import { CameraRulesBridge } from '../camera/CameraRulesBridge';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
 import {
@@ -95,6 +98,7 @@ type WorkspaceSection =
   | 'payment-methods'
   | 'vehicles'
   | 'vehicle-types'
+  | 'lpr-whitelist'
   | 'caja'
   | 'reservas'
   | 'impresora';
@@ -757,6 +761,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     'payment-methods': 'Métodos de Pago',
     vehicles: 'Catálogo de Vehículos',
     'vehicle-types': 'Tipos de Vehículo',
+    'lpr-whitelist': 'Lista blanca',
     caja: 'Caja',
     reservas: 'Reservas',
     impresora: 'Impresora',
@@ -769,6 +774,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
+    if (s === 'lpr-whitelist') return <ListChecks size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
     if (s === 'reservas') return <CalendarClock size={20} aria-hidden />;
     if (s === 'impresora') return <Printer size={20} aria-hidden />;
@@ -805,6 +811,15 @@ export function SessionView({ session, sessionStale = false }: Props) {
       label: 'Impresora',
       icon: <Printer size={18} aria-hidden="true" />,
     },
+    ...(ratesManageAllowed
+      ? [
+          {
+            section: 'lpr-whitelist' as const,
+            label: 'Lista blanca',
+            icon: <ListChecks size={18} aria-hidden="true" />,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -813,6 +828,10 @@ export function SessionView({ session, sessionStale = false }: Props) {
       accessToken={session.access_token}
       userId={session.user.id}
     >
+      <CameraRulesBridge
+        key={activeTenantId ?? 'none'}
+        tenantId={activeTenantId}
+      />
       <div className="app-shell">
         <aside className={`app-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="sidebar-top">
@@ -1160,6 +1179,16 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   </p>
                 </section>
               )
+            ) : section === 'lpr-whitelist' ? (
+              activeTenantId && ratesManageAllowed ? (
+                <LprWhitelistPanel
+                  key={activeTenantId}
+                  tenantId={activeTenantId}
+                  accessToken={session.access_token}
+                  userId={session.user.id}
+                  canManage={ratesManageAllowed}
+                />
+              ) : null
             ) : section === 'caja' ? (
               activeTenantId ? (
                 <div className="caja-layout">

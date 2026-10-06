@@ -15,7 +15,8 @@ import { CAMERA_BASE_URL } from '../../lib/camera/constants';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useSync } from '../../lib/sync/SyncContext';
 import { parsePlateBbox } from './plateBbox';
-import { useCameraTestingMode } from './testingMode';
+import { readCameraTestingMode, useCameraTestingMode } from './testingMode';
+import { isIgnoredPlate } from '../lpr-whitelist/whitelistUtils';
 
 export { CAMERA_BASE_URL };
 export const LPR_RECENT_EXIT_SUPPRESSION_MINUTES = 30;
@@ -524,7 +525,23 @@ async function storeCameraEvent(
     'rw',
     localDb.lprDetectionEvents,
     localDb.pendingOps,
+    localDb.lprIgnoredPlates,
     async () => {
+      if (!existing && !readCameraTestingMode()) {
+        const rules = await localDb.lprIgnoredPlates
+          .where('tenantId')
+          .equals(tenantId)
+          .toArray();
+        if (
+          isIgnoredPlate(
+            event.normalizedText ?? event.displayPlate ?? event.rawText ?? '',
+            rules,
+          )
+        ) {
+          void patchCameraEvent(id, 'dismissed');
+          return;
+        }
+      }
       await localDb.lprDetectionEvents.put(event);
       if (!existing || existing.status === 'pending') {
         await upsertCreateOp(tenantId, event);
@@ -690,6 +707,7 @@ export const cameraDetectionTestUtils = {
   qualityScore,
   samePendingVehicleCluster,
   shouldResendResolution,
+  storeCameraEvent,
   suppressionReason,
 };
 
@@ -702,6 +720,13 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
   const { isOnline } = useNetwork();
   const { triggerSync } = useSync();
   const testingMode = useCameraTestingMode();
+  const ignoredRules = useLiveQuery(
+    () =>
+      tenantId
+        ? localDb.lprIgnoredPlates.where('tenantId').equals(tenantId).toArray()
+        : [],
+    [tenantId],
+  );
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), RECENT_EXIT_TICK_MS);
@@ -788,65 +813,34 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
   }, [tenantId, nowMs]);
 
   const keepers = useMemo(
-    () => keeperByPlate(pendingEvents ?? []),
-    [pendingEvents],
+    () =>
+      keeperByPlate(
+        (pendingEvents ?? []).filter(
+          (event) =>
+            testingMode ||
+            !isIgnoredPlate(
+              event.normalizedText ?? event.displayPlate ?? event.rawText ?? '',
+              ignoredRules ?? [],
+              nowMs,
+            ),
+        ),
+      ),
+    [pendingEvents, testingMode, ignoredRules, nowMs],
   );
-
-  /**
-   * Avisarle al servicio de cámara de qué patentes NO queremos otra tarjeta.
-   *
-   * Son dos conjuntos: los autos que ya están adentro, y las patentes que ya
-   * tienen una tarjeta abierta esperando al operador. Sin esto, un auto
-   * estacionado frente a la cámara genera una imagen en disco y una subida al
-   * bucket cada vez que algo se mueve en cuadro, aunque ya esté registrado o
-   * ya tenga su tarjeta. La supresión de más abajo lo tapa en pantalla, pero
-   * actúa DESPUÉS: para cuando llega acá, el gasto ya se hizo.
-   *
-   * ESTA LISTA ES LA AUTORIDAD, Y TIENE QUE SALIR DE ACÁ
-   *
-   * El servicio llegó a resolverlo solo, mirando los eventos `pending` de su
-   * propia base. Derivaba: cuando el operador descarta una tarjeta, el aviso
-   * que le mandamos es best-effort, y si el servicio está reiniciándose se
-   * pierde sin que nadie lo reintente. Esas filas quedaban `pending` para
-   * siempre y dejaban a esa patente ciega — pasó con un `AB123CD` de hacía un
-   * mes, con el servicio aparentemente sano.
-   *
-   * Desde acá no puede derivar: es la misma fuente que le muestra las
-   * tarjetas al operador. Y la lista VENCE a los 30 s del otro lado, así que
-   * hay que reenviarla aunque no cambie: si esto deja de correr, el servicio
-   * vuelve a guardar de más, que es el error seguro.
-   */
-  useEffect(() => {
-    if (!tenantId || !activePlates || !pendingEvents) return;
-    const currentActivePlates = activePlates;
-    const currentPendingEvents = pendingEvents;
-    let cancelled = false;
-    async function push() {
-      try {
-        await pushKnownPlatesSnapshot(
-          currentActivePlates,
-          currentPendingEvents,
-          fetch,
-          testingMode,
-        );
-      } catch {
-        // El servicio de cámara puede no estar levantado. No es un error.
-      }
-    }
-    void push();
-    const id = setInterval(() => {
-      if (!cancelled) void push();
-    }, KNOWN_PLATES_PUSH_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [tenantId, activePlates, pendingEvents, testingMode]);
 
   useEffect(() => {
     if (!tenantId || !pendingEvents || !activePlates || !recentExitPlates)
       return;
     for (const event of pendingEvents) {
+      if (
+        !testingMode &&
+        isIgnoredPlate(
+          event.normalizedText ?? event.displayPlate ?? event.rawText ?? '',
+          ignoredRules ?? [],
+          nowMs,
+        )
+      )
+        continue;
       const reason = suppressionReason(
         event,
         keepers,
@@ -865,6 +859,8 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     recentExitPlates,
     keepers,
     testingMode,
+    ignoredRules,
+    nowMs,
   ]);
 
   const detections = useMemo(() => {
@@ -874,13 +870,27 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     return events
       .filter(
         (event) =>
+          (testingMode ||
+            !isIgnoredPlate(
+              event.normalizedText ?? event.displayPlate ?? event.rawText ?? '',
+              ignoredRules ?? [],
+              nowMs,
+            )) &&
           !suppressionReason(event, keepers, active, recent, testingMode),
       )
       .sort(
         (a, b) =>
           new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
       );
-  }, [pendingEvents, activePlates, recentExitPlates, keepers, testingMode]);
+  }, [
+    pendingEvents,
+    activePlates,
+    recentExitPlates,
+    keepers,
+    testingMode,
+    ignoredRules,
+    nowMs,
+  ]);
 
   const dismiss = useCallback(
     (eventId: string) => {
