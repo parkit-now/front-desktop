@@ -1,17 +1,19 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LogOut, X } from 'lucide-react';
+import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
 import {
   localDb,
   type LocalCashSession,
   type LocalEntry,
+  type LocalLprDetectionEvent,
   type LocalPaymentTransaction,
 } from '../../lib/db/localDb';
 import { formatArgentinaDateTime } from '../../lib/format/argentina';
 import { formatDuration } from './entryUtils';
 import { EntryEditDialog } from './EntryEditDialog';
+import { DetectionImageDialog } from '../camera/DetectionImageDialog';
 
 interface Props {
   tenantId: string;
@@ -40,13 +42,16 @@ type ActiveRow = {
   cochera: string;
   notes: string;
   enteredAt: string;
+  enteredAtLocalDate: string;
   enteredMs: number;
+  lprDetection: LocalLprDetectionEvent | null;
   entry: EditableActiveEntry;
 };
 
 function toRow(
   e: LocalEntry,
   paymentLines: LocalPaymentTransaction[],
+  lprDetection: LocalLprDetectionEvent | null,
 ): ActiveRow {
   return {
     id: e.id,
@@ -59,7 +64,9 @@ function toRow(
     cochera: e.cochera ?? '',
     notes: e.notes ?? '',
     enteredAt: e.enteredAt,
+    enteredAtLocalDate: e.enteredAt.slice(0, 10),
     enteredMs: new Date(e.enteredAt).getTime(),
+    lprDetection,
     entry: { ...e, paymentLines },
   };
 }
@@ -78,6 +85,8 @@ export function ActiveVehiclesDialog({
   const [editingEntry, setEditingEntry] = useState<EditableActiveEntry | null>(
     null,
   );
+  const [photoDetection, setPhotoDetection] =
+    useState<LocalLprDetectionEvent | null>(null);
   const activeEntries = useLiveQuery(
     () =>
       localDb.entries
@@ -96,6 +105,12 @@ export function ActiveVehiclesDialog({
 
   const allSessions = useLiveQuery(
     () => localDb.cashSessions.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
+  const allLprDetections = useLiveQuery(
+    () =>
+      localDb.lprDetectionEvents.where('tenantId').equals(tenantId).toArray(),
     [tenantId],
   );
 
@@ -120,10 +135,32 @@ export function ActiveVehiclesDialog({
         }
       });
 
+    const detectionByEntryId = new Map<string, LocalLprDetectionEvent>();
+    (allLprDetections ?? [])
+      .filter(
+        (event) =>
+          event.entryId && event.bestCaptureId && !event.imageDeletedAt,
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
+      )
+      .forEach((event) => {
+        if (event.entryId && !detectionByEntryId.has(event.entryId)) {
+          detectionByEntryId.set(event.entryId, event);
+        }
+      });
+
     return (activeEntries ?? [])
-      .map((entry) => toRow(entry, paymentsByEntryId.get(entry.id) ?? []))
+      .map((entry) =>
+        toRow(
+          entry,
+          paymentsByEntryId.get(entry.id) ?? [],
+          detectionByEntryId.get(entry.id) ?? null,
+        ),
+      )
       .sort((a, b) => b.enteredMs - a.enteredMs);
-  }, [activeEntries, allPaymentTransactions]);
+  }, [activeEntries, allLprDetections, allPaymentTransactions]);
 
   const editingCashSession: LocalCashSession | undefined =
     editingEntry?.cashSessionId
@@ -134,6 +171,40 @@ export function ActiveVehiclesDialog({
 
   const columns = useMemo<ColumnDef<ActiveRow, unknown>[]>(
     () => [
+      {
+        id: 'photo',
+        header: '',
+        size: 42,
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => {
+          const detection = row.original.lprDetection;
+          const disabled = !detection?.bestCaptureId;
+          return (
+            <button
+              type="button"
+              className="entry-photo-button"
+              disabled={disabled}
+              title={
+                disabled
+                  ? 'Este ingreso no tiene foto'
+                  : `Ver foto de ${row.original.plate}`
+              }
+              aria-label={
+                disabled
+                  ? 'Este ingreso no tiene foto'
+                  : `Ver foto de ${row.original.plate}`
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                if (detection?.bestCaptureId) setPhotoDetection(detection);
+              }}
+            >
+              <Eye size={16} aria-hidden="true" />
+            </button>
+          );
+        },
+      },
       {
         id: 'ticket',
         header: '#',
@@ -167,23 +238,29 @@ export function ActiveVehiclesDialog({
         cell: ({ row }) => row.original.vehicleModel || '—',
       },
       {
-        accessorKey: 'color',
-        header: 'Color',
-        size: 110,
+        id: 'enteredAt',
+        header: 'Ingreso',
+        accessorKey: 'enteredAtLocalDate',
+        size: 160,
+        filterFn: 'dateRange',
+        cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
       },
       {
         id: 'duration',
         header: 'Duración',
         accessorFn: (r) => r.enteredMs,
         size: 110,
-        // Longer parked first when sorted descending (older enteredMs is smaller,
-        // so invert by sorting on negative elapsed via the raw ms ascending).
         cell: ({ row }) => formatDuration(row.original.enteredAt),
       },
       {
         accessorKey: 'rate',
         header: 'Tarifa',
         size: 140,
+      },
+      {
+        accessorKey: 'color',
+        header: 'Color',
+        size: 110,
       },
       {
         accessorKey: 'cochera',
@@ -203,13 +280,6 @@ export function ActiveVehiclesDialog({
           ) : (
             '—'
           ),
-      },
-      {
-        id: 'enteredAt',
-        header: 'Ingreso',
-        accessorFn: (r) => r.enteredMs,
-        size: 160,
-        cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
       },
       {
         id: 'actions',
@@ -275,11 +345,13 @@ export function ActiveVehiclesDialog({
             isLoading={
               activeEntries === undefined ||
               allPaymentTransactions === undefined ||
-              allSessions === undefined
+              allSessions === undefined ||
+              allLprDetections === undefined
             }
             emptyMessage="No hay vehículos estacionados en este momento."
-            searchPlaceholder="Buscar por patente, vehículo o notas…"
+            searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
             searchableKeys={[
+              'ticketNumber',
               'plate',
               'vehicleBrand',
               'vehicleModel',
@@ -287,10 +359,12 @@ export function ActiveVehiclesDialog({
               'notes',
             ]}
             filterableColumns={[
+              'enteredAt',
               'vehicleBrand',
               'vehicleModel',
-              'color',
               'rate',
+              'color',
+              'cochera',
             ]}
             getRowId={(r) => r.id}
             onRowClick={(row) => setEditingEntry(row.entry)}
@@ -310,6 +384,12 @@ export function ActiveVehiclesDialog({
           parkingAddress={parkingAddress}
           parkingCuit={parkingCuit}
           onClose={() => setEditingEntry(null)}
+        />
+      ) : null}
+      {photoDetection ? (
+        <DetectionImageDialog
+          detection={photoDetection}
+          onClose={() => setPhotoDetection(null)}
         />
       ) : null}
     </div>

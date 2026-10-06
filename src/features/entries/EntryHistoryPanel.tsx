@@ -168,13 +168,13 @@ function buildPhotoColumn(
 const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
   {
     accessorKey: 'ticketNumber',
-    header: 'TICKET',
+    header: '#',
     size: 64,
     cell: ({ row }) =>
       row.original.ticketNumber != null ? (
-        <strong className="entry-ticket-number">
-          {row.original.ticketNumber}
-        </strong>
+        <span className="vehicle-ticket-badge">
+          #{row.original.ticketNumber}
+        </span>
       ) : (
         <span className="muted">—</span>
       ),
