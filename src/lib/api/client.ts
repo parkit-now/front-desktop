@@ -1,4 +1,9 @@
 import type { components } from '../../generated/api-types';
+import {
+  isTenantDeletedError,
+  notifyTenantDeleted,
+  tenantIdFromPath,
+} from '../sync/tenantDeleted';
 
 type ProblemDetails = components['schemas']['ProblemDetailsDto'];
 type ValidationProblemDetails =
@@ -100,7 +105,19 @@ export async function apiRequest<TResponse>(
     const problem = await parseProblem(response);
     const message =
       problem?.detail ?? `Request failed with status ${response.status}`;
-    throw new ApiError(response.status, message, problem);
+    const error = new ApiError(response.status, message, problem);
+
+    // 410 ENTITY_DELETED: el estacionamiento fue dado de baja desde el panel.
+    // Se avisa ACÁ porque es el único punto por el que pasan todas las
+    // llamadas, y porque quien las hace se traga el error: el pull de fondo de
+    // `SyncContext` lo manda a un `console.warn`, así que esperar a que alguien
+    // lo mire río abajo sería esperar para siempre. El error se tira igual.
+    if (isTenantDeletedError(error)) {
+      const tenantId = tenantIdFromPath(options.path);
+      if (tenantId) notifyTenantDeleted(tenantId);
+    }
+
+    throw error;
   }
 
   return (await response.json()) as TResponse;

@@ -58,6 +58,25 @@ describe('classifyPushFailure', () => {
     expect(outcome.nextAttemptAt).toBeUndefined();
   });
 
+  it('NO entierra la cola cuando dieron de baja el estacionamiento', () => {
+    // 410 es la baja lógica. `failed` es terminal y la baja es REVERSIBLE
+    // hasta la purga: si el admin restaura, lo que el operador alcanzó a hacer
+    // tiene que poder salir. Lo que frena la insistencia es que se cierra la
+    // sesión, no el estado de cada op.
+    const outcome = classifyPushFailure(apiError(410), 0);
+
+    expect(outcome.status).toBe('pending');
+    expect(outcome.consumesAttempt).toBe(false);
+  });
+
+  it('el 410 tampoco se entierra con el presupuesto casi agotado', () => {
+    // Sin `consumesAttempt: false` esto caería en `failed` por el tope de
+    // intentos, que es exactamente lo que el caso anterior quiere evitar.
+    const outcome = classifyPushFailure(apiError(410), MAX_PUSH_ATTEMPTS - 1);
+
+    expect(outcome.status).toBe('pending');
+  });
+
   it('reintenta los 5xx con backoff y gastando intento', () => {
     const before = Date.now();
     const outcome = classifyPushFailure(apiError(503), 0);

@@ -1,32 +1,19 @@
 import { AlertTriangle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  hasDesktopServiceFailure,
+  type DesktopServiceName,
+} from '../system/useDesktopServiceFailures';
 
 interface Props {
   collapsed?: boolean;
+  failedServices: readonly DesktopServiceName[];
 }
 
-export function LprStatusIndicator({ collapsed = false }: Props) {
-  const [down, setDown] = useState(false);
-
-  useEffect(() => {
-    const bridge = window.parkitDesktop;
-    if (!bridge) return;
-
-    let mounted = true;
-
-    void bridge.getFailedServices().then((names) => {
-      if (mounted && names.includes('lpr-service')) setDown(true);
-    });
-
-    const unsub = bridge.onServiceCrashed((name) => {
-      if (name === 'lpr-service') setDown(true);
-    });
-
-    return () => {
-      mounted = false;
-      unsub();
-    };
-  }, []);
+export function LprStatusIndicator({
+  collapsed = false,
+  failedServices,
+}: Props) {
+  const down = hasDesktopServiceFailure(failedServices, 'lpr-service');
 
   if (!down) return null;
 

@@ -789,6 +789,18 @@ export function EntryEditDialog({
         <div className="entry-edit-body">
           <div className="entry-edit-grid">
             <label className="form-label">
+              Ticket
+              <input
+                value={
+                  entry.ticketNumber != null
+                    ? String(entry.ticketNumber)
+                    : 'Sin ticket'
+                }
+                disabled
+                readOnly
+              />
+            </label>
+            <label className="form-label">
               Patente
               <input
                 value={plate}

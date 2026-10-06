@@ -303,7 +303,31 @@ if (!gotTheLock) {
     });
 
     // Allow the renderer to query health status on demand (e.g. after reload).
-    ipcMain.handle('services:getFailed', () => failed);
+    ipcMain.handle('services:getFailed', () => services.getFailedServices());
+
+    function isKnownServiceName(name: string): name is ServiceName {
+      return name === 'lpr-service' || name === 'camera-service';
+    }
+
+    function notifyServiceRecovered(name: ServiceName): void {
+      BrowserWindow.getAllWindows().forEach((candidate) =>
+        candidate.webContents.send('services:recovered', name),
+      );
+    }
+
+    ipcMain.handle('services:start', async (_event, name: string) => {
+      if (!isKnownServiceName(name)) return services.getServiceStatus(name);
+      const status = await services.startService(name);
+      if (status.healthy) notifyServiceRecovered(name);
+      return status;
+    });
+
+    ipcMain.handle('services:restart', async (_event, name: string) => {
+      if (!isKnownServiceName(name)) return services.getServiceStatus(name);
+      const status = await services.restartService(name);
+      if (status.healthy) notifyServiceRecovered(name);
+      return status;
+    });
 
     // Open OAuth consent URLs in the user's default browser.
     ipcMain.handle('shell:openExternal', (_event, url: string) =>
@@ -329,12 +353,16 @@ if (!gotTheLock) {
 
     ipcMain.handle('camera:startService', async () => {
       await services.startService('camera-service');
-      return refreshCameraServiceConfig();
+      const status = await refreshCameraServiceConfig();
+      if (status.healthy) notifyServiceRecovered('camera-service');
+      return status;
     });
 
     ipcMain.handle('camera:restartService', async () => {
       await services.restartService('camera-service');
-      return refreshCameraServiceConfig();
+      const status = await refreshCameraServiceConfig();
+      if (status.healthy) notifyServiceRecovered('camera-service');
+      return status;
     });
 
     ipcMain.handle('camera:getConfig', () => readCameraConfig());

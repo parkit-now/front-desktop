@@ -34,6 +34,19 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     return () => ipcRenderer.removeListener('services:crashed', handler);
   },
 
+  onServiceRecovered: (callback: (name: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, name: string) =>
+      callback(name);
+    ipcRenderer.on('services:recovered', handler);
+    return () => ipcRenderer.removeListener('services:recovered', handler);
+  },
+
+  startDesktopService: (name: string): Promise<unknown> =>
+    ipcRenderer.invoke('services:start', name),
+
+  restartDesktopService: (name: string): Promise<unknown> =>
+    ipcRenderer.invoke('services:restart', name),
+
   /**
    * Open a URL in the user's default browser. Used by the OAuth flow so the
    * provider consent screen runs outside the Electron window (which is served

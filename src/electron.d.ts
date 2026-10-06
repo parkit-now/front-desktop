@@ -125,6 +125,13 @@ declare global {
       onServicesFailed: (callback: (names: string[]) => void) => void;
       getFailedServices: () => Promise<string[]>;
       onServiceCrashed: (callback: (name: string) => void) => () => void;
+      onServiceRecovered: (callback: (name: string) => void) => () => void;
+      startDesktopService: (
+        name: 'lpr-service' | 'camera-service',
+      ) => Promise<DesktopCameraServiceStatus>;
+      restartDesktopService: (
+        name: 'lpr-service' | 'camera-service',
+      ) => Promise<DesktopCameraServiceStatus>;
       openExternal: (url: string) => Promise<void>;
       onOAuthCallback: (callback: (url: string) => void) => () => void;
       listPrinters: () => Promise<DesktopPrinter[]>;

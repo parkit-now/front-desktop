@@ -65,6 +65,11 @@ const CODE_MESSAGES: Record<string, string> = {
   ENTITY_INSUFFICIENT_ROLE:
     'Tu rol en este establecimiento no permite esta acción.',
   ENTITY_NO_ACCESS: 'No tenés acceso a este establecimiento.',
+  // 410 Gone: el estacionamiento fue dado de baja desde el panel. Existió y ya
+  // no. El desktop lo trata aparte de un error de red — cierra la sesión en vez
+  // de seguir reintentando contra un tenant muerto. Ver `tenantDeleted.ts`.
+  ENTITY_DELETED:
+    'Este establecimiento fue eliminado. Hablá con el administrador.',
   ENTRY_CLOSED_SESSION_LOCKED:
     'La caja está cerrada. Este movimiento no se puede editar.',
   ENTRY_ACTIVE_PAYMENT_LOCKED:

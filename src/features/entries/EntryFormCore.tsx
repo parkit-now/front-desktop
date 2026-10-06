@@ -17,7 +17,7 @@ import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { COLORS } from '../../lib/data/colors';
-import { Printer, PrinterX } from 'lucide-react';
+import { Eraser, Printer, PrinterX } from 'lucide-react';
 import { generateUuidV7 } from './entryUtils';
 import {
   describePrintFailure,
@@ -787,7 +787,7 @@ export function EntryFormCore({
     setTimeout(() => setShowColorSuggestions(false), 150);
   }
 
-  function selectSuggestion(s: VehicleSuggestion) {
+  function selectSuggestion(s: VehicleSuggestion): boolean {
     const b = s.brand;
     const m = s.kind === 'model' ? s.model : '';
     setBrand(b);
@@ -803,6 +803,7 @@ export function EntryFormCore({
     setVehicleTypeId(known && catalogType ? catalogType : '');
     setTypeAutofilled(known);
     setTypeError('');
+    return known;
   }
 
   function handleVehicleInputChange(value: string) {
@@ -858,9 +859,15 @@ export function EntryFormCore({
     e.preventDefault();
     if (showSuggestions && suggestions.length > 0) {
       // Select highlighted suggestion and advance
-      selectSuggestion(suggestions[highlightedSuggestionIdx]);
+      const hasResolvedType = selectSuggestion(
+        suggestions[highlightedSuggestionIdx],
+      );
       setShowSuggestions(false);
-      colorRef.current?.focus();
+      if (hasResolvedType) {
+        colorRef.current?.focus();
+      } else {
+        requestAnimationFrame(() => typeRef.current?.focus());
+      }
       return;
     }
     if (!vehicleInput.trim()) {
@@ -885,6 +892,10 @@ export function EntryFormCore({
       return;
     }
     setShowSuggestions(false);
+    if (!vehicleTypeId) {
+      requestAnimationFrame(() => typeRef.current?.focus());
+      return;
+    }
     colorRef.current?.focus();
   }
 
@@ -989,12 +1000,9 @@ export function EntryFormCore({
       );
       ok = false;
     }
-    // Texto libre (no salió del catálogo): el tipo es obligatorio.
-    if (
-      vehicleInput.trim() &&
-      isTypeRequired(vehicleSelected) &&
-      !vehicleTypeId
-    ) {
+    // Si el catálogo no pudo inferir el tipo, se elige a mano para preservar
+    // métricas/filtros por categoría sin mostrar el selector en el caso común.
+    if (vehicleInput.trim() && !vehicleTypeId) {
       setTypeError('Elegí el tipo de vehículo');
       ok = false;
     }
@@ -1013,8 +1021,8 @@ export function EntryFormCore({
       if (norm.length < 3 || norm.length > 7) plateRef.current?.focus();
       else if (!vehicleInput.trim() || (hasCatalogMatches && !vehicleSelected))
         vehicleInputRef.current?.focus();
-      else if (typeError || (isTypeRequired(vehicleSelected) && !vehicleTypeId))
-        typeRef.current?.focus();
+      else if (typeError || (vehicleInput.trim() && !vehicleTypeId))
+        requestAnimationFrame(() => typeRef.current?.focus());
       else if (!color.trim() || !colorSelected) colorRef.current?.focus();
       else rateRef.current?.focus();
     }
@@ -1026,10 +1034,28 @@ export function EntryFormCore({
     plate.trim().length <= 7 &&
     !plateHasActiveEntry &&
     vehicleInput.trim().length > 0 &&
-    (vehicleSelected ||
-      (!catalogIsEmpty && !hasCatalogMatches && vehicleTypeId !== '')) &&
+    (vehicleSelected || (!catalogIsEmpty && !hasCatalogMatches)) &&
+    vehicleTypeId !== '' &&
     colorSelected &&
     rateSelected;
+  const typeNotAccepted = isTypeNotAccepted(
+    vehicleTypeId || undefined,
+    selectableTypes,
+  );
+  const shouldShowVehicleType = vehicleInput.trim().length > 0;
+  const hasAnyManualInput =
+    variant === 'manual' &&
+    [
+      plate,
+      brand,
+      model,
+      vehicleInput,
+      vehicleTypeId,
+      color,
+      rateInput,
+      cochera,
+      notes,
+    ].some((value) => value.trim().length > 0);
 
   // ── Submit ────────────────────────────────────────────────────────────────
 
@@ -1057,6 +1083,12 @@ export function EntryFormCore({
     setVehicleTypeId('');
     setTypeAutofilled(false);
     setTypeError('');
+  }
+
+  function handleClearManualEntry(): void {
+    resetFields();
+    onDraftReset?.();
+    requestAnimationFrame(() => plateRef.current?.focus());
   }
 
   async function submitEntry({ print }: { print: boolean }): Promise<void> {
@@ -1270,7 +1302,19 @@ export function EntryFormCore({
     >
       {headerSlot ??
         (variant === 'manual' ? (
-          <h3 className="entry-form-title">Registrar ingreso</h3>
+          <div className="entry-form-head">
+            <h3 className="entry-form-title">Registrar ingreso</h3>
+            <button
+              type="button"
+              className="entry-form-clear-button"
+              onClick={handleClearManualEntry}
+              disabled={saving || !hasAnyManualInput}
+              title="Borrar datos del ingreso"
+              aria-label="Borrar datos del ingreso"
+            >
+              <Eraser size={17} aria-hidden="true" />
+            </button>
+          </div>
         ) : null)}
 
       <div className="entry-form-fields auth-form">
@@ -1337,35 +1381,37 @@ export function EntryFormCore({
           {vehicleError && <p className="field-error">{vehicleError}</p>}
         </div>
 
-        <div className="form-field">
-          <AppSelect
-            ref={typeRef}
-            value={vehicleTypeId}
-            onChange={(value) => {
-              setVehicleTypeId(value);
-              setTypeAutofilled(false);
-              setTypeError('');
-              resetConfirm();
-            }}
-            placeholder={
-              isTypeRequired(vehicleSelected) && vehicleInput.trim()
-                ? 'Tipo de vehículo (obligatorio)'
-                : 'Tipo de vehículo'
-            }
-            options={selectableTypes.map((t) => ({
-              value: t.id,
-              label: t.accepted ? t.name : `${t.name} (no se acepta)`,
-            }))}
-            error={typeError !== ''}
-            disabled={saving}
-          />
-          {typeError && <p className="field-error">{typeError}</p>}
-          {isTypeNotAccepted(vehicleTypeId || undefined, selectableTypes) && (
-            <p className="field-hint field-warning" role="status">
-              Este tipo no se acepta en caja, ¿registrar igual?
-            </p>
-          )}
-        </div>
+        {shouldShowVehicleType ? (
+          <div className="form-field">
+            <AppSelect
+              ref={typeRef}
+              value={vehicleTypeId}
+              onChange={(value) => {
+                setVehicleTypeId(value);
+                setTypeAutofilled(false);
+                setTypeError('');
+                resetConfirm();
+              }}
+              placeholder={
+                isTypeRequired(vehicleSelected) && vehicleInput.trim()
+                  ? 'Tipo de vehículo (obligatorio)'
+                  : 'Tipo de vehículo'
+              }
+              options={selectableTypes.map((t) => ({
+                value: t.id,
+                label: t.accepted ? t.name : `${t.name} (no se acepta)`,
+              }))}
+              error={typeError !== ''}
+              disabled={saving}
+            />
+            {typeError && <p className="field-error">{typeError}</p>}
+            {typeNotAccepted && (
+              <p className="field-hint field-warning" role="status">
+                Este tipo no se acepta en caja, ¿registrar igual?
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <div className="form-field">
           <div className="entry-form-vehicle-input-container">
