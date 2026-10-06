@@ -23,15 +23,12 @@ import {
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import { EntryEditDialog } from './EntryEditDialog';
 import {
-  countInvoiceChips,
   INVOICE_STATE_BADGE,
   INVOICE_STATE_LABEL,
   INVOICE_STATE_ORDER,
   invoiceLetter,
-  matchesInvoiceChip,
   resolveInvoiceState,
   voucherLabel,
-  type InvoiceChip,
   type InvoiceState,
 } from './invoiceUtils';
 import { useArcaEmitter } from './useArcaEmitter';
@@ -74,11 +71,6 @@ const INITIAL_COLUMN_VISIBILITY = {
   invoiceLetterValue: false,
   invoiceReceiver: false,
 };
-const INVOICE_CHIPS: ReadonlyArray<{ id: InvoiceChip; label: string }> = [
-  { id: 'all', label: 'Todas' },
-  { id: 'unbilled', label: 'Sin facturar' },
-];
-
 function receiverLabel(invoice: LocalInvoice | null): string {
   if (!invoice || invoice.receptorDocTipo !== 80) return '';
   const cuit = invoice.receptorDocNro ?? '';
@@ -426,7 +418,6 @@ export function EntryHistoryPanel({
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
-  const [invoiceChip, setInvoiceChip] = useState<InvoiceChip>('all');
   const { isOnline } = useNetwork();
   const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -622,17 +613,6 @@ export function EntryHistoryPanel({
     activeCashSession,
   ]);
 
-  const chipCounts = useMemo(() => countInvoiceChips(entries ?? []), [entries]);
-  const visibleEntries = useMemo(
-    () =>
-      invoiceChip === 'all'
-        ? entries
-        : entries?.filter((row) =>
-            matchesInvoiceChip(row.invoiceState, invoiceChip),
-          ),
-    [entries, invoiceChip],
-  );
-
   const paymentMethodFilterOptions = useMemo<DataTableFilterOption[]>(() => {
     if (!allPaymentTransactions) return [];
 
@@ -713,9 +693,9 @@ export function EntryHistoryPanel({
   return (
     <>
       <DataTable
-        data={visibleEntries ?? []}
+        data={entries ?? []}
         columns={columns}
-        isLoading={visibleEntries === undefined}
+        isLoading={entries === undefined}
         emptyMessage="No hay movimientos registrados todavía."
         searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
         searchableKeys={SEARCHABLE_KEYS}
@@ -727,26 +707,6 @@ export function EntryHistoryPanel({
           invoiceLetterValue: INVOICE_LETTER_OPTIONS,
         }}
         initialColumnVisibility={INITIAL_COLUMN_VISIBILITY}
-        toolbarExtra={
-          <div
-            className="entry-invoice-chips"
-            role="group"
-            aria-label="Facturación"
-          >
-            {INVOICE_CHIPS.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className="entry-invoice-chip"
-                aria-pressed={invoiceChip === chip.id}
-                onClick={() => setInvoiceChip(chip.id)}
-              >
-                {chip.label}
-                {chip.id === 'all' ? null : <b>{chipCounts[chip.id]}</b>}
-              </button>
-            ))}
-          </div>
-        }
         initialColumnFilters={initialColumnFilters}
         onColumnFiltersChange={handleColumnFiltersChange}
         columnFiltersOverride={columnFiltersOverride}
