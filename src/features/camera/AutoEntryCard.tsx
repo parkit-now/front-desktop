@@ -8,6 +8,9 @@ interface Props {
   detection: PendingDetection;
   tenantId: string;
   accessToken: string;
+  parkingName?: string | null;
+  parkingAddress?: string | null;
+  parkingCuit?: string | null;
   onRegistered: (eventId: string, entryId: string) => void;
   onDismiss: (eventId: string) => void;
 }
@@ -16,6 +19,9 @@ export function AutoEntryCard({
   detection,
   tenantId,
   accessToken,
+  parkingName = null,
+  parkingAddress = null,
+  parkingCuit = null,
   onRegistered,
   onDismiss,
 }: Props) {
@@ -105,6 +111,9 @@ export function AutoEntryCard({
         accessToken={accessToken}
         variant="auto"
         initialPlate={needsManualPlate ? '' : detection.normalizedText}
+        parkingName={parkingName}
+        parkingAddress={parkingAddress}
+        parkingCuit={parkingCuit}
         onRegistered={({ entryId }) => onRegistered(detection.id, entryId)}
         extraActions={
           <button
