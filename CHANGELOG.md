@@ -1,3 +1,11 @@
+# [1.13.0](https://github.com/parkit-now/front-desktop/compare/v1.12.0...v1.13.0) (2026-10-06)
+
+
+### Features
+
+* **auto-entries:** add parking details to AutoEntriesColumns and AutoEntryCard components ([c9c58ab](https://github.com/parkit-now/front-desktop/commit/c9c58ab4b4b1c9dcde45fdfd5772fe180807c9ca))
+* **factura:** al egresar un vehículo se autocompleta el cuit usado para la última factura a esa patente ([caa72f0](https://github.com/parkit-now/front-desktop/commit/caa72f037b244a83fbc36bc53ca70d07ee494035))
+
 # [1.12.0](https://github.com/parkit-now/front-desktop/compare/v1.11.0...v1.12.0) (2026-10-06)
 
 
