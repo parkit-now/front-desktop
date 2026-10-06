@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/parkit-now/front-desktop/compare/v1.13.0...v1.14.0) (2026-10-06)
+
+
+### Features
+
+* **lista blanca:** se agregó la lista blanca de patentes por estacionamiento ([0050152](https://github.com/parkit-now/front-desktop/commit/00501522e56a313f09adbc7cdfa46f0c33c745eb))
+
 # [1.13.0](https://github.com/parkit-now/front-desktop/compare/v1.12.0...v1.13.0) (2026-10-06)
 
 
