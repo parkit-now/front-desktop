@@ -166,11 +166,7 @@ export interface paths {
         get: operations["adminParkingsGet"];
         put?: never;
         post?: never;
-        /**
-         * Delete a parking lot
-         * @description Permanently deletes the parking lot. Dependent data (memberships, rates, entries and payment methods) is removed by cascade.
-         */
-        delete: operations["adminParkingsDelete"];
+        delete?: never;
         options?: never;
         head?: never;
         /**
@@ -178,6 +174,66 @@ export interface paths {
          * @description Updates the parking-lot basic data. Include `status` to move the lot in or out of `maintenance`.
          */
         patch: operations["adminParkingsUpdate"];
+        trace?: never;
+    };
+    "/admin/parkings/{id}/deletion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Soft-delete a parking lot
+         * @description Marks the parking lot as deleted. It disappears from every read but the admin's and keeps returning 410 `ENTITY_DELETED` to its members, and `TenantPurgeService` erases it for good — database and bucket — once `graceDays` have passed. Reversible until then via `/restore`. Requires typing the exact parking name in `confirmName`.
+         */
+        post: operations["adminParkingsDelete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/parkings/{id}/deletion-preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What deleting this parking lot would destroy
+         * @description Counts to show before confirming: staff, cars inside, entries, cash sessions, invoices, bucket objects and audit rows, plus whether Mercado Pago and ARCA are linked. `blockers` lists third-party money that would be stranded; it is informational and never prevents the deletion.
+         */
+        get: operations["adminParkingsDeletionPreflight"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/parkings/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a soft-delete
+         * @description Brings a deleted parking lot back, with its data. Only possible before the purge. Mercado Pago and ARCA are NOT re-linked and cancelled reservations stay cancelled: those are re-done by hand.
+         */
+        post: operations["adminParkingsRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/users": {
@@ -3384,6 +3440,23 @@ export interface components {
              */
             vehiclesOut: number;
         };
+        DeleteParkingDto: {
+            /**
+             * @description El nombre del estacionamiento, tipeado por el admin. Se compara normalizado (NFC, sin distinguir mayúsculas ni espacios del borde). Un botón solo no alcanza para un borrado.
+             * @example Playa Centro
+             */
+            confirmName: string;
+            /**
+             * @description Días hasta que la purga pueda borrarlo definitivamente. `0` lo deja listo para la próxima corrida del job, que es lo que se usa para limpiar datos de prueba. Por defecto 30.
+             * @default 30
+             */
+            graceDays: number;
+            /**
+             * @description Motivo, para la auditoría.
+             * @example Datos de prueba previos al arranque productivo
+             */
+            reason?: string;
+        };
         DeleteVehicleTypeResultDto: {
             /**
              * Format: uuid
@@ -3392,6 +3465,58 @@ export interface components {
             reassignedToTypeId: string | null;
             /** @description Cuántos vehículos se movieron al tipo destino. Cada uno recibe su propio `syncSeq` y `version`, así que viajan por /vehicles/changes. */
             reassignedVehicles: number;
+        };
+        DeletionEffectDto: {
+            /** @description Por qué falló, si falló. En inglés: es para el log. */
+            detail: string | null;
+            /** @description Si salió bien. */
+            ok: boolean;
+            /**
+             * @description Qué se intentó.
+             * @example Desvincular Mercado Pago
+             */
+            step: string;
+        };
+        DeletionPreflightDto: {
+            /** @description Si tiene ARCA vinculado para facturar. */
+            arcaLinked: boolean;
+            /** @description Filas de auditoría. Hasta ahora NO se borraban: la FK es ON DELETE SET NULL, así que quedaban anonimizadas e irrastreables. La purga las borra de verdad. */
+            auditRows: number;
+            /**
+             * @description Plata de terceros que quedaría colgada. Se muestra en rojo y obliga a leer, pero NO impide borrar: el admin decide. La purga definitiva sí los respeta, porque ahí ya no hay vuelta atrás.
+             * @example [
+             *       "2 reembolsos pendientes",
+             *       "1 cobro acreditado sin aplicar"
+             *     ]
+             */
+            blockers: string[];
+            /** @description Autos que están adentro ahora mismo. */
+            carsInside: number;
+            /** @description Turnos de caja en total. */
+            cashSessions: number;
+            /** @description Ingresos registrados, históricos incluidos. */
+            entries: number;
+            /** @description Facturas emitidas por ARCA. */
+            invoices: number;
+            /** @description Si tiene Mercado Pago vinculado. */
+            mercadoPagoLinked: boolean;
+            /** @description Nombre exacto que hay que tipear para confirmar. Se compara normalizado (NFC, sin distinguir mayúsculas ni espacios del borde). */
+            name: string;
+            /** @description Turnos de caja abiertos sin cerrar. */
+            openCashSessions: number;
+            /** @description Reservas de conductores, históricas incluidas. */
+            reservations: number;
+            /** @description Personal con membresía en este estacionamiento. */
+            staff: number;
+            /** @description Fotos de patentes en el bucket privado. Las borra la purga: hoy ningún otro camino del backend las toca al borrar un estacionamiento. */
+            storageObjects: number;
+            /** Format: uuid */
+            tenantId: string;
+        };
+        DeletionResultDto: {
+            /** @description En orden de ejecución. El orden no es cosmético: ver el servicio. */
+            effects: components["schemas"]["DeletionEffectDto"][];
+            parking: components["schemas"]["ParkingDto"];
         };
         DesktopCameraConfigDto: {
             /**
@@ -4826,6 +4951,11 @@ export interface components {
             createdAt: string;
             /** @description Tax id (CUIT), if any. */
             cuit: string | null;
+            /**
+             * Format: date-time
+             * @description Cuándo se dio de baja. `null` = vivo. Sólo lo ve el admin global: para el resto del producto un estacionamiento con esto seteado no existe.
+             */
+            deletedAt: string | null;
             /** @description Contact email, if any. */
             email: string | null;
             /**
@@ -4841,6 +4971,11 @@ export interface components {
             name: string;
             /** @description Contact phone, if any. */
             phone: string | null;
+            /**
+             * Format: date-time
+             * @description Desde cuándo la purga puede borrarlo definitivamente. Hasta ese momento se puede restaurar; después no queda nada que restaurar.
+             */
+            purgeAfter: string | null;
             /**
              * @description Operational status: `active` or `maintenance`.
              * @enum {string}
@@ -6916,6 +7051,8 @@ export interface operations {
     adminParkingsList: {
         parameters: {
             query?: {
+                /** @description Incluir los estacionamientos dados de baja, para poder restaurarlos. Por defecto `false`: el inventario muestra sólo los vivos. */
+                includeDeleted?: boolean;
                 /** @description 1-based page number. */
                 page?: number;
                 /** @description Number of items per page (capped at 100). */
@@ -7065,54 +7202,6 @@ export interface operations {
             };
         };
     };
-    adminParkingsDelete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Parking lot id (uuid). */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Parking lot deleted. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing, malformed, or expired bearer token. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-            /** @description Authenticated caller does not hold the `admin` role. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-            /** @description No parking lot exists for the given id (`PARKING_NOT_FOUND`). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetailsDto"];
-                };
-            };
-        };
-    };
     adminParkingsUpdate: {
         parameters: {
             query?: never;
@@ -7166,6 +7255,184 @@ export interface operations {
             };
             /** @description No parking lot exists for the given id (`PARKING_NOT_FOUND`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    adminParkingsDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot id (uuid). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteParkingDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionResultDto"];
+                };
+            };
+            /** @description Payload failed validation, or the typed name does not match (`PARKING_CONFIRM_NAME_MISMATCH`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No parking lot exists for the given id (`PARKING_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Already deleted (`PARKING_ALREADY_DELETED`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    adminParkingsDeletionPreflight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot id (uuid). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionPreflightDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No parking lot exists for the given id (`PARKING_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+        };
+    };
+    adminParkingsRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Parking lot id (uuid). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParkingDto"];
+                };
+            };
+            /** @description Missing, malformed, or expired bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description Authenticated caller does not hold the `admin` role. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description No parking lot exists for the given id (`PARKING_NOT_FOUND`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            /** @description The parking lot is not deleted (`PARKING_NOT_DELETED`). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9463,7 +9730,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "entry.reservation_unlinked" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded" | "reservation.accepted" | "reservation.rejected" | "reservation.cancelled" | "reservation.refund_retried" | "reservation.refund_confirmed" | "reservation.refund_failed" | "reservation.late_payment_refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "entry.reservation_unlinked" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "parking.restored" | "parking.purged" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded" | "reservation.accepted" | "reservation.rejected" | "reservation.cancelled" | "reservation.refund_retried" | "reservation.refund_confirmed" | "reservation.refund_failed" | "reservation.late_payment_refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */

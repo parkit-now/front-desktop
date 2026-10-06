@@ -65,6 +65,7 @@ export class ServiceManager {
   private readonly healthy = new Set<string>();
   private readonly spawnErrors = new Set<string>();
   private readonly lastErrors = new Map<string, string>();
+  private readonly stopping = new Set<string>();
   /** Services already listening when we started — not ours to spawn or stop. */
   private readonly adopted = new Set<string>();
   private readonly shutdownToken: string;
@@ -116,7 +117,7 @@ export class ServiceManager {
     }
 
     const proc = this.processes.get(name);
-    const alive = Boolean(proc && proc.exitCode === null && !proc.killed);
+    const alive = this.isProcessAlive(proc);
     const healthy = this.healthy.has(name);
 
     if (this.adopted.has(name)) {
@@ -152,13 +153,26 @@ export class ServiceManager {
     };
   }
 
+  getFailedServices(): string[] {
+    return [...this.failed];
+  }
+
+  private isProcessAlive(proc: ChildProcess | undefined): proc is ChildProcess {
+    return Boolean(
+      proc &&
+      proc.exitCode === null &&
+      proc.signalCode === null &&
+      !proc.killed,
+    );
+  }
+
   async startService(name: string): Promise<ManagedServiceStatus> {
     const svc = this.serviceByName(name);
     if (!svc) return this.getServiceStatus(name);
     if (this.adopted.has(name)) return this.getServiceStatus(name);
 
     const proc = this.processes.get(name);
-    if (proc && proc.exitCode === null && !proc.killed) {
+    if (this.isProcessAlive(proc)) {
       await this.awaitHealthy(svc, { allowRespawn: false });
       return this.getServiceStatus(name);
     }
@@ -181,7 +195,7 @@ export class ServiceManager {
     if (this.adopted.has(name)) return this.getServiceStatus(name);
 
     const proc = this.processes.get(name);
-    if (proc && proc.exitCode === null && !proc.killed) {
+    if (this.isProcessAlive(proc)) {
       await this.stopOne(svc, proc);
     }
 
@@ -262,15 +276,21 @@ export class ServiceManager {
       logStream?.write(`${message}\n`);
     });
 
-    proc.on('exit', (code) => {
+    proc.on('exit', (code, signal) => {
       const wasHealthy = this.healthy.has(svc.name);
+      const wasStopping = this.stopping.delete(svc.name);
       this.healthy.delete(svc.name);
-      if (code !== 0 && code !== null) {
-        const message = `[${svc.name}] exited unexpectedly with code ${code}`;
+      if (!wasStopping && (code !== 0 || signal !== null)) {
+        const reason =
+          signal !== null ? `signal ${signal}` : `code ${String(code)}`;
+        const message = `[${svc.name}] exited unexpectedly with ${reason}`;
         console.error(message);
         logStream?.write(`${message}\n`);
         this.failed.add(svc.name);
-        this.lastErrors.set(svc.name, `exited_${code}`);
+        this.lastErrors.set(
+          svc.name,
+          signal !== null ? `signal_${signal}` : `exited_${String(code)}`,
+        );
         // Only notify the renderer for services that were previously healthy —
         // startup failures are already surfaced via waitAllHealthy / services:failed.
         if (wasHealthy) {
@@ -279,7 +299,9 @@ export class ServiceManager {
           );
         }
       } else {
-        const message = `[${svc.name}] exited with code ${code}`;
+        const reason =
+          signal !== null ? `signal ${signal}` : `code ${String(code)}`;
+        const message = `[${svc.name}] exited with ${reason}`;
         console.log(message);
         logStream?.write(`${message}\n`);
       }
@@ -338,7 +360,7 @@ export class ServiceManager {
 
       const proc = this.processes.get(svc.name);
 
-      if (proc && proc.exitCode !== null) {
+      if (proc && (proc.exitCode !== null || proc.signalCode !== null)) {
         // Actually crashed while starting — respawn, bounded.
         if (!allowRespawn || respawns >= MAX_RESPAWNS) break;
         respawns += 1;
@@ -391,7 +413,10 @@ export class ServiceManager {
    * unresponsive, /shutdown request failed, etc).
    */
   private stopOne(svc: ServiceConfig, proc: ChildProcess): Promise<void> {
-    if (proc.killed || proc.exitCode !== null) return Promise.resolve();
+    if (proc.killed || proc.exitCode !== null || proc.signalCode !== null) {
+      return Promise.resolve();
+    }
+    this.stopping.add(svc.name);
 
     return new Promise((resolve) => {
       let settled = false;

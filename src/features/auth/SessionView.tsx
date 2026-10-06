@@ -11,6 +11,8 @@ import {
   Printer,
   Truck,
   Archive,
+  ArrowLeft,
+  Settings,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -22,6 +24,7 @@ import type { ManualEntryDraft } from '../entries/EntryFormCore';
 import { TodayReservationsEntry } from '../reservations/TodayReservationsEntry';
 import { ArrivalNotices } from '../entries/ArrivalNotices';
 import { ReservationsPanel } from '../reservations/ReservationsPanel';
+import { useReservationServiceAvailability } from '../reservations/useReservationServiceAvailability';
 import { useReservationsFeed } from '../reservations/useReservationsFeed';
 import { ExitControls } from '../entries/ExitControls';
 import { EntryHistoryPanel } from '../entries/EntryHistoryPanel';
@@ -31,7 +34,12 @@ import { VehiclesPanel } from '../vehicles/VehiclesPanel';
 import { VehicleTypesPanel } from '../vehicle-types/VehicleTypesPanel';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
-import { LprStatusIndicator } from '../lpr/LprStatusIndicator';
+import {
+  hasDesktopServiceFailure,
+  useDesktopServiceFailures,
+} from '../system/useDesktopServiceFailures';
+import type { DesktopServiceName } from '../system/useDesktopServiceFailures';
+import { getWorkspaceHeaderAlerts } from '../system/workspaceHeaderAlerts';
 import { NoCashSessionScreen } from '../cash-session/NoCashSessionScreen';
 import { CashSessionPanel } from '../cash-session/CashSessionPanel';
 import { CashSessionHistoryPanel } from '../cash-session/CashSessionHistoryPanel';
@@ -58,6 +66,11 @@ import {
   writeTicketTemplateSettings,
 } from '../../lib/print/ticketTemplate';
 import { SyncProvider } from '../../lib/sync/SyncContext';
+import {
+  onTenantDeleted,
+  setPendingAuthNotice,
+  TENANT_DELETED_NOTICE,
+} from '../../lib/sync/tenantDeleted';
 import { signOut } from '../../lib/supabase/session';
 import { ConfigNavGroup, type ConfigNavItem } from './ConfigNavGroup';
 import { getErrorMessage } from './errors';
@@ -148,7 +161,9 @@ function OperationalCameraStatusBadge({
 
   return (
     <div
-      className={`operational-camera-badge ${status.camera}`}
+      className={`workspace-alert-badge operational-camera-badge ${
+        status.camera === 'down' ? 'danger' : 'warning'
+      } ${status.camera}`}
       role="status"
       aria-live="polite"
     >
@@ -159,6 +174,45 @@ function OperationalCameraStatusBadge({
           : 'Cámara sin señal'}
       </span>
       {detail ? <small>{detail}</small> : null}
+    </div>
+  );
+}
+
+function DesktopServiceFailureBadge({ label }: { label: string }) {
+  return (
+    <div
+      className="workspace-alert-badge danger"
+      role="status"
+      aria-live="polite"
+    >
+      <AlertTriangle size={16} aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function WorkspaceHeaderAlerts({
+  cameraStatus,
+  failedServices,
+}: {
+  cameraStatus: CameraStatus | null;
+  failedServices: readonly DesktopServiceName[];
+}) {
+  const alerts = getWorkspaceHeaderAlerts({ cameraStatus, failedServices });
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="workspace-header-alerts" aria-label="Alertas del sistema">
+      {alerts.includes('camera-service') ? (
+        <DesktopServiceFailureBadge label="Servicio de cámara no disponible" />
+      ) : null}
+      {alerts.includes('lpr-service') ? (
+        <DesktopServiceFailureBadge label="Servicio LPR no disponible" />
+      ) : null}
+      {alerts.includes('camera-signal') ? (
+        <OperationalCameraStatusBadge status={cameraStatus} />
+      ) : null}
     </div>
   );
 }
@@ -275,9 +329,15 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const { showToast } = useToast();
   const { isOnline } = useNetwork();
   const cameraStatus = useCameraStatus();
+  const failedServices = useDesktopServiceFailures();
+  const cameraServiceDown = hasDesktopServiceFailure(
+    failedServices,
+    'camera-service',
+  );
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
+  const [cameraSettingsOpen, setCameraSettingsOpen] = useState(false);
   const [historialFocus, setHistorialFocus] = useState<HistorialFocus | null>(
     null,
   );
@@ -374,13 +434,24 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const canShowRatesNav =
     hasMemberships ||
     (effectiveGlobalRole === 'admin' && activeTenantId !== null);
+  const reservationsAvailable = useReservationServiceAvailability({
+    tenantId: activeTenantId,
+    accessToken: session.access_token,
+  });
   // Reservas: el dueño y el operador ven y responden (el backend no restringe
-  // por rol). Un admin sin membresía, con la playa elegida.
-  const canShowReservasNav = activeTenantId !== null && canShowRatesNav;
+  // por rol), siempre que la playa tenga el servicio configurado.
+  const canShowReservasNav =
+    activeTenantId !== null && canShowRatesNav && reservationsAvailable;
   const reservationsFeed = useReservationsFeed({
     tenantId: canShowReservasNav ? activeTenantId : null,
     accessToken: session.access_token,
   });
+
+  useEffect(() => {
+    if (section !== 'camara' || !ratesManageAllowed) {
+      setCameraSettingsOpen(false);
+    }
+  }, [ratesManageAllowed, section]);
 
   useEffect(() => {
     const cachedProfile = readCachedProfile(session.user.id);
@@ -445,6 +516,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
   }, [ratesAllowed, section]);
 
   useEffect(() => {
+    if (!canShowReservasNav && section === 'reservas') {
+      setSection('operativo');
+    }
+  }, [canShowReservasNav, section]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadProfile(): Promise<void> {
@@ -490,6 +567,48 @@ export function SessionView({ session, sessionStale = false }: Props) {
       isMounted = false;
     };
   }, [session.access_token, session.user.id, showToast]);
+
+  /**
+   * El estacionamiento activo fue dado de baja desde el panel.
+   *
+   * Lo dispara `apiRequest` al cosechar un 410 `ENTITY_DELETED` — o sea que
+   * llega solo, por el pull de fondo o por el sync al reconectar, sin polling
+   * nuevo. Sin red no llega nada y la sesión offline se respeta: un corte de
+   * internet no es una baja.
+   *
+   * SE CIERRA LA SESIÓN SÓLO SI NO QUEDA OTRA SUCURSAL. Con más de una, se
+   * cambia de sucursal y se avisa: cerrarle la sesión a un operador
+   * multi-sucursal porque se dio de baja UNA playa lo dejaría afuera de las
+   * otras, que siguen funcionando.
+   *
+   * No se toca Dexie. La baja es reversible hasta la purga, y limpiar acá
+   * perdería para siempre lo que el operador no alcanzó a sincronizar.
+   */
+  useEffect(() => {
+    return onTenantDeleted((deletedTenantId) => {
+      if (deletedTenantId !== activeTenantId) return;
+
+      const remaining = memberships.filter(
+        (item) => item.tenantId !== deletedTenantId,
+      );
+
+      if (remaining.length > 0) {
+        setActiveTenantId(remaining[0].tenantId);
+        showToast({
+          message: `Este estacionamiento fue eliminado. Cambiamos a ${remaining[0].tenantName}.`,
+          kind: 'error',
+        });
+        return;
+      }
+
+      setPendingAuthNotice(TENANT_DELETED_NOTICE);
+      void signOut().catch(() => {
+        // Si el backend no contesta, `signOut` igual limpia la sesión local.
+        // Lo importante es que el operador no siga operando contra un tenant
+        // que ya no existe.
+      });
+    });
+  }, [activeTenantId, memberships, showToast]);
 
   useEffect(() => {
     if (!isAdminWithoutMemberships) {
@@ -554,7 +673,10 @@ export function SessionView({ session, sessionStale = false }: Props) {
   }
 
   const entitySwitcher = !sidebarCollapsed ? (
-    <div className="entity-switcher">
+    <div className="sidebar-session-card">
+      <p className="sidebar-session-email">
+        {session.user.email ?? session.user.id}
+      </p>
       <span className="entity-switcher-kicker">Estacionamiento</span>
 
       {memberships.length > 1 ? (
@@ -721,7 +843,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
             >
               <Home size={18} aria-hidden="true" />
               {!sidebarCollapsed ? <span>Operativo</span> : null}
-              {cameraStatus && cameraStatus.camera !== 'ok' ? (
+              {cameraServiceDown ? (
+                <span
+                  className="nav-status-dot down"
+                  aria-label="Servicio de cámara no disponible"
+                />
+              ) : cameraStatus && cameraStatus.camera !== 'ok' ? (
                 <span
                   className={`nav-status-dot ${cameraStatus.camera}`}
                   aria-label={
@@ -808,16 +935,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
           </nav>
 
           <div className="sidebar-foot">
-            <LprStatusIndicator collapsed={sidebarCollapsed} />
             <SyncButton collapsed={sidebarCollapsed} />
-
-            {!sidebarCollapsed ? (
-              <div className="sidebar-user">
-                <p className="muted mini">
-                  {session.user.email ?? session.user.id}
-                </p>
-              </div>
-            ) : null}
 
             {entitySwitcher}
 
@@ -846,9 +964,28 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 ) : null}
               </div>
             </div>
-            {section === 'operativo' ? (
-              <OperationalCameraStatusBadge status={cameraStatus} />
-            ) : null}
+            <div className="workspace-header-side">
+              {section === 'camara' && ratesManageAllowed ? (
+                <button
+                  type="button"
+                  className={`workspace-header-action ${
+                    cameraSettingsOpen ? 'secondary' : ''
+                  }`}
+                  onClick={() => setCameraSettingsOpen((open) => !open)}
+                >
+                  {cameraSettingsOpen ? (
+                    <ArrowLeft size={16} aria-hidden="true" />
+                  ) : (
+                    <Settings size={16} aria-hidden="true" />
+                  )}
+                  {cameraSettingsOpen ? 'Ver cámara' : 'Ajustes'}
+                </button>
+              ) : null}
+              <WorkspaceHeaderAlerts
+                cameraStatus={cameraStatus}
+                failedServices={failedServices}
+              />
+            </div>
           </header>
 
           <div className="workspace-content">
@@ -874,12 +1011,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         onDraftReset={resetManualEntryDraft}
                       />
                       <ArrivalNotices tenantId={activeTenantId} />
-                      <TodayReservationsEntry
-                        tenantId={activeTenantId}
-                        accessToken={session.access_token}
-                        feed={reservationsFeed}
-                        onOpenReservations={() => setSection('reservas')}
-                      />
                       <ExitControls
                         tenantId={activeTenantId}
                         accessToken={session.access_token}
@@ -889,6 +1020,14 @@ export function SessionView({ session, sessionStale = false }: Props) {
                         parkingAddress={activeTenantAddress}
                         parkingCuit={activeTenantCuit}
                       />
+                      {canShowReservasNav ? (
+                        <TodayReservationsEntry
+                          tenantId={activeTenantId}
+                          accessToken={session.access_token}
+                          feed={reservationsFeed}
+                          onOpenReservations={() => setSection('reservas')}
+                        />
+                      ) : null}
                     </div>
                     <AutoEntriesColumns
                       tenantId={activeTenantId}
@@ -929,6 +1068,9 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 tenantId={activeTenantId}
                 accessToken={session.access_token}
                 canConfigure={ratesManageAllowed}
+                failedServices={failedServices}
+                settingsOpen={cameraSettingsOpen}
+                onSettingsOpenChange={setCameraSettingsOpen}
               />
             ) : section === 'historial' ? (
               activeTenantId ? (

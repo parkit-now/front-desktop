@@ -141,6 +141,13 @@ describe('table view template storage', () => {
     });
   });
 
+  it('inserts new known columns into persisted order', () => {
+    expect(
+      sanitizeTableViewConfig(config, ['photo', 'name', 'status', 'createdAt'])
+        ?.columns.order,
+    ).toEqual(['photo', 'status', 'name', 'createdAt']);
+  });
+
   it('persists the last table state separately from named templates', () => {
     const storage = new MemoryStorage();
     writePersistedTableState(

@@ -99,6 +99,22 @@ function triage(error: unknown, retryCount: number): PushFailureOutcome {
     return { status: 'conflict', consumesAttempt: true };
   }
 
+  // 410: el estacionamiento fue dado de baja. La op NO va a `failed` aunque
+  // ahora mismo sea imposible pushearla, y la diferencia importa: `failed` es
+  // terminal, y la baja es reversible hasta la purga. Si el admin restaura, lo
+  // que el operador alcanzó a hacer tiene que poder salir.
+  //
+  // Queda en `pending` con el backoff largo, sin gastar presupuesto, porque lo
+  // que frena la insistencia no es el estado de cada op: es que la sesión se
+  // cierra (ver `tenantDeleted.ts`) y el loop de sync deja de correr.
+  if (status === 410) {
+    return {
+      status: 'pending',
+      nextAttemptAt: Date.now() + MAX_BACKOFF_MS,
+      consumesAttempt: false,
+    };
+  }
+
   // Timeout o rate limit: reintentable tal cual.
   if (status === 408 || status === 429) {
     return {

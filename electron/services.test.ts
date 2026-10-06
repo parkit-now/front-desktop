@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServiceManager, type ServiceConfig } from './services.js';
 import type { ServiceLauncher } from './serviceRuntime.js';
 
-vi.mock('electron', () => ({
-  BrowserWindow: { getAllWindows: vi.fn(() => []) },
-}));
-
 // vi.hoisted ensures mockSpawn is initialized before vi.mock factories run.
 const mockSpawn = vi.hoisted(() => vi.fn());
+const mockGetAllWindows = vi.hoisted(() => vi.fn<() => unknown[]>(() => []));
+vi.mock('electron', () => ({
+  BrowserWindow: { getAllWindows: mockGetAllWindows },
+}));
 vi.mock('node:child_process', () => ({ spawn: mockSpawn }));
 
 const launcher: ServiceLauncher = {
@@ -54,6 +54,7 @@ class FakeProcess extends EventEmitter {
   readonly stderr = new EventEmitter();
   killed = false;
   exitCode: number | null = null;
+  signalCode: NodeJS.Signals | null = null;
   readonly pid = 1234;
 
   kill(): void {
@@ -63,6 +64,11 @@ class FakeProcess extends EventEmitter {
       this.emit('exit', 0, null);
     }
   }
+
+  exitBySignal(signal: NodeJS.Signals): void {
+    this.signalCode = signal;
+    this.emit('exit', null, signal);
+  }
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────
@@ -71,6 +77,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   mockSpawn.mockReset();
   mockSpawn.mockReturnValue(new FakeProcess());
+  mockGetAllWindows.mockReset();
+  mockGetAllWindows.mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -297,6 +305,71 @@ describe('ServiceManager — manual control', () => {
       healthy: false,
       pid: 1234,
       lastError: 'health_timeout',
+    });
+  });
+});
+
+describe('ServiceManager — crash reporting', () => {
+  it('marks a healthy service killed by signal as failed and notifies windows', async () => {
+    const proc = new FakeProcess();
+    mockSpawn.mockReturnValue(proc);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        mockSpawn.mock.calls.length === 0
+          ? Promise.reject(new Error('down'))
+          : Promise.resolve({ ok: true } as Response),
+      ),
+    );
+    const send = vi.fn();
+    mockGetAllWindows.mockReturnValue([{ webContents: { send } }]);
+
+    const manager = new ServiceManager([config()]);
+    await manager.spawnAll();
+    await manager.waitAllHealthy();
+
+    proc.exitBySignal('SIGTERM');
+
+    expect(manager.getFailedServices()).toEqual(['lpr-service']);
+    expect(manager.getServiceStatus('lpr-service')).toMatchObject({
+      state: 'failed',
+      healthy: false,
+      pid: null,
+      lastError: 'signal_SIGTERM',
+    });
+    expect(send).toHaveBeenCalledWith('services:crashed', 'lpr-service');
+  });
+
+  it('starts a service again after it was killed by signal', async () => {
+    const procs: FakeProcess[] = [];
+    mockSpawn.mockImplementation(() => {
+      const p = new FakeProcess();
+      procs.push(p);
+      return p;
+    });
+    const fetchMock = vi.fn(() => {
+      if (mockSpawn.mock.calls.length === 0) {
+        return Promise.reject(new Error('down'));
+      }
+      if (mockSpawn.mock.calls.length === 1 && procs[0].signalCode !== null) {
+        return Promise.reject(new Error('dead'));
+      }
+      return Promise.resolve({ ok: true } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const manager = new ServiceManager([config()]);
+    await manager.spawnAll();
+    await manager.waitAllHealthy();
+
+    procs[0].exitBySignal('SIGKILL');
+    const status = await manager.startService('lpr-service');
+
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(status).toMatchObject({
+      state: 'running',
+      healthy: true,
+      pid: 1234,
     });
   });
 });

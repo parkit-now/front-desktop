@@ -362,7 +362,29 @@ export function sanitizeTableViewConfig(
       known.has(columnId),
     ),
   );
-  const order = parsed.columns.order.filter((columnId) => known.has(columnId));
+  const storedOrder = parsed.columns.order.filter((columnId) =>
+    known.has(columnId),
+  );
+  const storedOrderSet = new Set(storedOrder);
+  const order: string[] = [];
+  let storedIndex = 0;
+  knownColumnIds.forEach((columnId) => {
+    if (!storedOrderSet.has(columnId)) {
+      order.push(columnId);
+      return;
+    }
+
+    while (storedIndex < storedOrder.length) {
+      const storedColumnId = storedOrder[storedIndex];
+      storedIndex += 1;
+      order.push(storedColumnId);
+      if (storedColumnId === columnId) break;
+    }
+  });
+  while (storedIndex < storedOrder.length) {
+    order.push(storedOrder[storedIndex]);
+    storedIndex += 1;
+  }
   const pinnedLeft = parsed.columns.pinnedLeft.filter((columnId) =>
     known.has(columnId),
   );
