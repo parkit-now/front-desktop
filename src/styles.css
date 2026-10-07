@@ -1208,6 +1208,30 @@ h2 {
   overflow-y: auto;
 }
 
+.workspace-content--history {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-content--history > .dt-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workspace-content--history .dt-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.workspace-content--history .dt-column-panel {
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+}
+
 .dashboard-card {
   min-width: 0;
   border: 1px solid #d0d9e6;

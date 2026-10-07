@@ -997,7 +997,13 @@ export function SessionView({ session, sessionStale = false }: Props) {
             </div>
           </header>
 
-          <div className="workspace-content">
+          <div
+            className={`workspace-content${
+              section === 'historial' && activeTenantId
+                ? ' workspace-content--history'
+                : ''
+            }`}
+          >
             {section === 'operativo' ? (
               activeTenantId ? (
                 activeCashSession ? (
