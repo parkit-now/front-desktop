@@ -146,13 +146,20 @@ export function CashSessionHistoryPanel({
 
   const transactions = useLiveQuery(
     () =>
-      localDb.paymentTransactions.where('tenantId').equals(tenantId).toArray(),
+      localDb.paymentTransactions
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((tx) => !tx.deletedAt)
+        .toArray(),
     [tenantId],
   );
 
   // Counting through the cashSessionId index keeps this off the full entry rows.
   const vehicleCounts = useLiveQuery(async () => {
-    const keys = await localDb.entries.orderBy('cashSessionId').keys();
+    const keys = await localDb.entries
+      .orderBy('cashSessionId')
+      .filter((entry) => !entry.deletedAt)
+      .keys();
     const counts = new Map<string, number>();
     for (const key of keys) {
       if (typeof key !== 'string') continue;

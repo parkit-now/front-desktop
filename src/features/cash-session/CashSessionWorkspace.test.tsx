@@ -84,6 +84,12 @@ vi.mock('../../lib/db/localDb', () => {
       where: () => ({ equals: () => query(records) }),
       orderBy: () => ({
         keys: () => Promise.resolve(records.map((row) => row.cashSessionId)),
+        filter: (predicate: (row: Record<string, unknown>) => boolean) => ({
+          keys: () =>
+            Promise.resolve(
+              records.filter(predicate).map((row) => row.cashSessionId),
+            ),
+        }),
       }),
     };
   };
@@ -119,6 +125,7 @@ vi.mock('../../lib/db/localDb', () => {
         },
       ]),
       paymentTransactions: table([]),
+      pendingOps: table([]),
       invoices: table([]),
       lprDetectionEvents: table([]),
     },

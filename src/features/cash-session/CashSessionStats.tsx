@@ -28,12 +28,18 @@ export function CashSessionStats({ session, onSaveNotes }: Props) {
       localDb.paymentTransactions
         .where('cashSessionId')
         .equals(session.id)
+        .filter((tx) => !tx.deletedAt)
         .toArray(),
     [session.id],
   );
 
   const entries = useLiveQuery(
-    () => localDb.entries.where('cashSessionId').equals(session.id).toArray(),
+    () =>
+      localDb.entries
+        .where('cashSessionId')
+        .equals(session.id)
+        .filter((e) => !e.deletedAt)
+        .toArray(),
     [session.id],
   );
 
@@ -44,13 +50,19 @@ export function CashSessionStats({ session, onSaveNotes }: Props) {
     const exited = await localDb.entries
       .where('tenantId')
       .equals(session.tenantId)
-      .filter((entry) => Boolean(entry.leftAt) && Boolean(entry.reservationId))
+      .filter(
+        (entry) =>
+          !entry.deletedAt &&
+          Boolean(entry.leftAt) &&
+          Boolean(entry.reservationId),
+      )
       .toArray();
     const payments =
       exited.length > 0
         ? await localDb.paymentTransactions
             .where('entryId')
             .anyOf(exited.map((entry) => entry.id))
+            .filter((tx) => !tx.deletedAt)
             .toArray()
         : [];
     return { exited, payments };

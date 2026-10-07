@@ -62,6 +62,7 @@ vi.mock('../../lib/db/localDb', () => {
       cashSessions: table('cashSessions'),
       paymentMethods: table('paymentMethods'),
       paymentTransactions: table('paymentTransactions'),
+      pendingOps: table('pendingOps'),
       rates: table('rates'),
       vehicleTypes: table('vehicleTypes'),
       lprDetectionEvents: table('lprDetectionEvents'),

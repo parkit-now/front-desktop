@@ -135,7 +135,7 @@ export function entryToLocal(e: EntryDto): LocalEntry {
     notes: e.notes ?? undefined,
     enteredAt: e.enteredAt,
     leftAt: e.leftAt ?? undefined,
-    amountPaid: e.amountPaid !== null ? String(e.amountPaid) : undefined,
+    amountPaid: e.amountPaid != null ? String(e.amountPaid) : undefined,
     vehicleBrand: e.vehicleBrand ?? undefined,
     vehicleModel: e.vehicleModel ?? undefined,
     rateId: e.rateId ?? undefined,
@@ -169,6 +169,7 @@ export function entryToLocal(e: EntryDto): LocalEntry {
     version: e.version,
     syncSeq: e.syncSeq,
     updatedAt: e.updatedAt,
+    deletedAt: e.deletedAt ?? undefined,
   };
 }
 
@@ -187,7 +188,7 @@ export function cashSessionToLocal(s: CashSessionDto): LocalCashSession {
   };
 }
 
-function paymentTransactionToLocal(
+export function paymentTransactionToLocal(
   t: PaymentTransactionDto,
 ): LocalPaymentTransaction {
   return {
@@ -421,10 +422,14 @@ class SyncService {
       // entry con una op encolada tiene cambios que el servidor NO vio, así que
       // lo que llega en el feed es una foto vieja. Pisarla le borra al operador
       // el cierre de estadía que ya cobró, y el auto vuelve a figurar adentro.
-      const incoming = await this.dropLocallyDirty(
-        'entry',
-        response.items.map(entryToLocal),
-      );
+      const mapped = response.items.map(entryToLocal);
+      const incoming = [
+        ...(await this.dropLocallyDirty(
+          'entry',
+          mapped.filter((entry) => !entry.deletedAt),
+        )),
+        ...mapped.filter((entry) => entry.deletedAt),
+      ];
 
       await localDb.transaction(
         'rw',
@@ -434,10 +439,19 @@ class SyncService {
           // El cursor avanza igual: lo que salteamos tiene un cambio local
           // pendiente, y cuando ese push salga `drainPendingOps` escribe la
           // fila que devuelve el servidor.
-          await localDb.entries.bulkPut(incoming);
+          const existing = await localDb.entries.bulkGet(
+            incoming.map((entry) => entry.id),
+          );
+          await localDb.entries.bulkPut(
+            incoming.filter(
+              (entry, index) =>
+                !existing[index] || entry.syncSeq > existing[index].syncSeq,
+            ),
+          );
+          const currentState = await localDb.syncState.get(stateKey);
           await localDb.syncState.put({
             key: stateKey,
-            lastSeq: response.maxSeq,
+            lastSeq: Math.max(currentState?.lastSeq ?? 0, response.maxSeq),
             lastSyncAt: new Date().toISOString(),
           });
         },
@@ -816,25 +830,25 @@ class SyncService {
     });
 
     if (response.items.length > 0) {
-      const { active, deleted } = splitTombstones(response.items);
       await localDb.transaction(
         'rw',
         localDb.paymentTransactions,
         localDb.syncState,
         async () => {
-          if (active.length > 0) {
-            await localDb.paymentTransactions.bulkPut(
-              active.map(paymentTransactionToLocal),
-            );
-          }
-          if (deleted.length > 0) {
-            await localDb.paymentTransactions.bulkDelete(
-              deleted.map((tx) => tx.id),
-            );
-          }
+          const incoming = response.items.map(paymentTransactionToLocal);
+          const existing = await localDb.paymentTransactions.bulkGet(
+            incoming.map((tx) => tx.id),
+          );
+          await localDb.paymentTransactions.bulkPut(
+            incoming.filter(
+              (tx, index) =>
+                !existing[index] || tx.syncSeq > existing[index].syncSeq,
+            ),
+          );
+          const currentState = await localDb.syncState.get(stateKey);
           await localDb.syncState.put({
             key: stateKey,
-            lastSeq: response.maxSeq,
+            lastSeq: Math.max(currentState?.lastSeq ?? 0, response.maxSeq),
             lastSyncAt: new Date().toISOString(),
           });
         },

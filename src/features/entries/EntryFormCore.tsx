@@ -524,7 +524,7 @@ export function EntryFormCore({
     const prev = await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((e) => e.plate === normalized)
+      .filter((e) => e.plate === normalized && !e.deletedAt)
       .first();
 
     if (prev) {
@@ -593,7 +593,7 @@ export function EntryFormCore({
     const active = await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((e) => e.plate === normalized && !e.leftAt)
+      .filter((e) => e.plate === normalized && !e.leftAt && !e.deletedAt)
       .first();
     setPlateHasActiveEntry(Boolean(active));
     if (active) {
@@ -1097,7 +1097,7 @@ export function EntryFormCore({
     const stillActive = await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((e) => e.plate === normalizedPlate && !e.leftAt)
+      .filter((e) => e.plate === normalizedPlate && !e.leftAt && !e.deletedAt)
       .first();
     if (stillActive) {
       setPlateHasActiveEntry(true);
@@ -1125,10 +1125,12 @@ export function EntryFormCore({
       .first();
 
     const ticketNumber = activeSession
-      ? (await localDb.entries
-          .where('cashSessionId')
-          .equals(activeSession.id)
-          .count()) + 1
+      ? (
+          await localDb.entries
+            .where('cashSessionId')
+            .equals(activeSession.id)
+            .toArray()
+        ).reduce((max, entry) => Math.max(max, entry.ticketNumber ?? 0), 0) + 1
       : undefined;
 
     const body = {

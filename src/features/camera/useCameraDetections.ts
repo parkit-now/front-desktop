@@ -793,7 +793,7 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     const rows = await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((e) => !e.leftAt)
+      .filter((e) => !e.leftAt && !e.deletedAt)
       .toArray();
     return new Set(rows.map((e) => normalisePlate(e.plate)).filter(isString));
   }, [tenantId]);
@@ -805,7 +805,7 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
       .where('tenantId')
       .equals(tenantId)
       .filter((e) => {
-        if (!e.leftAt) return false;
+        if (!e.leftAt || e.deletedAt) return false;
         return new Date(e.leftAt).getTime() >= cutoff;
       })
       .toArray();

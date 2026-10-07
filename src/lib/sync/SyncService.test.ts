@@ -10,6 +10,7 @@ import type {
   LocalInvoice,
   LocalLprDetectionEvent,
   LocalPaymentMethod,
+  LocalPaymentTransaction,
   LocalRate,
   LocalVehicle,
   LocalVehicleCategory,
@@ -85,6 +86,7 @@ const h = vi.hoisted(() => {
   const paymentMethods = makeTable<LocalPaymentMethod>();
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
   const invoices = makeTable<LocalInvoice>();
+  const paymentTransactions = makeTable<LocalPaymentTransaction>();
 
   // Tabla keyed por `code` (no por `id`): sólo lo que usa pullVehicleCategories.
   const vehicleCategories = new Map<string, LocalVehicleCategory>();
@@ -102,6 +104,9 @@ const h = vi.hoisted(() => {
   const localDb = {
     vehicleCategories: vehicleCategoriesTable,
     entries: {
+      bulkGet(ids: string[]): Promise<(LocalEntry | undefined)[]> {
+        return Promise.resolve(ids.map((id) => entries.get(id)));
+      },
       bulkPut(rows: LocalEntry[]): Promise<void> {
         for (const row of rows) entries.set(row.id, row);
         return Promise.resolve();
@@ -114,6 +119,7 @@ const h = vi.hoisted(() => {
     paymentMethods,
     lprDetectionEvents,
     invoices,
+    paymentTransactions,
     syncState: {
       get(key: string): Promise<SyncState | undefined> {
         return Promise.resolve(syncState.get(key));
@@ -185,6 +191,7 @@ const h = vi.hoisted(() => {
     paymentMethods,
     lprDetectionEvents,
     invoices,
+    paymentTransactions,
     localDb,
     listVehicleCategories: vi.fn(),
     pullEntryChanges,
@@ -210,6 +217,10 @@ const h = vi.hoisted(() => {
     pullVehicleChanges: changesMock<VehicleDto>(),
     pullVehicleTypeChanges: changesMock<VehicleTypeDto>(),
     pullPaymentMethodChanges: changesMock<PaymentMethodDto>(),
+    pullPaymentTransactionChanges:
+      changesMock<
+        import('../api/payment-transactions').PaymentTransactionDto
+      >(),
     pullLprDetectionEventChanges: changesMock<LprDetectionEventDto>(),
     uploadLprDetectionEventImage: vi.fn(),
   };
@@ -253,6 +264,10 @@ vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
   pullPaymentMethodChanges: h.pullPaymentMethodChanges,
   listPaymentMethods: h.listPaymentMethods,
+}));
+vi.mock('../api/payment-transactions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/payment-transactions')>()),
+  pullPaymentTransactionChanges: h.pullPaymentTransactionChanges,
 }));
 vi.mock('../api/arca', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/arca')>()),
@@ -340,6 +355,7 @@ function stillOpenOnServer(id: string): EntryDto {
 
 beforeEach(() => {
   h.entries.clear();
+  h.paymentTransactions.rows.clear();
   h.syncState.clear();
   h.pendingOps.length = 0;
   h.rates.rows.clear();
@@ -359,6 +375,7 @@ beforeEach(() => {
   h.pullVehicleChanges.mockReset();
   h.pullVehicleTypeChanges.mockReset();
   h.pullPaymentMethodChanges.mockReset();
+  h.pullPaymentTransactionChanges.mockReset();
   h.pullLprDetectionEventChanges.mockReset();
   h.listRates.mockReset();
   h.listVehicleTypes.mockReset();
@@ -408,6 +425,48 @@ describe('sincronización de Lista blanca', () => {
 });
 
 describe('pullEntries y los cambios locales sin sincronizar', () => {
+  it('conserva la baja lógica y no la revive una respuesta anterior', async () => {
+    h.entries.set(
+      'e-1',
+      localEntry('e-1', { deletedAt: LEFT_AT, syncSeq: 10 }),
+    );
+    h.pullEntryChanges.mockResolvedValue({
+      items: [serverEntry('e-1', { syncSeq: 9 })],
+      maxSeq: 9,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-1')?.deletedAt).toBe(LEFT_AT);
+    expect(h.syncState.get(STATE_KEY)?.lastSeq).toBe(9);
+  });
+
+  it('aplica el tombstone remoto de un ingreso', async () => {
+    h.entries.set('e-1', localEntry('e-1', { syncSeq: 4 }));
+    h.pullEntryChanges.mockResolvedValue({
+      items: [serverEntry('e-1', { deletedAt: LEFT_AT, syncSeq: 5 })],
+      maxSeq: 5,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-1')?.deletedAt).toBe(LEFT_AT);
+  });
+
+  it('la baja remota prevalece aunque este equipo tenga cambios pendientes', async () => {
+    h.entries.set('e-1', closedLocally('e-1'));
+    queueEntryOp('e-1', 'pending');
+    h.pullEntryChanges.mockResolvedValue({
+      items: [serverEntry('e-1', { deletedAt: LEFT_AT, syncSeq: 10 })],
+      maxSeq: 10,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-1')?.deletedAt).toBe(LEFT_AT);
+    expect(h.pendingOps).toHaveLength(1);
+  });
+
   it('no pisa una entry que tiene una op encolada', async () => {
     // ESTE es el bug. `ExitModal` escribe `leftAt` y `amountPaid` en local y
     // encola la op; hasta que el push salga, el feed del servidor sigue

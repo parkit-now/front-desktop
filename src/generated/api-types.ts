@@ -1301,6 +1301,23 @@ export interface paths {
         patch: operations["EntriesController_correct"];
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/{entryId}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Soft-delete a stay and its payments (owner only) */
+        post: operations["EntriesController_deleteEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries/{entryId}/invoice": {
         parameters: {
             query?: never;
@@ -2994,6 +3011,8 @@ export interface components {
             /** @example Rojo */
             color?: string;
             /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: date-time */
             enteredAt: string;
             entryCameraId?: string;
             /** @description URL of the entry photo captured by the LPR camera */
@@ -3535,6 +3554,14 @@ export interface components {
              */
             vehiclesOut: number;
         };
+        DeleteEntryDto: {
+            expectedVersion: number;
+            reason?: string;
+        };
+        DeleteEntryResponseDto: {
+            deletedPaymentTransactions: components["schemas"]["PaymentTransactionDto"][];
+            entry: components["schemas"]["EntryDto"];
+        };
         DeleteParkingDto: {
             /**
              * @description El nombre del estacionamiento, tipeado por el admin. Se compara normalizado (NFC, sin distinguir mayúsculas ni espacios del borde). Un botón solo no alcanza para un borrado.
@@ -4026,6 +4053,8 @@ export interface components {
             cochera?: string;
             /** @example Rojo */
             color?: string;
+            /** Format: date-time */
+            deletedAt?: string | null;
             /** Format: date-time */
             enteredAt: string;
             entryCameraId?: string;
@@ -5365,7 +5394,7 @@ export interface components {
             version: number;
         };
         /**
-         * @description Payment method type at the time of the charge (snapshot). Resolved server-side from paymentMethodId when omitted, for older clients.
+         * @description Payment method type at the time of the charge (snapshot). The desktop cash count keys off this, never off the name.
          * @enum {string}
          */
         PaymentMethodType: "transfer" | "cash" | "other" | "mercadopago_qr";
@@ -9875,7 +9904,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by a single action from the catalog (`<entity>.<verb>`). Validated against the catalog, so a typo fails loudly instead of silently returning nothing. */
-                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "rate.prices_propagated" | "entry.undercharged" | "entry.reservation_unlinked" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "parking.restored" | "parking.purged" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded" | "reservation.accepted" | "reservation.rejected" | "reservation.cancelled" | "reservation.refund_retried" | "reservation.refund_confirmed" | "reservation.refund_failed" | "reservation.late_payment_refunded";
+                action?: "application.created" | "application.updated" | "application.submitted" | "application.document_added" | "application.rejected" | "user.promoted_to_owner" | "entity.approved" | "entity.rejected" | "entity.profile_updated" | "payment_method.toggled" | "entry.corrected" | "entry.deleted" | "rate.prices_propagated" | "entry.undercharged" | "entry.reservation_unlinked" | "lpr_event.registered" | "lpr_event.dismissed" | "lpr_event.suppressed" | "lpr_event.archived" | "lpr_event.unarchived" | "lpr_event.image_purged" | "parking.created" | "parking.updated" | "parking.deleted" | "parking.restored" | "parking.purged" | "user.role_updated" | "user.deleted" | "membership.created" | "membership.updated" | "membership.deleted" | "mp_account.linked" | "mp_account.unlinked" | "mp_account.link_failed" | "arca_account.linked" | "arca_account.unlinked" | "arca_account.renewal_prepared" | "arca_account.certificate_renewed" | "arca_account.certificate_expired" | "invoice.cert_expired" | "mp_account.token_refreshed" | "mp_account.token_expired" | "payment_intent.cancel_mp_failed" | "payment_intent.refunded" | "reservation.accepted" | "reservation.rejected" | "reservation.cancelled" | "reservation.refund_retried" | "reservation.refund_confirmed" | "reservation.refund_failed" | "reservation.late_payment_refunded";
                 /** @description Only events at or after this instant. ISO-8601 **with an explicit offset** (e.g. `-03:00`), matching the metrics endpoints. */
                 from?: string;
                 /** @description 1-based page number. */
@@ -10207,6 +10236,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryDto"];
+                };
+            };
+        };
+    };
+    EntriesController_deleteEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteEntryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteEntryResponseDto"];
                 };
             };
         };

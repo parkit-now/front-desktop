@@ -540,7 +540,11 @@ export function RatesPanel({
         // escanearía todo el historial del estacionamiento en cada egreso.
         if (hasPriceChange(body)) {
           const abiertas = openEntriesForRate(
-            await localDb.entries.where('tenantId').equals(tenantId).toArray(),
+            await localDb.entries
+              .where('tenantId')
+              .equals(tenantId)
+              .filter((entry) => !entry.deletedAt)
+              .toArray(),
             editingRate.id,
           );
 
@@ -667,7 +671,10 @@ export function RatesPanel({
     await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((entry) => !entry.leftAt && entry.rateId === rate.id)
+      .filter(
+        (entry) =>
+          !entry.deletedAt && !entry.leftAt && entry.rateId === rate.id,
+      )
       // No se tocan `version` ni `syncSeq`: son del servidor, y el próximo
       // pull trae la fila autoritativa.
       .modify({ ...snapshot, updatedAt: new Date().toISOString() });

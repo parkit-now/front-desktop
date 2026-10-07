@@ -49,8 +49,11 @@ export function computeSessionSummary(
 ): SessionSummary {
   const byPmMap = new Map<string, PmSummary>();
   let grandTotal = 0;
+  let txCount = 0;
 
   for (const tx of transactions) {
+    if (tx.deletedAt) continue;
+    txCount += 1;
     const key = tx.paymentMethodId ?? tx.paymentMethodName;
     const existing = byPmMap.get(key);
     if (existing) {
@@ -81,7 +84,7 @@ export function computeSessionSummary(
   return {
     byPm,
     grandTotal,
-    txCount: transactions.length,
+    txCount,
     openingCash,
     cashCollected,
     cashTotal: openingCash + cashCollected,
@@ -197,6 +200,8 @@ export function computeSessionStats(
   exitedEntries: LocalEntry[] = [],
   exitedEntriesTransactions: LocalPaymentTransaction[] = [],
 ): SessionStats {
+  entries = entries.filter((entry) => !entry.deletedAt);
+  transactions = transactions.filter((tx) => !tx.deletedAt);
   const summary = computeSessionSummary(transactions, session.openingCash);
 
   const paidEntryCount = new Set(transactions.map((tx) => tx.entryId)).size;

@@ -15,6 +15,10 @@ import { formatArgentinaDateTime } from '../../lib/format/argentina';
 import { formatDuration } from './entryUtils';
 import { EntryEditDialog } from './EntryEditDialog';
 import { DetectionImageDialog } from '../camera/DetectionImageDialog';
+import { useNetwork } from '../../lib/network/NetworkContext';
+import { EntryDeleteAction } from './EntryDeleteAction';
+import { EntryDeleteDialog } from './EntryDeleteDialog';
+import { entryDeletionBlockers } from './entryDeletion';
 
 interface Props {
   tenantId: string;
@@ -86,6 +90,9 @@ export function ActiveVehiclesDialog({
   const [editingEntry, setEditingEntry] = useState<EditableActiveEntry | null>(
     null,
   );
+  const [deletingEntry, setDeletingEntry] =
+    useState<EditableActiveEntry | null>(null);
+  const { isOnline } = useNetwork();
   const [photoDetection, setPhotoDetection] =
     useState<LocalLprDetectionEvent | null>(null);
   const activeEntries = useLiveQuery(
@@ -93,7 +100,7 @@ export function ActiveVehiclesDialog({
       localDb.entries
         .where('tenantId')
         .equals(tenantId)
-        .filter((e) => !e.leftAt)
+        .filter((e) => !e.leftAt && !e.deletedAt)
         .toArray(),
     [tenantId],
   );
@@ -101,6 +108,15 @@ export function ActiveVehiclesDialog({
   const allPaymentTransactions = useLiveQuery(
     () =>
       localDb.paymentTransactions.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
+  const allInvoices = useLiveQuery(
+    () => localDb.invoices.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+  const pendingOps = useLiveQuery(
+    () => localDb.pendingOps.where('tenantId').equals(tenantId).toArray(),
     [tenantId],
   );
 
@@ -117,11 +133,11 @@ export function ActiveVehiclesDialog({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape' && !editingEntry) onClose();
+      if (event.key === 'Escape' && !editingEntry && !deletingEntry) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editingEntry, onClose]);
+  }, [editingEntry, deletingEntry, onClose]);
 
   const rows = useMemo<ActiveRow[]>(() => {
     const paymentsByEntryId = new Map<string, LocalPaymentTransaction[]>();
@@ -288,23 +304,48 @@ export function ActiveVehiclesDialog({
         header: 'Acción',
         enableHiding: false,
         enableSorting: false,
-        size: 150,
+        size: actorRole === 'owner' ? 190 : 150,
+        meta: { excludeFromExport: true },
         cell: ({ row }) => (
-          <button
-            type="button"
-            className="primary-button compact"
-            onClick={(event) => {
-              event.stopPropagation();
-              onExit(row.original.entry);
-            }}
-          >
-            <LogOut size={15} aria-hidden="true" />
-            Egreso
-          </button>
+          <div className="entry-row-actions">
+            <button
+              type="button"
+              className="primary-button compact"
+              onClick={(event) => {
+                event.stopPropagation();
+                onExit(row.original.entry);
+              }}
+            >
+              <LogOut size={15} aria-hidden="true" />
+              Egreso
+            </button>
+            {actorRole === 'owner' && (
+              <EntryDeleteAction
+                plate={row.original.plate}
+                blockers={
+                  allInvoices === undefined ||
+                  allSessions === undefined ||
+                  pendingOps === undefined
+                    ? ['Cargando el estado del ingreso.']
+                    : entryDeletionBlockers({
+                        entry: row.original.entry,
+                        invoice: allInvoices.find(
+                          (item) => item.entryId === row.original.id,
+                        ),
+                        payments: row.original.entry.paymentLines,
+                        sessions: allSessions,
+                        pendingOps,
+                        isOnline,
+                      })
+                }
+                onClick={() => setDeletingEntry(row.original.entry)}
+              />
+            )}
+          </div>
         ),
       },
     ],
-    [onExit],
+    [onExit, actorRole, allInvoices, allSessions, pendingOps, isOnline],
   );
 
   return (
@@ -347,6 +388,8 @@ export function ActiveVehiclesDialog({
             isLoading={
               activeEntries === undefined ||
               allPaymentTransactions === undefined ||
+              allInvoices === undefined ||
+              pendingOps === undefined ||
               allSessions === undefined ||
               allLprDetections === undefined
             }
@@ -394,6 +437,24 @@ export function ActiveVehiclesDialog({
           onClose={() => setPhotoDetection(null)}
         />
       ) : null}
+      {deletingEntry && (
+        <EntryDeleteDialog
+          tenantId={tenantId}
+          accessToken={accessToken}
+          entry={deletingEntry}
+          paidTotal={
+            deletingEntry.paymentLines.length > 0
+              ? deletingEntry.paymentLines.reduce(
+                  (sum, line) => sum + line.amount,
+                  0,
+                )
+              : deletingEntry.amountPaid != null
+                ? Number(deletingEntry.amountPaid)
+                : null
+          }
+          onClose={() => setDeletingEntry(null)}
+        />
+      )}
     </div>
   );
 }

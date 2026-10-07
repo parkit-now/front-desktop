@@ -128,7 +128,7 @@ export function useReservationsFeed(input: {
         ? localDb.entries
             .where('tenantId')
             .equals(tenantId)
-            .filter((e) => !e.leftAt)
+            .filter((e) => !e.leftAt && !e.deletedAt)
             .count()
         : 0,
     [tenantId],

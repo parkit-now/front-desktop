@@ -2173,6 +2173,101 @@ h2 {
   cursor: not-allowed;
 }
 
+.entry-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.entry-delete-action {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid #f3c3c3;
+  border-radius: 8px;
+  background: #fff;
+  color: #b42318;
+  cursor: pointer;
+}
+
+.entry-delete-action:hover:not([aria-disabled='true']),
+.entry-delete-action:focus-visible:not([aria-disabled='true']) {
+  background: #fff1f0;
+}
+
+.entry-delete-action[aria-disabled='true'] {
+  border-color: #e3e8ef;
+  color: #aeb7c3;
+  background: #f8fafc;
+  cursor: not-allowed;
+}
+
+.entry-delete-tooltip {
+  position: fixed;
+  z-index: 110;
+  max-width: min(290px, calc(100vw - 16px));
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: #233044;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2);
+}
+
+.entry-delete-backdrop {
+  z-index: 100;
+}
+
+.entry-delete-dialog {
+  width: min(500px, 100%);
+  max-height: min(90vh, 700px);
+  overflow-y: auto;
+}
+
+.entry-delete-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 0;
+  border-block: 1px solid #e5ecf6;
+}
+
+.entry-delete-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.entry-delete-summary dt {
+  color: #667085;
+}
+.entry-delete-summary dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.entry-delete-reason {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.entry-delete-reason textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid #c9d6e8;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+}
+
 .entry-payment-summary {
   display: grid;
   gap: 2px;

@@ -44,6 +44,9 @@ import {
 } from './invoiceUtils';
 import { useArcaEmitter } from './useArcaEmitter';
 import { DetectionImageDialog } from '../camera/DetectionImageDialog';
+import { EntryDeleteAction } from './EntryDeleteAction';
+import { EntryDeleteDialog } from './EntryDeleteDialog';
+import { entryDeletionBlockers } from './entryDeletion';
 
 interface Props {
   tenantId: string;
@@ -498,6 +501,9 @@ export function EntryHistoryPanel({
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
+  const [deletingEntry, setDeletingEntry] = useState<EntryHistoryRow | null>(
+    null,
+  );
   const { isOnline } = useNetwork();
   const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -507,6 +513,10 @@ export function EntryHistoryPanel({
     useState<number>();
   const [photoDetection, setPhotoDetection] =
     useState<LocalLprDetectionEvent | null>(null);
+  const pendingOps = useLiveQuery(
+    () => localDb.pendingOps.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
 
   const allSessions = useLiveQuery(
     () =>
@@ -556,8 +566,45 @@ export function EntryHistoryPanel({
       ...INVOICE_COLUMNS,
       buildCashSessionColumn(sessionLabelById, sessionOpenedAtById),
       ...COLUMNS_TAIL,
+      ...(actorRole === 'owner'
+        ? [
+            {
+              id: 'actions',
+              header: 'Acción',
+              size: 68,
+              enableSorting: false,
+              enableHiding: false,
+              meta: { excludeFromExport: true },
+              cell: ({ row }: { row: { original: EntryHistoryRow } }) => (
+                <EntryDeleteAction
+                  plate={row.original.plate}
+                  blockers={
+                    allSessions === undefined || pendingOps === undefined
+                      ? ['Cargando el estado del ingreso.']
+                      : entryDeletionBlockers({
+                          entry: row.original,
+                          invoice: row.original.invoice,
+                          payments: row.original.paymentLines,
+                          sessions: allSessions,
+                          pendingOps,
+                          isOnline,
+                        })
+                  }
+                  onClick={() => setDeletingEntry(row.original)}
+                />
+              ),
+            } satisfies ColumnDef<EntryHistoryRow, unknown>,
+          ]
+        : []),
     ],
-    [sessionLabelById, sessionOpenedAtById],
+    [
+      sessionLabelById,
+      sessionOpenedAtById,
+      actorRole,
+      allSessions,
+      pendingOps,
+      isOnline,
+    ],
   );
 
   const filterableColumns = useMemo(
@@ -577,7 +624,12 @@ export function EntryHistoryPanel({
   );
 
   const allEntries = useLiveQuery(
-    () => localDb.entries.where('tenantId').equals(tenantId).toArray(),
+    () =>
+      localDb.entries
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((e) => !e.deletedAt)
+        .toArray(),
     [tenantId],
   );
 
@@ -891,6 +943,15 @@ export function EntryHistoryPanel({
           onClose={() => setPhotoDetection(null)}
         />
       ) : null}
+      {deletingEntry && (
+        <EntryDeleteDialog
+          tenantId={tenantId}
+          accessToken={accessToken}
+          entry={deletingEntry}
+          paidTotal={deletingEntry.paidTotal}
+          onClose={() => setDeletingEntry(null)}
+        />
+      )}
     </>
   );
 }

@@ -179,7 +179,11 @@ export function useInvoiceReceiver(input: {
       localDb.entries
         .where('tenantId')
         .equals(tenantId)
-        .filter((entry) => entry.plate.trim().toUpperCase() === normalizedPlate)
+        .filter(
+          (entry) =>
+            !entry.deletedAt &&
+            entry.plate.trim().toUpperCase() === normalizedPlate,
+        )
         .toArray(),
       localDb.invoices.where('tenantId').equals(tenantId).toArray(),
     ])

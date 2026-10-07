@@ -78,6 +78,11 @@ const CODE_MESSAGES: Record<string, string> = {
     'Ingresá el motivo del cambio para modificar horarios o importes.',
   ENTRY_EXIT_NOT_AFTER_ENTRY:
     'La fecha y hora de egreso debe ser mayor a la de ingreso.',
+  ENTRY_DELETE_CLOSED_SESSION:
+    'La caja asociada está cerrada. No se puede eliminar este ingreso.',
+  ENTRY_DELETE_INVOICED: 'Este ingreso tiene una factura emitida o en curso.',
+  ENTRY_DELETE_RESERVED: 'Este ingreso está vinculado con una reserva.',
+  ENTRY_DELETE_QR_PAYMENT: 'Este ingreso tiene un cobro QR de Mercado Pago.',
 
   // Medios de pago.
   // Llega por el PATCH (renombrar, prender/apagar, marcar predeterminado)

@@ -84,6 +84,7 @@ export interface LocalEntry {
   version: number;
   syncSeq: number;
   updatedAt: string;
+  deletedAt?: string;
 }
 
 /**

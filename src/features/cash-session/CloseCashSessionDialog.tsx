@@ -71,7 +71,7 @@ export function CloseCashSessionDialog({
       const activeEntries = await localDb.entries
         .where('cashSessionId')
         .equals(session.id)
-        .filter((e) => !e.leftAt)
+        .filter((e) => !e.leftAt && !e.deletedAt)
         .toArray();
       activeEntries.sort(
         (a, b) =>

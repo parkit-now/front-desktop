@@ -10,6 +10,8 @@ export type CloseEntryResponseDto =
 export type InvoiceSummaryDto = components['schemas']['InvoiceSummaryDto'];
 export type EntryChangesResponseDto =
   components['schemas']['EntryChangesResponseDto'];
+export type DeleteEntryResponseDto =
+  components['schemas']['DeleteEntryResponseDto'];
 
 /**
  * Aliases del contrato generado, NO copias a mano. Eran dos `type` escritos
@@ -99,6 +101,25 @@ export function correctEntry(input: {
     method: 'PATCH',
     path,
     body: input.body,
+    bearer: input.bearer,
+  });
+}
+
+export function deleteEntry(input: {
+  tenantId: string;
+  entryId: string;
+  expectedVersion: number;
+  reason?: string;
+  bearer: string;
+}): Promise<DeleteEntryResponseDto> {
+  const body: components['schemas']['DeleteEntryDto'] = {
+    expectedVersion: input.expectedVersion,
+    reason: input.reason,
+  };
+  return apiRequest<DeleteEntryResponseDto>({
+    method: 'POST',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/delete`,
+    body,
     bearer: input.bearer,
   });
 }
