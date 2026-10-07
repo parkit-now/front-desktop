@@ -111,3 +111,131 @@ describe('filtro inicial de caja', () => {
     expect(rows()).toHaveLength(2);
   });
 });
+
+it('conserva filtros independientes de marca y modelo sin mostrar sus columnas en una vista guardada', async () => {
+  const vehicles = [
+    { brand: 'Toyota', model: 'Etios' },
+    { brand: 'Toyota', model: 'Corolla' },
+    { brand: 'Ford', model: 'Etios' },
+  ];
+  const vehicleColumns: ColumnDef<(typeof vehicles)[number], unknown>[] = [
+    {
+      id: 'vehicle',
+      header: 'Vehículo',
+      accessorFn: (row) => `${row.brand} ${row.model}`,
+    },
+    {
+      accessorKey: 'brand',
+      header: 'Marca',
+      enableHiding: false,
+      meta: { filterOnly: true, displayColumnId: 'vehicle' },
+    },
+    {
+      accessorKey: 'model',
+      header: 'Modelo',
+      enableHiding: false,
+      meta: { filterOnly: true, displayColumnId: 'vehicle' },
+    },
+  ];
+  saveTableTemplate(scope, {
+    name: 'Vista antigua',
+    config: {
+      ...savedConfig,
+      columns: {
+        visibility: { brand: true, model: true },
+        order: ['brand', 'model'],
+        pinnedLeft: [],
+      },
+      filters: [
+        { id: 'brand', value: ['Toyota'] },
+        { id: 'model', value: ['Etios'] },
+      ],
+    },
+  });
+
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable
+          data={vehicles}
+          columns={vehicleColumns}
+          templateScope={scope}
+          filterableColumns={['brand', 'model']}
+        />,
+      ),
+    ),
+  );
+
+  expect(
+    [...container.querySelectorAll('thead th')].map((th) => th.textContent),
+  ).toEqual(['Vehículo']);
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toContain('Toyota Etios');
+  await act(() =>
+    Promise.resolve(
+      container.querySelector<HTMLButtonElement>('.dt-filter-trigger')?.click(),
+    ),
+  );
+  expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
+    'Marca',
+  );
+  expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
+    'Modelo',
+  );
+});
+
+it('mantiene el filtro de comprobante sin mostrar su columna en una vista guardada', async () => {
+  const invoices = [
+    { invoiceState: 'issued', invoiceLetterValue: 'C' },
+    { invoiceState: 'issued', invoiceLetterValue: 'B' },
+  ];
+  const invoiceColumns: ColumnDef<(typeof invoices)[number], unknown>[] = [
+    { accessorKey: 'invoiceState', header: 'Factura' },
+    {
+      accessorKey: 'invoiceLetterValue',
+      header: 'Comprobante',
+      filterFn: 'includesSome',
+      enableHiding: false,
+      meta: { filterOnly: true },
+    },
+  ];
+  saveTableTemplate(scope, {
+    name: 'Vista anterior',
+    config: {
+      ...savedConfig,
+      columns: {
+        visibility: { invoiceLetterValue: true },
+        order: ['invoiceLetterValue', 'invoiceState'],
+        pinnedLeft: [],
+      },
+      filters: [{ id: 'invoiceLetterValue', value: ['C'] }],
+    },
+  });
+
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable
+          data={invoices}
+          columns={invoiceColumns}
+          templateScope={scope}
+          filterableColumns={['invoiceLetterValue']}
+        />,
+      ),
+    ),
+  );
+
+  expect(
+    [...container.querySelectorAll('thead th')].map((th) => th.textContent),
+  ).toEqual(['Factura']);
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toContain('issued');
+  await act(() =>
+    Promise.resolve(
+      container.querySelector<HTMLButtonElement>('.dt-filter-trigger')?.click(),
+    ),
+  );
+  expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
+    'Comprobante',
+  );
+});

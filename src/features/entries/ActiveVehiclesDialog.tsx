@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
+import { VehicleCell } from '../data-table/components/VehicleCell';
 import { dateTimeSorting } from '../data-table/utils';
 import {
   localDb,
@@ -243,16 +244,29 @@ export function ActiveVehiclesDialog({
         cell: ({ row }) => <strong>{row.original.plate}</strong>,
       },
       {
+        id: 'vehicle',
+        accessorFn: (row) =>
+          [row.vehicleBrand, row.vehicleModel].filter(Boolean).join(' '),
+        header: 'Vehículo',
+        size: 160,
+        cell: ({ row }) => (
+          <VehicleCell
+            brand={row.original.vehicleBrand}
+            model={row.original.vehicleModel}
+          />
+        ),
+      },
+      {
         accessorKey: 'vehicleBrand',
         header: 'Marca',
-        size: 110,
-        cell: ({ row }) => row.original.vehicleBrand || '—',
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         accessorKey: 'vehicleModel',
         header: 'Modelo',
-        size: 120,
-        cell: ({ row }) => row.original.vehicleModel || '—',
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         id: 'enteredAt',

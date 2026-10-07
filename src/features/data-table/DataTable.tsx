@@ -311,6 +311,34 @@ export function DataTable<TData>({
       ...initialPersistedStateRef.current?.config.columns.visibility,
     }),
   );
+  const effectiveColumnVisibility = useMemo<VisibilityState>(() => {
+    const visibility = { ...columnVisibility };
+    const grouped = new Map<string, string[]>();
+    columns.forEach((column) => {
+      if (!column.meta?.filterOnly) return;
+      const id =
+        'id' in column && column.id
+          ? column.id
+          : 'accessorKey' in column
+            ? String(column.accessorKey)
+            : '';
+      if (!id) return;
+      visibility[id] = false;
+      const displayId = column.meta.displayColumnId;
+      if (displayId) {
+        grouped.set(displayId, [...(grouped.get(displayId) ?? []), id]);
+      }
+    });
+    grouped.forEach((oldIds, displayId) => {
+      if (columnVisibility[displayId] !== undefined) return;
+      if (oldIds.some((id) => columnVisibility[id] === true)) {
+        visibility[displayId] = true;
+      } else if (oldIds.every((id) => columnVisibility[id] === false)) {
+        visibility[displayId] = false;
+      }
+    });
+    return visibility;
+  }, [columnVisibility, columns]);
   const [columnOrder, setColumnOrder] = useState<string[]>(
     () => initialPersistedStateRef.current?.config.columns.order ?? [],
   );
@@ -364,7 +392,7 @@ export function DataTable<TData>({
       columnFilters,
       globalFilter,
       sorting,
-      columnVisibility,
+      columnVisibility: effectiveColumnVisibility,
       columnOrder,
       columnPinning,
       pagination,
@@ -557,7 +585,7 @@ export function DataTable<TData>({
     return {
       version: 1,
       columns: {
-        visibility: columnVisibility,
+        visibility: effectiveColumnVisibility,
         order: columnOrder,
         pinnedLeft: columnPinning.left ?? [],
       },
@@ -573,7 +601,7 @@ export function DataTable<TData>({
     columnFilters,
     columnOrder,
     columnPinning.left,
-    columnVisibility,
+    effectiveColumnVisibility,
     globalFilter,
     pagination.pageSize,
     sorting,

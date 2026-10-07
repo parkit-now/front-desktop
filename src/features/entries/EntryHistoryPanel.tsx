@@ -29,6 +29,7 @@ import {
   type TableTemplateScope,
 } from '../table-view-template';
 import { DataTable, type DataTableFilterOption } from '../data-table';
+import { VehicleCell } from '../data-table/components/VehicleCell';
 import { dateTimeSorting } from '../data-table/utils';
 import { getDateRangeExcelFileName } from '../data-table/excelExport';
 import { EntryEditDialog } from './EntryEditDialog';
@@ -76,7 +77,7 @@ type EntryHistoryRow = LocalEntry & {
   invoiceReceiver: string;
 };
 
-/** Existen para filtrar; se muestran desde el selector de columnas. */
+/** El receptor puede mostrarse; el comprobante queda solo como filtro. */
 const INITIAL_COLUMN_VISIBILITY = {
   invoiceLetterValue: false,
   invoiceReceiver: false,
@@ -244,26 +245,33 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     cell: ({ row }) => <strong>{row.original.plate}</strong>,
   },
   {
+    id: 'vehicle',
+    accessorFn: (row) =>
+      [row.vehicleBrand, row.vehicleModel].filter(Boolean).join(' '),
+    header: 'Vehículo',
+    size: 160,
+    meta: {
+      exportValue: (row) =>
+        [row.vehicleBrand, row.vehicleModel].filter(Boolean).join('\n'),
+    },
+    cell: ({ row }) => (
+      <VehicleCell
+        brand={row.original.vehicleBrand}
+        model={row.original.vehicleModel}
+      />
+    ),
+  },
+  {
     accessorKey: 'vehicleBrand',
     header: 'Marca',
-    size: 110,
-    cell: ({ row }) =>
-      row.original.vehicleBrand ? (
-        row.original.vehicleBrand
-      ) : (
-        <span className="muted">—</span>
-      ),
+    enableHiding: false,
+    meta: { filterOnly: true, displayColumnId: 'vehicle' },
   },
   {
     accessorKey: 'vehicleModel',
     header: 'Modelo',
-    size: 120,
-    cell: ({ row }) =>
-      row.original.vehicleModel ? (
-        row.original.vehicleModel
-      ) : (
-        <span className="muted">—</span>
-      ),
+    enableHiding: false,
+    meta: { filterOnly: true, displayColumnId: 'vehicle' },
   },
   {
     id: 'enteredAt',
@@ -363,18 +371,9 @@ const INVOICE_COLUMNS: ColumnDef<EntryHistoryRow, unknown>[] = [
     id: 'invoiceLetterValue',
     accessorKey: 'invoiceLetterValue',
     header: 'Comprobante',
-    meta: {
-      exportValue: (row) =>
-        row.invoiceLetterValue ? `Factura ${row.invoiceLetterValue}` : '',
-    },
-    size: 110,
+    enableHiding: false,
+    meta: { filterOnly: true },
     filterFn: 'includesSome',
-    cell: ({ row }) =>
-      row.original.invoiceLetterValue ? (
-        `Factura ${row.original.invoiceLetterValue}`
-      ) : (
-        <span className="muted">—</span>
-      ),
   },
   {
     id: 'invoiceReceiver',

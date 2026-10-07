@@ -13,6 +13,8 @@ declare module '@tanstack/react-table' {
     exportHeader?: string;
     exportValue?: (row: TData) => ExcelValue;
     excludeFromExport?: boolean;
+    filterOnly?: boolean;
+    displayColumnId?: string;
   }
 }
 
