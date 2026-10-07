@@ -1,4 +1,5 @@
 import { QrCode } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { formatArs } from '../../lib/format/argentina';
 import { formatCountdown, type QrView } from './useMercadoPagoIntent';
 
@@ -9,6 +10,8 @@ interface Props {
   secondsLeft: number;
   isCanceling: boolean;
   isConfirming: boolean;
+  confirmDisabled?: boolean;
+  children?: ReactNode;
   onCancel: () => void;
   onRetry: () => void;
   /** Volver al formulario para cobrar por otro medio (siempre disponible). */
@@ -44,6 +47,8 @@ export function MercadoPagoQrPanel({
   secondsLeft,
   isCanceling,
   isConfirming,
+  confirmDisabled,
+  children,
   onCancel,
   onRetry,
   onUseAnotherMethod,
@@ -79,6 +84,7 @@ export function MercadoPagoQrPanel({
         </div>
       ) : null}
 
+      {children}
       <div className="rate-dialog-actions">
         <button
           type="button"
@@ -115,7 +121,7 @@ export function MercadoPagoQrPanel({
             type="button"
             className="primary-button compact"
             onClick={onConfirm}
-            disabled={isConfirming}
+            disabled={isConfirming || confirmDisabled}
           >
             {isConfirming ? 'Confirmando...' : 'Confirmar egreso'}
           </button>

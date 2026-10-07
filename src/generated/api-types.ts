@@ -1338,6 +1338,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/entries/{entryId}/invoice/receiver-suggestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suggest the verified QR payer CUIT */
+        post: operations["invoiceReceiverSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries/changes": {
         parameters: {
             query?: never;
@@ -4306,6 +4323,13 @@ export interface components {
             lastUsedAt: string;
             /** @example EMPRESA SA */
             razonSocial: string | null;
+        };
+        InvoiceReceiverSuggestionDto: {
+            cuit: string | null;
+        };
+        InvoiceReceiverSuggestionRequestDto: {
+            /** Format: uuid */
+            paymentIntentId?: string;
         };
         /** @enum {string} */
         InvoiceStatus: "not_required" | "pending" | "issuing" | "issued" | "error";
@@ -10233,6 +10257,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoicePreviewDto"];
+                };
+            };
+        };
+    };
+    invoiceReceiverSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceReceiverSuggestionRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceReceiverSuggestionDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblemDetailsDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetailsDto"];
                 };
             };
         };

@@ -97,6 +97,9 @@ export function InvoiceSection({
     accessToken,
     isOnline,
     plate: entry.plate,
+    entryId: entry.id,
+    suggestionEnabled: issueOpen,
+    frozen: actionBusy || confirmation.snapshot !== null,
   });
   const invoice = useLiveQuery(
     () => localDb.invoices.where('entryId').equals(entry.id).first(),

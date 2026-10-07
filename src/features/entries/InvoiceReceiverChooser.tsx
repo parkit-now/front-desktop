@@ -82,6 +82,14 @@ export function InvoiceReceiverChooser({
           Sin conexión no se consulta ARCA: se factura a consumidor final.
         </p>
       ) : null}
+      {receiver.resolvingSuggestion ? (
+        <p className="exit-field-hint" role="status">
+          Consultando datos del pagador...
+        </p>
+      ) : null}
+      {receiver.source === 'mercadopago' && receiver.choice === 'cuit' ? (
+        <p className="exit-field-hint">Mercado Pago</p>
+      ) : null}
       {receiver.choice === 'cuit' ? (
         <>
           <input

@@ -68,6 +68,7 @@ export type RequestOptions = {
   /** Binary body (e.g. an LPR event photo) sent as-is, bypassing JSON.stringify. */
   rawBody?: { data: Blob; contentType: string };
   bearer?: string;
+  signal?: AbortSignal;
 };
 
 export async function apiRequest<TResponse>(
@@ -89,6 +90,7 @@ export async function apiRequest<TResponse>(
 
   const response = await fetch(`${baseUrl}${options.path}`, {
     method: options.method,
+    signal: options.signal,
     headers,
     body: options.rawBody
       ? options.rawBody.data
