@@ -511,7 +511,7 @@ export function receiverDescription(invoice: {
     : `CUIT ${cuit}`;
 }
 
-/** Siempre termina en `.pdf`: `PATENTE-CAE-0001-00000006.pdf`. */
+/** Siempre termina en `.pdf`: `00000006-0001_CAE_PATENTE.pdf`. */
 export function invoicePdfFileName(input: {
   plate: string;
   cae?: string | null;
@@ -520,7 +520,7 @@ export function invoicePdfFileName(input: {
 }): string {
   const number =
     input.ptoVta != null && input.cbteNro != null
-      ? formatVoucherNumber(input.ptoVta, input.cbteNro)
+      ? `${String(input.cbteNro).padStart(8, '0')}-${String(input.ptoVta).padStart(4, '0')}`
       : null;
-  return `${[input.plate, input.cae, number].filter(Boolean).join('-')}.pdf`;
+  return `${[number, input.cae, input.plate].filter(Boolean).join('_')}.pdf`;
 }
