@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { ServiceManager, type ServiceConfig } from './services.js';
 import { resolveServiceRuntime, type ServiceName } from './serviceRuntime.js';
 import { destroyPdfWindows, renderPdfFromHtml } from './pdf.js';
+import { rememberSavedFile, showSavedFileInFolder } from './savedFiles.js';
 import { destroyPrintWindows, listPrinters, printTicketHtml } from './print.js';
 import {
   cameraServiceEnv,
@@ -480,6 +481,7 @@ if (!gotTheLock) {
             result.filePath,
             Buffer.from(payload.data),
           );
+          rememberSavedFile(result.filePath);
           return { ok: true, path: result.filePath };
         } catch (error) {
           return {
@@ -489,6 +491,10 @@ if (!gotTheLock) {
           };
         }
       },
+    );
+
+    ipcMain.handle('file:showInFolder', (_event, filePath: unknown) =>
+      showSavedFileInFolder(filePath),
     );
 
     // El PDF de una factura: el renderer arma el HTML del comprobante y acá

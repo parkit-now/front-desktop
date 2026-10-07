@@ -152,6 +152,7 @@ declare global {
         defaultName: string;
         data: Uint8Array;
       }) => Promise<DesktopSaveFileResult>;
+      showSavedFileInFolder: (filePath: string) => Promise<{ ok: boolean }>;
       getCameraServiceStatus: () => Promise<DesktopCameraServiceStatus>;
       startCameraService: () => Promise<DesktopCameraServiceStatus>;
       restartCameraService: () => Promise<DesktopCameraServiceStatus>;

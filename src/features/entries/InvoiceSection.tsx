@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
+import { FolderOpen } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getInvoiceDocument } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
@@ -31,9 +32,9 @@ import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 
 /**
  * Arma el PDF del comprobante con el Chromium de Electron y lo ofrece con
- * «Guardar como…». `false` si la persona canceló el diálogo.
+ * «Guardar como…». Devuelve la ruta o `null` si no se guardó en Electron.
  */
-async function savePdf(fileName: string, html: string): Promise<boolean> {
+async function savePdf(fileName: string, html: string): Promise<string | null> {
   const desktop = window.parkitDesktop;
   if (!desktop?.renderPdf || !desktop.saveFile) {
     // Renderer abierto en un navegador (dev sin Electron): el diálogo de
@@ -43,7 +44,7 @@ async function savePdf(fileName: string, html: string): Promise<boolean> {
     preview.document.write(html);
     preview.document.close();
     preview.print();
-    return false;
+    return null;
   }
   const pdf = await desktop.renderPdf({ html });
   if (!pdf.ok) throw new Error(pdf.detail ?? pdf.reason);
@@ -54,7 +55,7 @@ async function savePdf(fileName: string, html: string): Promise<boolean> {
   if (!result.ok && result.reason === 'write-failed') {
     throw new Error(result.detail ?? 'write-failed');
   }
-  return result.ok;
+  return result.ok ? result.path : null;
 }
 
 /**
@@ -83,7 +84,11 @@ export function InvoiceSection({
   emitter: ArcaEmitter | null;
 }) {
   const { showToast } = useToast();
-  const [busy, setBusy] = useState<'pdf' | 'manual' | null>(null);
+  const [busy, setBusy] = useState<'pdf' | 'manual' | 'folder' | null>(null);
+  const [savedPdf, setSavedPdf] = useState<{
+    invoiceId: string;
+    path: string;
+  } | null>(null);
   const confirmation = useInvoiceConfirmation({
     tenantId,
     entryId: entry.id,
@@ -181,7 +186,10 @@ export function InvoiceSection({
           invoicePdfFileName({ plate: current.plate, ...invoice }),
           renderInvoiceHtml(doc, qr),
         );
-        if (saved) showToast({ message: 'PDF guardado.', kind: 'success' });
+        if (saved) {
+          setSavedPdf({ invoiceId: invoice.id, path: saved });
+          showToast({ message: 'PDF guardado.', kind: 'success' });
+        }
       } catch {
         showToast({
           message: 'No se pudo generar el PDF. Probá de nuevo.',
@@ -190,6 +198,28 @@ export function InvoiceSection({
       }
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function showPdfInFolder() {
+    const desktop = window.parkitDesktop;
+    if (
+      !savedPdf ||
+      savedPdf.invoiceId !== invoice?.id ||
+      !desktop?.showSavedFileInFolder
+    )
+      return;
+    setBusy('folder');
+    try {
+      const result = await desktop.showSavedFileInFolder(savedPdf.path);
+      if (!result.ok) throw new Error('show-file-failed');
+    } catch {
+      showToast({
+        message: 'No se pudo encontrar o abrir el PDF guardado.',
+        kind: 'error',
+      });
     } finally {
       setBusy(null);
     }
@@ -335,6 +365,22 @@ export function InvoiceSection({
             {busy === 'pdf' ? 'Descargando…' : 'Descargar PDF'}
           </button>
         ) : null}
+        {state === 'issued' &&
+        savedPdf &&
+        savedPdf.invoiceId === invoice?.id &&
+        window.parkitDesktop?.showSavedFileInFolder ? (
+          <button
+            type="button"
+            className="ghost-button"
+            title="Mostrar PDF en carpeta"
+            aria-label="Mostrar PDF en carpeta"
+            aria-busy={busy === 'folder'}
+            disabled={actionBusy}
+            onClick={() => void showPdfInFolder()}
+          >
+            <FolderOpen size={18} />
+          </button>
+        ) : null}
         {canIssue && !issueOpen ? (
           <button
             type="button"
@@ -354,7 +400,11 @@ export function InvoiceSection({
           />
         ) : null}
         {!isOnline && (canIssue || state === 'issued') ? (
-          <span className="muted">Necesitás conexión para esto.</span>
+          <span className="muted">
+            {state === 'issued'
+              ? 'Necesitás conexión para descargar el PDF.'
+              : 'Necesitás conexión para emitir la factura.'}
+          </span>
         ) : null}
       </div>
 

@@ -101,6 +101,9 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
     | { ok: false; reason: 'canceled' | 'write-failed'; detail?: string }
   > => ipcRenderer.invoke('file:saveAs', payload),
 
+  showSavedFileInFolder: (filePath: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('file:showInFolder', filePath),
+
   // ── Cámara ────────────────────────────────────────────────────────────────
   //
   // La contraseña es de una sola vía: se puede mandar, nunca se puede leer.
