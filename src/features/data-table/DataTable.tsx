@@ -32,6 +32,7 @@ import {
   writePersistedTableState,
 } from '../table-view-template';
 import { ColumnPicker } from './components/ColumnPicker';
+import { ExcelExportButton } from './components/ExcelExportButton';
 import { FilterPanel } from './components/FilterPanel';
 import { Pagination } from './components/Pagination';
 import { Switch } from '../../lib/ui/Switch';
@@ -251,6 +252,7 @@ export function DataTable<TData>({
   templateScope,
   headerAction,
   toolbarExtra,
+  excelExport,
   onRefresh,
   refreshDisabled,
   serverState,
@@ -685,6 +687,13 @@ export function DataTable<TData>({
             filterOptionsByColumn={filterOptionsByColumn}
           />
           {toolbarExtra}
+          {excelExport && !serverState ? (
+            <ExcelExportButton
+              table={table}
+              options={excelExport}
+              disabled={isLoading}
+            />
+          ) : null}
           <TemplateSelector
             scope={templateScope}
             selectedTemplateId={selectedTemplateId}

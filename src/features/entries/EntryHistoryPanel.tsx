@@ -14,6 +14,8 @@ import {
   type LocalPaymentTransaction,
 } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
+import { useToast } from '../../lib/notifications/ToastProvider';
+import { translateApiError } from '../../lib/api/translate';
 import { formatArgentinaDateTime, formatArs } from '../../lib/format/argentina';
 import { cashSessionLabel } from '../../lib/format/cashSession';
 import {
@@ -22,6 +24,7 @@ import {
 } from '../table-view-template';
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import { dateTimeSorting } from '../data-table/utils';
+import { getDateRangeExcelFileName } from '../data-table/excelExport';
 import { EntryEditDialog } from './EntryEditDialog';
 import {
   INVOICE_STATE_BADGE,
@@ -70,6 +73,26 @@ const INITIAL_COLUMN_VISIBILITY = {
 function receiverLabel(invoice: LocalInvoice | null): string {
   if (!invoice || invoice.receptorDocTipo !== 80) return '';
   return receiverDescription(invoice);
+}
+
+function invoiceExportValue(row: EntryHistoryRow): string {
+  if (row.invoiceState === 'na') return '';
+  const invoice =
+    row.invoiceState === 'issued' || row.invoiceState === 'issuing'
+      ? row.invoice
+      : null;
+  const letter = invoiceLetter(invoice?.cbteTipo);
+  const number =
+    invoice?.ptoVta != null && invoice.cbteNro != null
+      ? `${String(invoice.ptoVta).padStart(4, '0')}-${String(invoice.cbteNro).padStart(8, '0')}`
+      : null;
+  return [
+    INVOICE_STATE_LABEL[row.invoiceState],
+    letter ? `Factura ${letter}` : invoice ? voucherLabel(invoice) : null,
+    number,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function InvoiceCell({ row }: { row: EntryHistoryRow }) {
@@ -131,6 +154,9 @@ function buildCashSessionColumn(
     id: 'cashSessionId',
     accessorFn: (row) => row.cashSessionId ?? '',
     header: 'Caja',
+    meta: {
+      exportValue: (row) => sessionLabelById.get(row.cashSessionId ?? '') ?? '',
+    },
     size: 190,
     filterFn: 'includesSome',
     sortingFn: dateTimeSorting((row) =>
@@ -149,6 +175,9 @@ function buildPhotoColumn(
 ): ColumnDef<EntryHistoryRow, unknown> {
   return {
     id: 'photo',
+    meta: {
+      excludeFromExport: true,
+    },
     header: '',
     size: 42,
     enableSorting: false,
@@ -229,6 +258,7 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     id: 'enteredAt',
     accessorFn: (row) => dateOnly(row.enteredAt),
     header: 'Ingreso',
+    meta: { exportValue: (row) => formatArgentinaDateTime(row.enteredAt) },
     size: 155,
     filterFn: 'dateRange',
     sortingFn: dateTimeSorting((row) => row.enteredAt),
@@ -238,6 +268,10 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     id: 'leftAt',
     accessorFn: (row) => dateOnly(row.leftAt),
     header: 'Egreso',
+    meta: {
+      exportValue: (row) =>
+        row.leftAt ? formatArgentinaDateTime(row.leftAt) : '',
+    },
     size: 155,
     filterFn: 'dateRange',
     sortingFn: dateTimeSorting((row) => row.leftAt),
@@ -263,6 +297,17 @@ const AMOUNT_PAID_COLUMN: ColumnDef<EntryHistoryRow, unknown> = {
   filterFn: paymentMethodFilter,
   meta: {
     filterLabel: 'Medio de pago',
+    exportValue: (row) =>
+      row.paidTotal == null
+        ? ''
+        : [
+            formatArs(row.paidTotal),
+            row.paymentLines.length > 0
+              ? row.paymentLines
+                  .map((line) => line.paymentMethodName)
+                  .join(' + ')
+              : 'Sin medio',
+          ].join('\n'),
   },
   cell: ({ row }) => {
     const { paidTotal, paymentLines } = row.original;
@@ -298,6 +343,7 @@ const INVOICE_COLUMNS: ColumnDef<EntryHistoryRow, unknown>[] = [
     id: 'invoiceState',
     accessorKey: 'invoiceState',
     header: 'Factura',
+    meta: { exportValue: invoiceExportValue },
     size: 170,
     filterFn: 'includesSome',
     cell: ({ row }) => <InvoiceCell row={row.original} />,
@@ -306,6 +352,10 @@ const INVOICE_COLUMNS: ColumnDef<EntryHistoryRow, unknown>[] = [
     id: 'invoiceLetterValue',
     accessorKey: 'invoiceLetterValue',
     header: 'Comprobante',
+    meta: {
+      exportValue: (row) =>
+        row.invoiceLetterValue ? `Factura ${row.invoiceLetterValue}` : '',
+    },
     size: 110,
     filterFn: 'includesSome',
     cell: ({ row }) =>
@@ -408,6 +458,7 @@ export function EntryHistoryPanel({
   parkingCuit = null,
   onBackToCaja,
 }: Props) {
+  const { showToast } = useToast();
   const tableScope = useMemo<TableTemplateScope>(
     () => ({ userId, tenantId, tableKey: 'entry-history' }),
     [tenantId, userId],
@@ -734,6 +785,12 @@ export function EntryHistoryPanel({
   return (
     <>
       <DataTable
+        excelExport={{
+          fileName: (rows) =>
+            getDateRangeExcelFileName(rows.map((row) => row.enteredAt)),
+          onError: (error) =>
+            showToast({ message: translateApiError(error), kind: 'error' }),
+        }}
         data={entries ?? []}
         columns={columns}
         isLoading={entries === undefined}
