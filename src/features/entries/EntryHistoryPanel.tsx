@@ -5,7 +5,13 @@ import type {
 } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ArrowLeft, Eye } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   localDb,
   type LocalEntry,
@@ -51,6 +57,8 @@ interface Props {
   parkingAddress?: string | null;
   parkingCuit?: string | null;
   onBackToCaja?: () => void;
+  /** Envuelve solo la tabla para conservar los detalles como overlays hermanos. */
+  renderTable?: (table: ReactNode) => ReactNode;
 }
 
 type EntryHistoryRow = LocalEntry & {
@@ -457,11 +465,17 @@ export function EntryHistoryPanel({
   parkingAddress = null,
   parkingCuit = null,
   onBackToCaja,
+  renderTable,
 }: Props) {
   const { showToast } = useToast();
+  const inDialog = Boolean(renderTable);
   const tableScope = useMemo<TableTemplateScope>(
-    () => ({ userId, tenantId, tableKey: 'entry-history' }),
-    [tenantId, userId],
+    () => ({
+      userId,
+      tenantId,
+      tableKey: inDialog ? 'cash-session-movements' : 'entry-history',
+    }),
+    [tenantId, userId, inDialog],
   );
   const persistedSwitches = useMemo(
     () => readPersistedTableSwitches(tableScope),
@@ -478,8 +492,8 @@ export function EntryHistoryPanel({
         ? initialOnlyCurrentSession
         : (persistedSwitches.onlyCurrentSession ?? true),
   );
-  const [includeInLot, setIncludeInLot] = useState(
-    () => persistedSwitches.includeInLot ?? true,
+  const [includeInLot, setIncludeInLot] = useState(() =>
+    renderTable ? true : (persistedSwitches.includeInLot ?? true),
   );
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
@@ -489,7 +503,8 @@ export function EntryHistoryPanel({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnFiltersOverride, setColumnFiltersOverride] =
     useState<ColumnFiltersState>([]);
-  const [columnFiltersOverrideKey, setColumnFiltersOverrideKey] = useState(0);
+  const [columnFiltersOverrideKey, setColumnFiltersOverrideKey] =
+    useState<number>();
   const [photoDetection, setPhotoDetection] =
     useState<LocalLprDetectionEvent | null>(null);
 
@@ -734,10 +749,11 @@ export function EntryHistoryPanel({
   useEffect(() => {
     if (!isOperator) return;
     setOnlyCurrentSession(true);
+    if (!columnFilters.some((filter) => filter.id === 'cashSessionId')) return;
     setColumnFiltersOverride(
       columnFilters.filter((filter) => filter.id !== 'cashSessionId'),
     );
-    setColumnFiltersOverrideKey((current) => current + 1);
+    setColumnFiltersOverrideKey((current) => (current ?? 0) + 1);
   }, [columnFilters, isOperator]);
 
   const handleColumnFiltersChange = useCallback(
@@ -750,7 +766,7 @@ export function EntryHistoryPanel({
         setOnlyCurrentSession(true);
         if (nextFilters.length !== filters.length) {
           setColumnFiltersOverride(nextFilters);
-          setColumnFiltersOverrideKey((current) => current + 1);
+          setColumnFiltersOverrideKey((current) => (current ?? 0) + 1);
         }
         return;
       }
@@ -779,79 +795,82 @@ export function EntryHistoryPanel({
     setColumnFiltersOverride(
       columnFilters.filter((filter) => filter.id !== 'cashSessionId'),
     );
-    setColumnFiltersOverrideKey((current) => current + 1);
+    setColumnFiltersOverrideKey((current) => (current ?? 0) + 1);
   }
 
+  const table = (
+    <DataTable
+      excelExport={{
+        fileName: (rows) =>
+          getDateRangeExcelFileName(rows.map((row) => row.enteredAt)),
+        onError: (error) =>
+          showToast({ message: translateApiError(error), kind: 'error' }),
+      }}
+      data={entries ?? []}
+      columns={columns}
+      isLoading={entries === undefined}
+      emptyMessage="No hay movimientos registrados todavía."
+      searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
+      searchableKeys={SEARCHABLE_KEYS}
+      filterableColumns={filterableColumns}
+      filterOptionsByColumn={{
+        amountPaid: paymentMethodFilterOptions,
+        cashSessionId: cashSessionFilterOptions,
+        invoiceState: invoiceStateFilterOptions,
+        invoiceLetterValue: invoiceLetterFilterOptions,
+      }}
+      initialColumnVisibility={INITIAL_COLUMN_VISIBILITY}
+      initialColumnFilters={initialColumnFilters}
+      onColumnFiltersChange={handleColumnFiltersChange}
+      columnFiltersOverride={columnFiltersOverride}
+      columnFiltersOverrideKey={columnFiltersOverrideKey}
+      initialColumnFiltersOverridePersistedState={focusedFromCashSession}
+      initialPageSize={20}
+      pageSizeOptions={[10, 20, 50, 100]}
+      getRowId={(row) => row.id}
+      onRowClick={(row) => setEditingEntry(row)}
+      templateScope={tableScope}
+      persistState
+      persistentSwitches={tableSwitches}
+      filterSwitches={[
+        {
+          id: 'onlyCurrentSession',
+          label: 'Solo caja actual',
+          checked: isOperator ? true : onlyCurrentSession,
+          disabled: isOperator,
+          onChange: handleOnlyCurrentSessionChange,
+        },
+        {
+          id: 'includeInLot',
+          label: 'Incluir autos en base',
+          checked: includeInLot,
+          onChange: setIncludeInLot,
+        },
+      ]}
+      subtitle={
+        initialCashSessionId
+          ? 'Mostrando los movimientos de la caja seleccionada.'
+          : initialOnlyCurrentSession
+            ? 'Mostrando los movimientos de la caja activa.'
+            : undefined
+      }
+      headerAction={
+        onBackToCaja ? (
+          <button
+            type="button"
+            className="dt-secondary-action"
+            onClick={onBackToCaja}
+          >
+            <ArrowLeft size={15} />
+            Volver a Caja
+          </button>
+        ) : undefined
+      }
+    />
+  );
   return (
     <>
-      <DataTable
-        excelExport={{
-          fileName: (rows) =>
-            getDateRangeExcelFileName(rows.map((row) => row.enteredAt)),
-          onError: (error) =>
-            showToast({ message: translateApiError(error), kind: 'error' }),
-        }}
-        data={entries ?? []}
-        columns={columns}
-        isLoading={entries === undefined}
-        emptyMessage="No hay movimientos registrados todavía."
-        searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
-        searchableKeys={SEARCHABLE_KEYS}
-        filterableColumns={filterableColumns}
-        filterOptionsByColumn={{
-          amountPaid: paymentMethodFilterOptions,
-          cashSessionId: cashSessionFilterOptions,
-          invoiceState: invoiceStateFilterOptions,
-          invoiceLetterValue: invoiceLetterFilterOptions,
-        }}
-        initialColumnVisibility={INITIAL_COLUMN_VISIBILITY}
-        initialColumnFilters={initialColumnFilters}
-        onColumnFiltersChange={handleColumnFiltersChange}
-        columnFiltersOverride={columnFiltersOverride}
-        columnFiltersOverrideKey={columnFiltersOverrideKey}
-        initialColumnFiltersOverridePersistedState={focusedFromCashSession}
-        initialPageSize={20}
-        pageSizeOptions={[10, 20, 50, 100]}
-        getRowId={(row) => row.id}
-        onRowClick={(row) => setEditingEntry(row)}
-        templateScope={tableScope}
-        persistState
-        persistentSwitches={tableSwitches}
-        filterSwitches={[
-          {
-            id: 'onlyCurrentSession',
-            label: 'Solo caja actual',
-            checked: isOperator ? true : onlyCurrentSession,
-            disabled: isOperator,
-            onChange: handleOnlyCurrentSessionChange,
-          },
-          {
-            id: 'includeInLot',
-            label: 'Incluir autos en base',
-            checked: includeInLot,
-            onChange: setIncludeInLot,
-          },
-        ]}
-        subtitle={
-          initialCashSessionId
-            ? 'Mostrando los movimientos de la caja seleccionada.'
-            : initialOnlyCurrentSession
-              ? 'Mostrando los movimientos de la caja activa.'
-              : undefined
-        }
-        headerAction={
-          onBackToCaja ? (
-            <button
-              type="button"
-              className="dt-secondary-action"
-              onClick={onBackToCaja}
-            >
-              <ArrowLeft size={15} />
-              Volver a Caja
-            </button>
-          ) : undefined
-        }
-      />
+      {renderTable ? renderTable(table) : table}
       {editingEntry ? (
         <EntryEditDialog
           entry={editingEntry}

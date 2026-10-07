@@ -4485,6 +4485,49 @@ h2 {
   flex: none;
 }
 
+.cash-session-movements-backdrop {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.cash-session-movements-dialog {
+  width: min(1400px, 100%);
+  min-width: 0;
+  max-width: 1400px;
+  height: min(800px, 90vh);
+  display: flex;
+  flex-direction: column;
+}
+
+.cash-session-movements-dialog .rate-dialog-header {
+  flex: none;
+}
+
+.cash-session-movements-dialog__table {
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding-top: 16px;
+}
+
+.cash-session-movements-dialog__table .dt-card {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cash-session-movements-dialog__table .dt-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 .active-vehicles-dialog__table {
   flex: 1;
   min-height: 0;

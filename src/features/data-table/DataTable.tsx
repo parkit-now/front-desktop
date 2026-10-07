@@ -444,7 +444,7 @@ export function DataTable<TData>({
 
       if (!sanitized) {
         setGlobalFilter('');
-        setColumnFilters([]);
+        setColumnFilters(initialColumnFilters ?? []);
         setSorting(initialSorting ?? []);
         setColumnVisibility(initialColumnVisibility);
         setColumnOrder([]);
@@ -460,7 +460,7 @@ export function DataTable<TData>({
                 order: [],
                 pinnedLeft: [],
               },
-              filters: [],
+              filters: initialColumnFilters ?? [],
               sorting: initialSorting ?? [],
               globalSearch: '',
               pagination: { pageSize: initialPageSize },
@@ -488,6 +488,7 @@ export function DataTable<TData>({
     },
     [
       initialColumnVisibility,
+      initialColumnFilters,
       initialPageSize,
       initialSorting,
       filterNormalizers,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History } from 'lucide-react';
-import { localDb } from '../../lib/db/localDb';
+import { localDb, type LocalCashSession } from '../../lib/db/localDb';
 import { formatArgentinaDateTime } from '../../lib/format/argentina';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
@@ -12,7 +12,7 @@ import { NoCashSessionScreen } from './NoCashSessionScreen';
 interface Props {
   tenantId: string;
   accessToken: string;
-  onViewMovements?: () => void;
+  onViewMovements?: (session: LocalCashSession) => void;
 }
 
 export function CashSessionPanel({
@@ -54,10 +54,10 @@ export function CashSessionPanel({
             <button
               type="button"
               className="ghost-button compact"
-              onClick={onViewMovements}
+              onClick={() => onViewMovements(activeSession)}
             >
               <History size={15} aria-hidden="true" />
-              Ver movimientos en el historial
+              Ver movimientos
             </button>
           ) : null}
           {/*

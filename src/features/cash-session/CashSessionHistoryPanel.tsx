@@ -15,6 +15,7 @@ interface Props {
   tenantId: string;
   accessToken: string;
   onSelectSession?: (session: LocalCashSession) => void;
+  detailSuspended?: boolean;
 }
 
 const FILTERABLE_COLUMNS = ['openedAt', 'closedAt'];
@@ -123,6 +124,7 @@ export function CashSessionHistoryPanel({
   tenantId,
   accessToken,
   onSelectSession,
+  detailSuspended = false,
 }: Props) {
   const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
 
@@ -208,14 +210,8 @@ export function CashSessionHistoryPanel({
           tenantId={tenantId}
           accessToken={accessToken}
           onClose={() => setDetailSessionId(null)}
-          onViewMovements={
-            onSelectSession
-              ? (session) => {
-                  setDetailSessionId(null);
-                  onSelectSession(session);
-                }
-              : undefined
-          }
+          suspended={detailSuspended}
+          onViewMovements={onSelectSession}
         />
       ) : null}
     </div>
