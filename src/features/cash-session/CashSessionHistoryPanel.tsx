@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { localDb, type LocalCashSession } from '../../lib/db/localDb';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { DataTable } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import { CashSessionDetailDialog } from './CashSessionDetailDialog';
 import {
   computeSummariesBySession,
@@ -28,6 +29,7 @@ const COLUMNS_HEAD: ColumnDef<LocalCashSession, unknown>[] = [
     header: 'Apertura',
     size: 160,
     filterFn: 'dateRange',
+    sortingFn: dateTimeSorting((row) => row.openedAt),
     cell: ({ row }) => formatArgentinaDateTime(row.original.openedAt),
   },
   {
@@ -35,6 +37,7 @@ const COLUMNS_HEAD: ColumnDef<LocalCashSession, unknown>[] = [
     header: 'Cierre',
     size: 160,
     filterFn: 'dateRange',
+    sortingFn: dateTimeSorting((row) => row.closedAt),
     cell: ({ row }) =>
       row.original.closedAt ? (
         formatArgentinaDateTime(row.original.closedAt)

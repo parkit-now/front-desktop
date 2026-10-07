@@ -21,6 +21,7 @@ import {
   type TableTemplateScope,
 } from '../table-view-template';
 import { DataTable, type DataTableFilterOption } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import { EntryEditDialog } from './EntryEditDialog';
 import {
   INVOICE_STATE_BADGE,
@@ -124,6 +125,7 @@ const paymentMethodFilter: FilterFn<EntryHistoryRow> = (
 
 function buildCashSessionColumn(
   sessionLabelById: Map<string, string>,
+  sessionOpenedAtById: Map<string, string>,
 ): ColumnDef<EntryHistoryRow, unknown> {
   return {
     id: 'cashSessionId',
@@ -131,6 +133,9 @@ function buildCashSessionColumn(
     header: 'Caja',
     size: 190,
     filterFn: 'includesSome',
+    sortingFn: dateTimeSorting((row) =>
+      sessionOpenedAtById.get(row.cashSessionId ?? ''),
+    ),
     cell: ({ row }) => {
       const cashSessionId = row.original.cashSessionId;
       const label = cashSessionId ? sessionLabelById.get(cashSessionId) : null;
@@ -226,6 +231,7 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     header: 'Ingreso',
     size: 155,
     filterFn: 'dateRange',
+    sortingFn: dateTimeSorting((row) => row.enteredAt),
     cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
   },
   {
@@ -234,6 +240,7 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     header: 'Egreso',
     size: 155,
     filterFn: 'dateRange',
+    sortingFn: dateTimeSorting((row) => row.leftAt),
     cell: ({ row }) =>
       row.original.leftAt ? (
         formatArgentinaDateTime(row.original.leftAt)
@@ -461,6 +468,11 @@ export function EntryHistoryPanel({
     return map;
   }, [allSessions]);
 
+  const sessionOpenedAtById = useMemo(
+    () => new Map((allSessions ?? []).map((s) => [s.id, s.openedAt])),
+    [allSessions],
+  );
+
   const cashSessionFilterOptions = useMemo<DataTableFilterOption[]>(
     () =>
       (allSessions ?? []).map((s) => ({
@@ -476,10 +488,10 @@ export function EntryHistoryPanel({
       ...COLUMNS_HEAD,
       AMOUNT_PAID_COLUMN,
       ...INVOICE_COLUMNS,
-      buildCashSessionColumn(sessionLabelById),
+      buildCashSessionColumn(sessionLabelById, sessionOpenedAtById),
       ...COLUMNS_TAIL,
     ],
-    [sessionLabelById],
+    [sessionLabelById, sessionOpenedAtById],
   );
 
   const filterableColumns = useMemo(

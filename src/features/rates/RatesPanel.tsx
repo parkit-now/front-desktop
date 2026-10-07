@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, type DataTableFilterOption } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import {
   createRate,
   deactivateRate as deleteRateApi,
@@ -893,6 +894,7 @@ export function RatesPanel({
         accessorKey: 'updatedAt',
         header: 'Actualizada',
         size: 170,
+        sortingFn: dateTimeSorting((row) => row.updatedAt),
         cell: ({ row }) => formatArgentinaDateTime(row.original.updatedAt),
       },
     ];

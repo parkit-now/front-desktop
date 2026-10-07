@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import {
   localDb,
   type LocalCashSession,
@@ -243,6 +244,7 @@ export function ActiveVehiclesDialog({
         accessorKey: 'enteredAtLocalDate',
         size: 160,
         filterFn: 'dateRange',
+        sortingFn: dateTimeSorting((row) => row.enteredAt),
         cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
       },
       {
