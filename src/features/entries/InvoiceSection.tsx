@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import QRCode from 'qrcode';
-import { getInvoiceDocument, issueInvoice } from '../../lib/api/arca';
+import { getInvoiceDocument } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
 import { translateApiError, translateErrorCode } from '../../lib/api/translate';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
@@ -27,6 +27,7 @@ import {
 } from './invoiceUtils';
 import type { ArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
+import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 
 /**
  * Arma el PDF del comprobante con el Chromium de Electron y lo ofrece con
@@ -82,8 +83,13 @@ export function InvoiceSection({
   emitter: ArcaEmitter | null;
 }) {
   const { showToast } = useToast();
-  const [busy, setBusy] = useState<'issue' | 'pdf' | 'manual' | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState<'pdf' | 'manual' | null>(null);
+  const confirmation = useInvoiceConfirmation({
+    tenantId,
+    entryId: entry.id,
+    bearer: accessToken,
+  });
+  const actionBusy = busy !== null || confirmation.busy;
   // «Emitir factura» abre primero el receptor (consumidor final o CUIT).
   const [issueOpen, setIssueOpen] = useState(false);
   const receiver = useInvoiceReceiver({
@@ -131,14 +137,7 @@ export function InvoiceSection({
   });
 
   async function issue() {
-    setBusy('issue');
-    try {
-      const result = await issueInvoice({
-        tenantId,
-        entryId: entry.id,
-        bearer: accessToken,
-        receiverCuit: receiver.cuitToSend,
-      });
+    await confirmation.confirm((result) => {
       if (result.status === 'issued') setIssueOpen(false);
       showToast(
         result.status === 'issued'
@@ -153,14 +152,9 @@ export function InvoiceSection({
               kind: 'error',
             },
       );
-    } catch (error) {
-      showToast({ message: translateApiError(error), kind: 'error' });
-    } finally {
-      setBusy(null);
-      setConfirmOpen(false);
-      // La fila completa (CAE, receptor, número) llega por el feed de sync.
-      void syncService.pullInvoices().catch(() => undefined);
-    }
+    });
+    // Also refresh after HTTP conflicts: another device may have issued it.
+    void syncService.pullInvoices().catch(() => undefined);
   }
 
   async function downloadPdf() {
@@ -297,14 +291,14 @@ export function InvoiceSection({
             receiver={receiver}
             emitter={emitter?.condicionIva}
             isOnline={isOnline}
-            disabled={busy !== null}
+            disabled={actionBusy}
             showLabel={false}
           />
           <div className="entry-invoice-actions">
             <button
               type="button"
               className="ghost-button"
-              disabled={busy !== null}
+              disabled={actionBusy}
               onClick={() => setIssueOpen(false)}
             >
               Cancelar
@@ -312,8 +306,14 @@ export function InvoiceSection({
             <button
               type="button"
               className="primary-button"
-              disabled={busy !== null || !isOnline || !receiver.ready}
-              onClick={() => setConfirmOpen(true)}
+              disabled={actionBusy || !isOnline || !receiver.ready}
+              onClick={() =>
+                void confirmation.open({
+                  letter,
+                  cuit: receiver.cuitToSend,
+                  receiverName: receiver.receiverName,
+                })
+              }
             >
               {letter ? `Emitir Factura ${letter}` : 'Emitir factura'}
             </button>
@@ -326,7 +326,7 @@ export function InvoiceSection({
           <button
             type="button"
             className="ghost-button"
-            disabled={busy !== null || !isOnline}
+            disabled={actionBusy || !isOnline}
             onClick={() => void downloadPdf()}
           >
             {busy === 'pdf' ? 'Descargando…' : 'Descargar PDF'}
@@ -336,7 +336,7 @@ export function InvoiceSection({
           <button
             type="button"
             className="primary-button"
-            disabled={busy !== null || !isOnline}
+            disabled={actionBusy || !isOnline}
             onClick={() => setIssueOpen(true)}
           >
             {state === 'error' ? 'Reintentar' : 'Emitir factura'}
@@ -345,7 +345,7 @@ export function InvoiceSection({
         {showManual ? (
           <Switch
             checked={state === 'manual'}
-            disabled={busy !== null}
+            disabled={actionBusy}
             onChange={(next) => void toggleManual(next)}
             label="Facturada"
           />
@@ -355,18 +355,18 @@ export function InvoiceSection({
         ) : null}
       </div>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        {...describeIssueConfirmation({
-          letter,
-          cuit: receiver.cuitToSend,
-          receiverName: receiver.receiverName,
-          amount: formatArs(paidTotal ?? 0),
-        })}
-        isPending={busy === 'issue'}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={issue}
-      />
+      {confirmation.snapshot ? (
+        <ConfirmDialog
+          open
+          {...describeIssueConfirmation({
+            ...confirmation.snapshot,
+            amount: formatArs(confirmation.snapshot.amount),
+          })}
+          isPending={confirmation.busy}
+          onCancel={confirmation.close}
+          onConfirm={issue}
+        />
+      ) : null}
     </section>
   );
 }

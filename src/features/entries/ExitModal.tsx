@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { issueInvoice } from '../../lib/api/arca';
 import {
   closeEntry,
   type InvoiceSummaryDto,
@@ -37,6 +36,7 @@ import {
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import { useArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
+import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import {
   computeChange,
   formatDuration,
@@ -189,8 +189,12 @@ export function ExitModal({
     null,
   );
   const [issuePanelOpen, setIssuePanelOpen] = useState(false);
-  const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
-  const [issuing, setIssuing] = useState(false);
+  const confirmation = useInvoiceConfirmation({
+    tenantId,
+    entryId: entry.id,
+    bearer: accessToken,
+  });
+  const issuing = confirmation.busy;
 
   const enabledPms = useLiveQuery(
     () =>
@@ -617,24 +621,13 @@ export function ExitModal({
       receiver.markTouched();
       return;
     }
-    setIssuing(true);
-    try {
-      const invoice = await issueInvoice({
-        tenantId,
-        entryId: entry.id,
-        bearer: accessToken,
-        receiverCuit: receiver.cuitToSend,
-      });
+    await confirmation.confirm((invoice) => {
       setLastInvoice(invoice);
       setInvoiceNotice(
         describeInvoiceResult({ invoice, offline: false, lineModes: [] }),
       );
       if (invoice.status === 'issued') setIssuePanelOpen(false);
-    } catch (error) {
-      showToast({ message: translateApiError(error), kind: 'error' });
-    } finally {
-      setIssuing(false);
-    }
+    });
   }
 
   return (
@@ -740,7 +733,13 @@ export function ExitModal({
                   <button
                     type="button"
                     className="primary-button compact"
-                    onClick={() => setConfirmIssueOpen(true)}
+                    onClick={() =>
+                      void confirmation.open({
+                        letter,
+                        cuit: receiver.cuitToSend,
+                        receiverName: receiver.receiverName,
+                      })
+                    }
                     disabled={issuing || !receiver.ready}
                   >
                     {letter ? `Emitir Factura ${letter}` : 'Emitir factura'}
@@ -777,21 +776,18 @@ export function ExitModal({
               </div>
             )}
 
-            <ConfirmDialog
-              open={confirmIssueOpen}
-              {...describeIssueConfirmation({
-                letter,
-                cuit: receiver.cuitToSend,
-                receiverName: receiver.receiverName,
-                amount: formatArs(receipt.amountDue),
-              })}
-              isPending={issuing}
-              onCancel={() => setConfirmIssueOpen(false)}
-              onConfirm={async () => {
-                await handleIssue();
-                setConfirmIssueOpen(false);
-              }}
-            />
+            {confirmation.snapshot ? (
+              <ConfirmDialog
+                open
+                {...describeIssueConfirmation({
+                  ...confirmation.snapshot,
+                  amount: formatArs(confirmation.snapshot.amount),
+                })}
+                isPending={issuing}
+                onCancel={confirmation.close}
+                onConfirm={handleIssue}
+              />
+            ) : null}
           </div>
         ) : mpIntent.intent && mpIntent.view ? (
           <MercadoPagoQrPanel

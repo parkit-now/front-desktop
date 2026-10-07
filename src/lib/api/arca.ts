@@ -8,6 +8,7 @@ export type InvoiceDto = components['schemas']['InvoiceDto'];
 export type TaxpayerDto = components['schemas']['TaxpayerDto'];
 export type InvoiceDocumentDto = components['schemas']['InvoiceDocumentDto'];
 export type InvoiceReceiverDto = components['schemas']['InvoiceReceiverDto'];
+export type InvoicePreviewDto = components['schemas']['InvoicePreviewDto'];
 type InvoiceChangesResponseDto =
   components['schemas']['InvoiceChangesResponseDto'];
 
@@ -33,16 +34,32 @@ export async function getArcaAccount(input: {
  * `receiverCuit` sale identificada con ese CUIT (la letra la decide el
  * padrón); sin él, B o C a consumidor final.
  */
-export function issueInvoice(input: {
+export function getInvoicePreview(input: {
   tenantId: string;
   entryId: string;
   bearer: string;
-  receiverCuit?: string;
-}): Promise<InvoiceSummaryDto> {
+}): Promise<InvoicePreviewDto> {
+  return apiRequest<InvoicePreviewDto>({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/invoice/preview`,
+    bearer: input.bearer,
+  });
+}
+
+export function issueInvoice(
+  input: {
+    tenantId: string;
+    entryId: string;
+    bearer: string;
+  } & components['schemas']['IssueInvoiceDto'],
+): Promise<InvoiceSummaryDto> {
   return apiRequest<InvoiceSummaryDto>({
     method: 'POST',
     path: `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/invoice`,
-    body: input.receiverCuit ? { receiverCuit: input.receiverCuit } : {},
+    body: {
+      receiverCuit: input.receiverCuit,
+      expectedAmount: input.expectedAmount,
+    } satisfies components['schemas']['IssueInvoiceDto'],
     bearer: input.bearer,
   });
 }

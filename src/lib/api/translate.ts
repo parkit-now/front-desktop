@@ -196,6 +196,8 @@ const CODE_MESSAGES: Record<string, string> = {
   ARCA_CERT_NOT_AUTHORIZED:
     'El certificado de ARCA no tiene habilitada la facturación. Avisale al dueño.',
   INVOICE_ALREADY_ISSUED: 'Esta estadía ya tiene una factura emitida.',
+  INVOICE_AMOUNT_CHANGED:
+    'El importe cambió. Revisá el nuevo monto y confirmá nuevamente.',
   INVOICE_IN_PROGRESS:
     'La factura se está emitiendo en este momento. Esperá unos segundos.',
   INVOICE_REJECTED: 'ARCA rechazó la factura.',

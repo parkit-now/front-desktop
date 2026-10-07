@@ -1312,9 +1312,26 @@ export interface paths {
         put?: never;
         /**
          * Emitir (o reintentar) la factura de una estadía cobrada
-         * @description Emite a consumidor final o, con `receiverCuit`, identificada con ese CUIT: la letra la decide el padrón (A si el emisor es RI y el receptor RI o monotributista). Los problemas de ARCA (caído, rechazo, certificado vencido, CUIT sin datos en el padrón) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED.
+         * @description Emite a consumidor final o, con `receiverCuit`, identificada con ese CUIT: la letra la decide el padrón (A si el emisor es RI y el receptor RI o monotributista). Los problemas de ARCA (caído, rechazo, certificado vencido, CUIT sin datos en el padrón) NO son errores HTTP: vuelven en `status` y `errorCode` de la factura; el CUIT mal formado sí es 422 ARCA_CUIT_INVALID. Conflictos: INVOICE_ALREADY_ISSUED, INVOICE_IN_PROGRESS, INVOICE_NOT_INVOICEABLE, ARCA_NOT_LINKED. Con expectedAmount, un importe distinto al confirmado devuelve 409 INVOICE_AMOUNT_CHANGED sin llamar a ARCA.
          */
         post: operations["InvoicesController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/entries/{entryId}/invoice/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Consultar el importe real antes de emitir una factura */
+        get: operations["InvoicesController_preview"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4277,6 +4294,10 @@ export interface components {
             updatedAt: string;
             version: number;
         };
+        InvoicePreviewDto: {
+            /** @description Importe vigente que se enviara a ARCA, en pesos. */
+            amount: number;
+        };
         InvoiceReceiverDto: {
             condicionIvaReceptorId: number | null;
             /** @example 30712345671 */
@@ -4315,6 +4336,8 @@ export interface components {
             entryIds: string[];
         };
         IssueInvoiceDto: {
+            /** @description Importe confirmado por el operador. Si cambio, no se emite. */
+            expectedAmount?: number;
             /**
              * @description CUIT del cliente, con o sin guiones. La letra la decide el padrón: A si el emisor es RI y el receptor RI o monotributista; si no, B o C identificada con el CUIT. Sin él se emite a consumidor final.
              * @example 30-71234567-1
@@ -10187,6 +10210,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceSummaryDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entryId: string;
+                /** @description Parking lot tenant ID */
+                tenantId: unknown;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePreviewDto"];
                 };
             };
         };
