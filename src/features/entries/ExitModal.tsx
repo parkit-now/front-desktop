@@ -38,6 +38,10 @@ import { useArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import {
+  INVOICE_HISTORY_REFRESH_WARNING,
+  refreshInvoiceHistory,
+} from './invoiceHistory';
+import {
   computeChange,
   formatDuration,
   isCashCovered,
@@ -590,6 +594,12 @@ export function ExitModal({
         enteredAt: entry.enteredAt,
         leftAt,
       });
+      if (
+        isOnline &&
+        !(await refreshInvoiceHistory({ tenantId, bearer: accessToken }))
+      ) {
+        showToast({ message: INVOICE_HISTORY_REFRESH_WARNING, kind: 'info' });
+      }
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {

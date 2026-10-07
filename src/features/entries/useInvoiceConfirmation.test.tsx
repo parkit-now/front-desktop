@@ -9,6 +9,11 @@ const mock = vi.hoisted(() => ({
   preview: vi.fn(),
   issue: vi.fn(),
   toast: vi.fn(),
+  refresh: vi.fn(),
+}));
+vi.mock('./invoiceHistory', () => ({
+  refreshInvoiceHistory: mock.refresh,
+  INVOICE_HISTORY_REFRESH_WARNING: 'Actualizá el historial.',
 }));
 vi.mock('../../lib/api/arca', () => ({
   getInvoicePreview: mock.preview,
@@ -42,6 +47,7 @@ beforeEach(async () => {
   vi.resetAllMocks();
   mock.preview.mockResolvedValue({ amount: 10 });
   mock.issue.mockResolvedValue({ id: 'invoice', status: 'issued' });
+  mock.refresh.mockResolvedValue(true);
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -66,6 +72,10 @@ describe('confirmacion del importe fiscal', () => {
       expectedAmount: 10,
     });
     expect(result).toHaveBeenCalledOnce();
+    expect(mock.refresh).toHaveBeenCalledWith({
+      tenantId: 'tenant',
+      bearer: 'token',
+    });
     expect(controller.snapshot).toBeNull();
   });
 
@@ -74,6 +84,7 @@ describe('confirmacion del importe fiscal', () => {
     await act(() => Promise.resolve(controller.close()));
     await act(async () => controller.confirm(vi.fn()));
     expect(mock.issue).not.toHaveBeenCalled();
+    expect(mock.refresh).not.toHaveBeenCalled();
     expect(controller.snapshot).toBeNull();
   });
 
@@ -102,6 +113,7 @@ describe('confirmacion del importe fiscal', () => {
     await act(async () => controller.confirm(vi.fn()));
     expect(mock.issue).toHaveBeenCalledTimes(1);
     expect(controller.snapshot).toEqual({ ...receiver, amount: 12.25 });
+    expect(mock.refresh).toHaveBeenCalledOnce();
     await act(async () => controller.confirm(vi.fn()));
     expect(mock.issue).toHaveBeenCalledTimes(2);
     expect(controller.snapshot).toBeNull();
@@ -180,5 +192,69 @@ describe('confirmacion del importe fiscal', () => {
     expect(controller.snapshot).toBeNull();
     expect(controller.busy).toBe(false);
     expect(mock.issue).not.toHaveBeenCalled();
+  });
+  it('espera el refresco local antes de habilitar otra emision', async () => {
+    let done!: (updated: boolean) => void;
+    mock.refresh.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        done = resolve;
+      }),
+    );
+    await act(async () => controller.open(receiver));
+    let pending!: Promise<void>;
+    await act(() => {
+      pending = controller.confirm(vi.fn());
+      return Promise.resolve();
+    });
+    expect(controller.busy).toBe(true);
+    await act(async () => controller.confirm(vi.fn()));
+    expect(mock.issue).toHaveBeenCalledOnce();
+    await act(async () => {
+      done(true);
+      await pending;
+    });
+    expect(controller.busy).toBe(false);
+  });
+  it('un fallo de refresco no cambia una emision autorizada en fallida ni la repite', async () => {
+    mock.refresh.mockResolvedValueOnce(false);
+    await act(async () => controller.open(receiver));
+    const result = vi.fn();
+    await act(async () => controller.confirm(result));
+    expect(result).toHaveBeenCalledWith({ id: 'invoice', status: 'issued' });
+    expect(mock.toast).toHaveBeenCalledWith({
+      message: 'Actualizá el historial.',
+      kind: 'info',
+    });
+    expect(controller.busy).toBe(false);
+    await act(async () => controller.confirm(result));
+    expect(mock.issue).toHaveBeenCalledOnce();
+  });
+  it('actualiza Dexie aunque el operador cambie de ingreso durante la emision', async () => {
+    let done!: (invoice: { id: string; status: string }) => void;
+    mock.issue.mockReturnValueOnce(
+      new Promise((resolve) => {
+        done = resolve;
+      }),
+    );
+    await act(async () => controller.open(receiver));
+    const result = vi.fn();
+    let pending!: Promise<void>;
+    await act(() => {
+      pending = controller.confirm(result);
+      return Promise.resolve();
+    });
+    await act(() =>
+      Promise.resolve(root.render(<Harness entryId="other-entry" />)),
+    );
+    await act(async () => {
+      done({ id: 'invoice', status: 'issued' });
+      await pending;
+    });
+    expect(mock.refresh).toHaveBeenCalledWith({
+      tenantId: 'tenant',
+      bearer: 'token',
+    });
+    expect(result).not.toHaveBeenCalled();
+    expect(controller.snapshot).toBeNull();
   });
 });

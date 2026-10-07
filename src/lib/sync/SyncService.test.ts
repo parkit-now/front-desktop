@@ -1160,6 +1160,66 @@ describe('pullInvoices', () => {
 
     expect(h.invoices.rows.get('x')?.status).toBe('issued');
   });
+  it('usa credenciales explicitas aunque el sync de fondo tenga otro estacionamiento', async () => {
+    syncService.setCredentials('other-tenant', 'other-token');
+    h.pullInvoiceChanges.mockResolvedValueOnce({
+      items: [invoice('x', 2)],
+      maxSeq: 2,
+    });
+    await syncService.pullInvoices({ tenantId: TENANT, bearer: TOKEN });
+    expect(h.pullInvoiceChanges).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      bearer: TOKEN,
+      afterSeq: 0,
+      limit: 500,
+    });
+    expect(h.syncState.get('invoices:other-tenant')).toBeUndefined();
+    expect(h.invoices.rows.get('x')?.status).toBe('issued');
+  });
+  it('congela estacionamiento y token para todas las paginas del mismo pull', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => invoice(`a${i}`, i + 1));
+    h.pullInvoiceChanges
+      .mockImplementationOnce(() => {
+        syncService.setCredentials('other-tenant', 'other-token');
+        return Promise.resolve({ items: full, maxSeq: 500 });
+      })
+      .mockResolvedValueOnce({ items: [invoice('x', 501)], maxSeq: 501 });
+    await syncService.pullInvoices();
+    expect(h.pullInvoiceChanges.mock.calls).toEqual([
+      [{ tenantId: TENANT, bearer: TOKEN, afterSeq: 0, limit: 500 }],
+      [{ tenantId: TENANT, bearer: TOKEN, afterSeq: 500, limit: 500 }],
+    ]);
+    expect(h.syncState.get(`invoices:${TENANT}`)?.lastSeq).toBe(501);
+    expect(h.syncState.get('invoices:other-tenant')).toBeUndefined();
+  });
+  it('un pull atrasado no revierte una factura emitida ni su cursor', async () => {
+    let finish!: (page: { items: LocalInvoice[]; maxSeq: number }) => void;
+    h.pullInvoiceChanges.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const oldPull = syncService.pullInvoices();
+    await Promise.resolve();
+    h.pullInvoiceChanges.mockResolvedValueOnce({
+      items: [{ ...invoice('x', 3), version: 3, cbteNro: 9, cae: '123' }],
+      maxSeq: 3,
+    });
+    await syncService.pullInvoices({ tenantId: TENANT, bearer: TOKEN });
+    finish({
+      items: [{ ...invoice('x', 2), version: 2, status: 'pending' }],
+      maxSeq: 2,
+    });
+    await oldPull;
+    expect(h.invoices.rows.get('x')).toMatchObject({
+      status: 'issued',
+      cbteNro: 9,
+      cae: '123',
+      version: 3,
+      syncSeq: 3,
+    });
+    expect(h.syncState.get(`invoices:${TENANT}`)?.lastSeq).toBe(3);
+  });
 });
 
 describe('pushLprDetectionEventImages', () => {

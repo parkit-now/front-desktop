@@ -5,6 +5,10 @@ import type { InvoiceSummaryDto } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import type { InvoiceLetter } from './invoiceUtils';
+import {
+  INVOICE_HISTORY_REFRESH_WARNING,
+  refreshInvoiceHistory,
+} from './invoiceHistory';
 
 type ReceiverSnapshot = {
   letter: InvoiceLetter | null;
@@ -68,12 +72,14 @@ export function useInvoiceConfirmation(input: {
     setBusy(true);
     const active = generation.current;
     const confirmed = snapshot;
+    let issued = false;
     try {
       const result = await issueInvoice({
         ...input,
         receiverCuit: confirmed.cuit ?? undefined,
         expectedAmount: confirmed.amount,
       });
+      issued = result.status === 'issued';
       if (generation.current !== active) return;
       setSnapshot(null);
       await onResult(result);
@@ -96,7 +102,17 @@ export function useInvoiceConfirmation(input: {
         }
       }
     } finally {
+      const refreshed = await refreshInvoiceHistory({
+        tenantId: input.tenantId,
+        bearer: input.bearer,
+      });
       if (generation.current === active) {
+        if (issued && !refreshed) {
+          showToast({
+            message: INVOICE_HISTORY_REFRESH_WARNING,
+            kind: 'info',
+          });
+        }
         working.current = false;
         setBusy(false);
       }

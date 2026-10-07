@@ -9,7 +9,6 @@ import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { formatArs } from '../../lib/format/argentina';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
-import { syncService } from '../../lib/sync/SyncService';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { Switch } from '../../lib/ui/Switch';
 import { renderInvoiceHtml } from './invoiceDocument';
@@ -161,8 +160,6 @@ export function InvoiceSection({
             },
       );
     });
-    // Also refresh after HTTP conflicts: another device may have issued it.
-    void syncService.pullInvoices().catch(() => undefined);
   }
 
   async function downloadPdf() {

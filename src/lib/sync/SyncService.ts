@@ -853,17 +853,22 @@ class SyncService {
    * backend (al cerrar la estadía o a pedido), así que no hay ops locales que
    * proteger y la fila del servidor siempre gana.
    */
-  async pullInvoices(): Promise<void> {
-    if (!this.tenantId || !this.accessToken) return;
+  async pullInvoices(input?: {
+    tenantId: string;
+    bearer: string;
+  }): Promise<void> {
+    const tenantId = input?.tenantId ?? this.tenantId;
+    const bearer = input?.bearer ?? this.accessToken;
+    if (!tenantId || !bearer) return;
 
-    const stateKey = `invoices:${this.tenantId}`;
+    const stateKey = `invoices:${tenantId}`;
     const state = await localDb.syncState.get(stateKey);
     let afterSeq = state?.lastSeq ?? 0;
 
     for (let page = 0; page < INVOICE_MAX_PAGES; page++) {
       const response = await pullInvoiceChanges({
-        tenantId: this.tenantId,
-        bearer: this.accessToken,
+        tenantId,
+        bearer,
         afterSeq,
         limit: INVOICE_PAGE_SIZE,
       });
@@ -874,11 +879,24 @@ class SyncService {
         localDb.syncState,
         async () => {
           if (response.items.length > 0) {
-            await localDb.invoices.bulkPut(response.items);
+            const existing = await localDb.invoices.bulkGet(
+              response.items.map((invoice) => invoice.id),
+            );
+            // Un pull de fondo anterior puede terminar despues de la emision.
+            const incoming = response.items.filter((invoice, index) => {
+              const current = existing[index];
+              return (
+                !current ||
+                (invoice.syncSeq >= current.syncSeq &&
+                  invoice.version >= current.version)
+              );
+            });
+            await localDb.invoices.bulkPut(incoming);
           }
+          const currentState = await localDb.syncState.get(stateKey);
           await localDb.syncState.put({
             key: stateKey,
-            lastSeq: nextSeq,
+            lastSeq: Math.max(currentState?.lastSeq ?? 0, nextSeq),
             lastSyncAt: new Date().toISOString(),
           });
         },
