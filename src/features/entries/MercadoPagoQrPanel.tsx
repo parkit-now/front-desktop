@@ -11,6 +11,7 @@ interface Props {
   isCanceling: boolean;
   isConfirming: boolean;
   confirmDisabled?: boolean;
+  confirmLabel?: string;
   children?: ReactNode;
   onCancel: () => void;
   onRetry: () => void;
@@ -45,6 +46,7 @@ export function MercadoPagoQrPanel({
   isCanceling,
   isConfirming,
   confirmDisabled,
+  confirmLabel,
   children,
   onCancel,
   onRetry,
@@ -122,7 +124,9 @@ export function MercadoPagoQrPanel({
             onClick={onConfirm}
             disabled={isConfirming || confirmDisabled}
           >
-            {isConfirming ? 'Confirmando...' : 'Confirmar egreso'}
+            {isConfirming
+              ? 'Confirmando...'
+              : (confirmLabel ?? 'Confirmar egreso')}
           </button>
         ) : null}
       </div>

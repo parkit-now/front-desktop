@@ -193,6 +193,7 @@ describe('useInvoiceReceiver: CUIT del QR', () => {
     expect(receiver.choice).toBe('cuit');
     expect(receiver.cuit).toBe(CUIT);
     expect(receiver.source).toBe('mercadopago');
+    expect(receiver.suggestionUnavailable).toBe(false);
     expect(receiver.ready).toBe(false);
     await act(() => vi.advanceTimersByTimeAsync(250));
     expect(mock.lookup).toHaveBeenCalledWith({
@@ -235,6 +236,7 @@ describe('useInvoiceReceiver: CUIT del QR', () => {
       await Promise.resolve();
     });
     expect(receiver.ready).toBe(true);
+    expect(receiver.suggestionUnavailable).toBe(false);
     await update(() => suggestion.resolve({ cuit: CUIT }));
     expect(receiver.choice).toBe('final');
     expect(receiver.cuit).toBe('');
@@ -264,6 +266,7 @@ describe('useInvoiceReceiver: CUIT del QR', () => {
     await act(() => vi.advanceTimersByTimeAsync(1));
     expect(signal.aborted).toBe(true);
     expect(receiver.ready).toBe(true);
+    expect(receiver.suggestionUnavailable).toBe(true);
     await update(() => suggestion.resolve({ cuit: CUIT }));
     expect(receiver.choice).toBe('final');
     await render({ accessToken: 'renewed' });
@@ -287,8 +290,21 @@ describe('useInvoiceReceiver: CUIT del QR', () => {
     mock.suggestion.mockRejectedValue(new Error('unreachable'));
     await render();
     expect(receiver.ready).toBe(true);
+    expect(receiver.suggestionUnavailable).toBe(true);
     await render();
     expect(mock.suggestion).toHaveBeenCalledTimes(1);
+  });
+
+  it('solo atribuye a Mercado Pago la falta de CUIT en el QR actual', async () => {
+    await render({}, true);
+    expect(container.textContent).toContain(
+      'No se pudo obtener un CUIT verificado de Mercado Pago',
+    );
+    await render({ paymentIntentId: undefined }, true);
+    expect(receiver.suggestionUnavailable).toBe(false);
+    expect(container.textContent).not.toContain(
+      'No se pudo obtener un CUIT verificado de Mercado Pago',
+    );
   });
 
   it('offline no consulta ni autocompleta', async () => {

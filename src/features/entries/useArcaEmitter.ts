@@ -103,24 +103,69 @@ export function useArcaEmitter(
   accessToken: string,
   isOnline: boolean,
 ): ArcaEmitter | null {
-  const [emitter, setEmitter] = useState(() => readCache(tenantId));
+  return useArcaEmitterState(tenantId, accessToken, isOnline).emitter;
+}
+
+export function useArcaEmitterState(
+  tenantId: string,
+  accessToken: string,
+  isOnline: boolean,
+): {
+  emitter: ArcaEmitter | null;
+  status: 'loading' | 'ready' | 'error';
+} {
+  const [state, setState] = useState<{
+    tenantId: string;
+    emitter: ArcaEmitter | null;
+    status: 'loading' | 'ready' | 'error';
+  }>(() => ({
+    tenantId,
+    emitter: readCache(tenantId),
+    status: 'loading' as const,
+  }));
+  const current =
+    state.tenantId === tenantId
+      ? state
+      : { tenantId, emitter: readCache(tenantId), status: 'loading' as const };
 
   useEffect(() => {
     if (!isOnline || !accessToken) return;
     let cancelled = false;
-    getArcaAccount({ tenantId, bearer: accessToken })
+    const controller = new AbortController();
+    const useCachedEmitter = () => {
+      if (!cancelled)
+        setState({
+          tenantId,
+          emitter: readCache(tenantId),
+          status: 'error',
+        });
+    };
+    const timer = window.setTimeout(() => {
+      controller.abort();
+      useCachedEmitter();
+    }, 5000);
+    getArcaAccount({
+      tenantId,
+      bearer: accessToken,
+      signal: controller.signal,
+    })
       .then((account) => {
+        if (cancelled || controller.signal.aborted) return;
         const next = toArcaEmitter(account);
         writeCache(tenantId, next);
-        if (!cancelled) setEmitter(next);
+        setState({ tenantId, emitter: next, status: 'ready' });
       })
-      .catch(() => {
-        // Sin respuesta se queda con lo último conocido.
-      });
+      .catch(useCachedEmitter)
+      .finally(() => window.clearTimeout(timer));
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
     };
   }, [tenantId, accessToken, isOnline]);
 
-  return emitter;
+  return {
+    emitter: current.emitter,
+    status: isOnline && accessToken ? current.status : 'ready',
+  };
 }

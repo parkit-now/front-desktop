@@ -6227,6 +6227,10 @@ h2 {
   color: var(--color-danger-text);
 }
 
+.exit-field-hint.is-warning {
+  color: var(--color-warning-text);
+}
+
 /* Monto con el signo $ adelante: UN solo borde (el del contenedor). */
 .exit-money-input {
   display: flex;

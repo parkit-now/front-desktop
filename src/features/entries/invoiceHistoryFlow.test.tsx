@@ -21,6 +21,18 @@ const mock = vi.hoisted(() => ({
   reveal: vi.fn(),
   toast: vi.fn(),
   online: true,
+  qrIntent: null as null | {
+    id: string;
+    tenantId: string;
+    entryId: string;
+    amount: number;
+    status: 'approved';
+  },
+  emitterStatus: 'ready',
+  receiverReady: true,
+  receiverChoice: 'final',
+  receiverCuit: undefined as string | undefined,
+  paymentMethodsPromise: null as Promise<Record<string, unknown>[]> | null,
 }));
 vi.mock('../../lib/db/localDb', () => {
   type Row = Record<string, unknown>;
@@ -30,7 +42,10 @@ vi.mock('../../lib/db/localDb', () => {
     mock.tables.set(name, rows);
     function query(matches: () => Row[]) {
       return {
-        toArray: () => Promise.resolve(matches()),
+        toArray: () =>
+          name === 'paymentMethods' && mock.paymentMethodsPromise
+            ? mock.paymentMethodsPromise
+            : Promise.resolve(matches()),
         first: () => Promise.resolve(matches()[0]),
         filter: (predicate: (row: Row) => boolean) =>
           query(() => matches().filter(predicate)),
@@ -133,11 +148,16 @@ vi.mock('../../lib/sync/SyncService', () => ({
 }));
 vi.mock('./useArcaEmitter', () => ({
   useArcaEmitter: () => ({ condicionIva: 'monotributo', certExpired: false }),
+  useArcaEmitterState: () => ({
+    emitter: { condicionIva: 'monotributo', certExpired: false },
+    status: mock.emitterStatus,
+  }),
 }));
 vi.mock('./useInvoiceReceiver', () => ({
   useInvoiceReceiver: () => ({
-    choice: 'final',
-    ready: true,
+    choice: mock.receiverChoice,
+    ready: mock.receiverReady,
+    cuitToSend: mock.receiverCuit,
     lookup: { status: 'idle' },
     markTouched: vi.fn(),
   }),
@@ -146,7 +166,23 @@ vi.mock('./InvoiceReceiverChooser', () => ({
   InvoiceReceiverChooser: () => <span>Consumidor final</span>,
 }));
 vi.mock('./useMercadoPagoIntent', () => ({
-  useMercadoPagoIntent: () => ({ intent: null, isStarting: false }),
+  useMercadoPagoIntent: () => ({
+    intent: mock.qrIntent,
+    view: mock.qrIntent
+      ? {
+          tone: 'ok',
+          title: 'Pago acreditado',
+          detail: 'Confirmá el egreso',
+          canConfirm: true,
+          canCancel: false,
+          canRetry: false,
+          showCountdown: false,
+        }
+      : null,
+    secondsLeft: 0,
+    isStarting: false,
+    isCanceling: false,
+  }),
 }));
 
 const enteredAt = '2026-10-07T10:00:00Z';
@@ -234,6 +270,12 @@ beforeEach(() => {
   localStorage.clear();
   mock.tables.forEach((rows) => rows.clear());
   mock.online = true;
+  mock.qrIntent = null;
+  mock.emitterStatus = 'ready';
+  mock.receiverReady = true;
+  mock.receiverChoice = 'final';
+  mock.receiverCuit = undefined;
+  mock.paymentMethodsPromise = null;
   mock.tables.get('entries')!.set(entry.id, { ...entry });
   mock.tables
     .get('cashSessions')!
@@ -283,6 +325,78 @@ afterEach(async () => {
 });
 
 describe('historial reactivo al facturar desde cualquier panel', () => {
+  it('un QR recuperado espera configuracion y CUIT antes de facturar automaticamente', async () => {
+    Object.assign(mock.tables.get('paymentMethods')!.get('method')!, {
+      name: 'Mercado Pago QR',
+      type: 'mercadopago_qr',
+    });
+    let resolveMethods!: (rows: Record<string, unknown>[]) => void;
+    mock.paymentMethodsPromise = new Promise((resolve) => {
+      resolveMethods = resolve;
+    });
+    mock.qrIntent = {
+      id: 'intent',
+      tenantId: 'tenant',
+      entryId: 'entry',
+      amount: 10,
+      status: 'approved',
+    };
+    mock.emitterStatus = 'loading';
+    mock.receiverReady = false;
+    await render(true);
+    const confirm = () =>
+      container.querySelector<HTMLButtonElement>('.qr-panel .primary-button')!;
+    expect(confirm().disabled).toBe(true);
+
+    await act(async () => {
+      resolveMethods([...mock.tables.get('paymentMethods')!.values()]);
+      await Promise.resolve();
+    });
+    expect(confirm().disabled).toBe(true);
+
+    mock.emitterStatus = 'ready';
+    await render(true);
+    expect(confirm().disabled).toBe(true);
+
+    mock.receiverReady = true;
+    mock.receiverChoice = 'cuit';
+    mock.receiverCuit = '20427205208';
+    await render(true);
+    expect(confirm().disabled).toBe(false);
+    await click('Confirmar egreso', container.querySelector('.qr-panel')!);
+    expect(mock.close.mock.calls[0]?.[0]).toMatchObject({
+      body: {
+        invoiceReceiverCuit: '20427205208',
+        payments: [{ paymentIntentId: 'intent' }],
+      },
+    });
+  });
+
+  it('un CUIT no facturable no cierra el QR como consumidor final en silencio', async () => {
+    Object.assign(mock.tables.get('paymentMethods')!.get('method')!, {
+      name: 'Mercado Pago QR',
+      type: 'mercadopago_qr',
+    });
+    mock.qrIntent = {
+      id: 'intent',
+      tenantId: 'tenant',
+      entryId: 'entry',
+      amount: 10,
+      status: 'approved',
+    };
+    mock.receiverChoice = 'cuit';
+    await render(true);
+    const confirm = () =>
+      container.querySelector<HTMLButtonElement>('.qr-panel .primary-button')!;
+    expect(confirm().disabled).toBe(true);
+    expect(mock.close).not.toHaveBeenCalled();
+
+    mock.receiverChoice = 'final';
+    await render(true);
+    expect(confirm().textContent).toBe('Confirmar como consumidor final');
+    expect(confirm().disabled).toBe(false);
+  });
+
   it('el cobro automatico actualiza la fila antes de cerrar el panel operativo', async () => {
     await render(true);
     expect(historyRow().textContent).not.toContain('Facturada');

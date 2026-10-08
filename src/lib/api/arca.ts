@@ -34,12 +34,14 @@ export function getInvoiceReceiverSuggestion(input: {
 export async function getArcaAccount(input: {
   tenantId: string;
   bearer: string;
+  signal?: AbortSignal;
 }): Promise<ArcaAccountDto | null> {
   try {
     return await apiRequest<ArcaAccountDto>({
       method: 'GET',
       path: `/tenants/${encodeURIComponent(input.tenantId)}/arca/account`,
       bearer: input.bearer,
+      signal: input.signal,
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;

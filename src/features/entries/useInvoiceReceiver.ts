@@ -313,6 +313,12 @@ export function useInvoiceReceiver(input: {
       lookup: currentLookup,
       source,
       resolvingSuggestion,
+      suggestionUnavailable:
+        enabled &&
+        Boolean(paymentIntentId) &&
+        settledSuggestion === suggestionScope &&
+        effectiveChoice === 'final' &&
+        !userEdited,
       suggestions,
       /**
        * El error aparece al salir del campo o con los 11 dígitos, nunca con
@@ -338,6 +344,11 @@ export function useInvoiceReceiver(input: {
     tenantId,
     source,
     resolvingSuggestion,
+    enabled,
+    settledSuggestion,
+    suggestionScope,
+    userEdited,
+    paymentIntentId,
   ]);
 }
 

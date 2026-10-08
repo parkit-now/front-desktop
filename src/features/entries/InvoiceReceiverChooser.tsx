@@ -71,7 +71,7 @@ export function InvoiceReceiverChooser({
             onClick={() => receiver.setChoice(option.value)}
             disabled={disabled || (option.value === 'cuit' && !isOnline)}
           >
-            {option.value === 'final'
+            {option.value === 'final' && emitter
               ? `${option.label} (Factura ${consumerLetter})`
               : option.label}
           </button>
@@ -87,8 +87,21 @@ export function InvoiceReceiverChooser({
           Consultando datos del pagador...
         </p>
       ) : null}
+      {receiver.suggestionUnavailable ? (
+        <p className="exit-field-hint is-warning" role="status">
+          No se pudo obtener un CUIT verificado de Mercado Pago. Revisá el
+          receptor antes de confirmar.
+        </p>
+      ) : null}
       {receiver.source === 'mercadopago' && receiver.choice === 'cuit' ? (
         <p className="exit-field-hint">Mercado Pago</p>
+      ) : null}
+      {receiver.choice === 'cuit' &&
+      receiver.ready &&
+      receiver.cuitToSend === undefined ? (
+        <p className="exit-field-hint is-warning" role="status">
+          Para continuar, corregí el CUIT o elegí Consumidor Final.
+        </p>
       ) : null}
       {receiver.choice === 'cuit' ? (
         <>
