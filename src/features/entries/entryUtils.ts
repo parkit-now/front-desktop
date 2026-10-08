@@ -40,6 +40,14 @@ export function formatDuration(enteredAt: string): string {
   return formatMinutes(ms / 60000);
 }
 
+export function exitPaymentAmount(
+  rawAmount: string,
+  approvedQrAmount?: number,
+): number | undefined {
+  const value = approvedQrAmount ?? parseFloat(rawAmount.replace(',', '.'));
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 /**
  * Si un cobro entró al CAJÓN, que es lo único que el arqueo de caja necesita
  * saber.

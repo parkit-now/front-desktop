@@ -112,6 +112,18 @@ export function createPaymentIntent(input: {
   });
 }
 
+/** Cobros acreditados que todavia esperan el cierre de su estadia. */
+export function listUnconsumedPaymentIntents(input: {
+  tenantId: string;
+  bearer: string;
+}): Promise<PaymentIntentDto[]> {
+  return apiRequest<PaymentIntentDto[]>({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/payment-intents`,
+    bearer: input.bearer,
+  });
+}
+
 /**
  * Lee el estado actual. Es lo que poolea el modal mientras espera.
  *

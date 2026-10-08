@@ -50,6 +50,7 @@ import {
 } from './invoiceHistory';
 import {
   computeChange,
+  exitPaymentAmount,
   formatDuration,
   isCashCovered,
   generateUuidV7,
@@ -276,6 +277,16 @@ export function ExitModal({
         ? 'over'
         : 'exact';
 
+  const mpIntent = useMercadoPagoIntent({
+    tenantId,
+    accessToken,
+    entryId: entry.id,
+    amount: amountToCharge,
+    isOnline,
+  });
+  const qrApproved = mpIntent.intent?.status === 'approved';
+  const qrPaymentMethod = pms.find((pm) => isMercadoPagoMethod(pm));
+
   // El receptor se elige sólo si el cobro factura solo (todos los medios en
   // Automática): con un medio Manual se elige al emitir después.
   const selectedModes = splitEnabled
@@ -284,13 +295,17 @@ export function ExitModal({
           (pm) => parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0') > 0,
         )
         .map((pm) => pm.invoiceMode)
-    : effectivePm
-      ? [effectivePm.invoiceMode]
-      : [];
+    : qrApproved
+      ? qrPaymentMethod
+        ? [qrPaymentMethod.invoiceMode]
+        : []
+      : effectivePm
+        ? [effectivePm.invoiceMode]
+        : [];
   const invoicesOnCharge =
     selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
   const showInvoiceChooser =
-    offersReceiver && invoicesOnCharge && !closesWithoutCharge;
+    offersReceiver && invoicesOnCharge && (qrApproved || !closesWithoutCharge);
   const showPausedNotice =
     invoicingPaused && selectedModes.some((mode) => mode !== 'none');
 
@@ -312,13 +327,6 @@ export function ExitModal({
     entrySyncSeq: entry.syncSeq,
   });
 
-  const mpIntent = useMercadoPagoIntent({
-    tenantId,
-    accessToken,
-    entryId: entry.id,
-    amount: amountToCharge,
-  });
-  const qrApproved = mpIntent.intent?.status === 'approved';
   const receiver = useInvoiceReceiver({
     tenantId,
     accessToken,
@@ -405,10 +413,28 @@ export function ExitModal({
    */
   async function handleConfirm(paymentIntentId?: string): Promise<void> {
     if (savingRef.current || (showInvoiceChooser && !receiver.ready)) return;
+    const qrIntent =
+      paymentIntentId &&
+      mpIntent.intent?.id === paymentIntentId &&
+      mpIntent.intent.status === 'approved'
+        ? mpIntent.intent
+        : null;
+    if (
+      paymentIntentId &&
+      (!qrIntent || !isOnline || !qrPaymentMethod || splitEnabled)
+    ) {
+      showToast({
+        message:
+          'No se pudo verificar el cobro QR acreditado. Volvé a abrir el egreso con conexión.',
+        kind: 'error',
+      });
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     const leftAt = new Date().toISOString();
     const cashSessionId = entry.cashSessionId ?? activeSession?.id;
+    const paymentMethod = qrIntent ? qrPaymentMethod : effectivePm;
 
     let amountPaid: number | undefined;
     // El SNAPSHOT del medio de pago: id, nombre Y tipo. Los tres se copian
@@ -445,18 +471,17 @@ export function ExitModal({
         amountPaid = lines.reduce((s, l) => s + l.amount, 0);
       }
     } else {
-      const v = parseFloat(amount.replace(',', '.'));
+      const paidAmount = exitPaymentAmount(amount, qrIntent?.amount);
       // Cubierto por la reserva: se cierra con $0 cobrado y sin líneas de
       // pago (una línea de $0 ensuciaría el arqueo).
-      amountPaid =
-        Number.isFinite(v) && v > 0 ? v : closesWithoutCharge ? 0 : undefined;
-      if (effectivePm && amountPaid !== undefined && amountPaid > 0) {
+      amountPaid = paidAmount ?? (closesWithoutCharge ? 0 : undefined);
+      if (paymentMethod && amountPaid !== undefined && amountPaid > 0) {
         payments = [
           {
             id: generateUuidV7(),
-            paymentMethodId: effectivePm.id,
-            paymentMethodName: effectivePm.name,
-            paymentMethodType: effectivePm.type,
+            paymentMethodId: paymentMethod.id,
+            paymentMethodName: paymentMethod.name,
+            paymentMethodType: paymentMethod.type,
             amount: amountPaid,
             paymentIntentId,
           },
@@ -600,11 +625,11 @@ export function ExitModal({
         plate: entry.plate,
         ticketNumber: entry.ticketNumber ?? undefined,
         amountDue: amountPaid ?? 0,
-        received: isCash ? receivedAmount : undefined,
-        change: isCash ? change : undefined,
+        received: isCash && !qrIntent ? receivedAmount : undefined,
+        change: isCash && !qrIntent ? change : undefined,
         paymentMethodName: splitEnabled
           ? 'Varios medios'
-          : (effectivePm?.name ?? ''),
+          : (paymentMethod?.name ?? ''),
         enteredAt: entry.enteredAt,
         leftAt,
       });
@@ -931,7 +956,9 @@ export function ExitModal({
             secondsLeft={mpIntent.secondsLeft}
             isCanceling={mpIntent.isCanceling}
             isConfirming={saving}
-            confirmDisabled={showInvoiceChooser && !receiver.ready}
+            confirmDisabled={
+              !isOnline || (showInvoiceChooser && !receiver.ready)
+            }
             onCancel={() => void mpIntent.cancel()}
             onRetry={handleStartQr}
             onUseAnotherMethod={mpIntent.reset}
@@ -1254,9 +1281,17 @@ export function ExitModal({
                   onClick={handleStartQr}
                   // Sin monto no hay orden que encolar: el backend exige un
                   // importe positivo y el cliente no tendría qué pagar.
-                  disabled={mpIntent.isStarting || amountToCharge <= 0}
+                  disabled={
+                    mpIntent.isStarting ||
+                    mpIntent.isRestoring ||
+                    amountToCharge <= 0
+                  }
                 >
-                  {mpIntent.isStarting ? 'Generando QR...' : 'Cobrar con QR'}
+                  {mpIntent.isRestoring
+                    ? 'Verificando cobros...'
+                    : mpIntent.isStarting
+                      ? 'Generando QR...'
+                      : 'Cobrar con QR'}
                 </button>
               ) : (
                 <button

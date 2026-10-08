@@ -3,10 +3,12 @@ import {
   cancelPaymentIntent,
   createPaymentIntent,
   getPaymentIntent,
+  listUnconsumedPaymentIntents,
   isTerminalIntentStatus,
   type PaymentIntentDto,
   type PaymentIntentStatus,
 } from '../../lib/api/payment-intents';
+import { ApiError } from '../../lib/api/client';
 import { translateApiError } from '../../lib/api/translate';
 import { generateUuidV7 } from './entryUtils';
 
@@ -182,6 +184,7 @@ export interface UseMercadoPagoIntentResult {
   view: QrView | null;
   secondsLeft: number;
   isStarting: boolean;
+  isRestoring: boolean;
   isCanceling: boolean;
   /** Error traducido del último POST/cancel, si hubo. */
   errorMessage: string | null;
@@ -215,24 +218,65 @@ export function useMercadoPagoIntent(params: {
   tenantId: string;
   accessToken: string;
   entryId: string;
+  isOnline: boolean;
   /** Monto a cobrar. Se CONGELA al crear el intento y no se recalcula. */
   amount: number;
 }): UseMercadoPagoIntentResult {
-  const { tenantId, accessToken, entryId, amount } = params;
+  const { tenantId, accessToken, entryId, amount, isOnline } = params;
 
-  const [intent, setIntent] = useState<PaymentIntentDto | null>(null);
+  const [storedIntent, setIntent] = useState<PaymentIntentDto | null>(null);
+  const intent =
+    storedIntent?.tenantId === tenantId && storedIntent.entryId === entryId
+      ? storedIntent
+      : null;
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [isStarting, setIsStarting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(isOnline);
   const [isCanceling, setIsCanceling] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  const scopeRef = useRef(`${tenantId}:${entryId}`);
+  scopeRef.current = `${tenantId}:${entryId}`;
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
   }, []);
+
+  const restoreApproved = useCallback(async (): Promise<boolean> => {
+    const approved = await listUnconsumedPaymentIntents({
+      tenantId,
+      bearer: accessToken,
+    });
+    const existing = approved.find((item) => item.entryId === entryId);
+    if (
+      !existing ||
+      !mountedRef.current ||
+      scopeRef.current !== `${tenantId}:${entryId}`
+    )
+      return false;
+    setIntent(existing);
+    return true;
+  }, [accessToken, entryId, tenantId]);
+
+  useEffect(() => {
+    if (!isOnline) {
+      setIsRestoring(false);
+      return;
+    }
+    let canceled = false;
+    setIsRestoring(true);
+    void restoreApproved()
+      .catch(() => undefined)
+      .finally(() => {
+        if (!canceled) setIsRestoring(false);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [isOnline, restoreApproved]);
 
   const intentId = intent?.id;
   const isLive = intent !== null && !isTerminalIntentStatus(intent.status);
@@ -274,6 +318,7 @@ export function useMercadoPagoIntent(params: {
   }, [intentId, isLive, poll]);
 
   const start = useCallback(async (): Promise<void> => {
+    if (isRestoring) return;
     setIsStarting(true);
     setErrorMessage(null);
     try {
@@ -289,13 +334,23 @@ export function useMercadoPagoIntent(params: {
       setNowMs(Date.now());
     } catch (error) {
       if (!mountedRef.current) return;
+      if (
+        error instanceof ApiError &&
+        error.problem?.code === 'PAYMENT_INTENT_ALREADY_OPEN'
+      ) {
+        try {
+          if (await restoreApproved()) return;
+        } catch {
+          // El 409 original sigue siendo la mejor explicacion si falla releer.
+        }
+      }
       // Los 409 de caja ocupada y de cobro ya abierto salen traducidos de
       // `CODE_MESSAGES`, con el texto que le sirve al operario.
       setErrorMessage(translateApiError(error));
     } finally {
       if (mountedRef.current) setIsStarting(false);
     }
-  }, [accessToken, amount, entryId, tenantId]);
+  }, [accessToken, amount, entryId, isRestoring, restoreApproved, tenantId]);
 
   const cancel = useCallback(async (): Promise<void> => {
     if (!intent) return;
@@ -341,6 +396,7 @@ export function useMercadoPagoIntent(params: {
     view: intent ? describeIntentState(intent.status) : null,
     secondsLeft: secondsLeft(intent?.expiresAt, nowMs),
     isStarting,
+    isRestoring,
     isCanceling,
     errorMessage,
     start,
