@@ -5,7 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DataTable } from './DataTable';
 import {
+  readPersistedTableState,
   saveTableTemplate,
+  writePersistedTableState,
   type TableViewConfig,
 } from '../table-view-template';
 
@@ -192,6 +194,95 @@ it('conserva filtros independientes de marca, modelo y color en una sola columna
   );
   expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
     'Color',
+  );
+});
+
+it('recupera Vehículo de preferencias viejas y recuerda si luego se oculta', async () => {
+  const vehicles = [
+    { brand: 'Toyota', model: 'Etios', color: 'BLANCO' },
+    { brand: 'Ford', model: 'Ka', color: 'ROJO' },
+  ];
+  const vehicleColumns: ColumnDef<(typeof vehicles)[number], unknown>[] = [
+    {
+      id: 'vehicle',
+      header: 'Vehículo',
+      accessorFn: (row) => `${row.brand} ${row.model} ${row.color}`,
+    },
+    ...(['brand', 'model', 'color'] as const).map((id) => ({
+      accessorKey: id,
+      header: id,
+      enableHiding: false,
+      meta: { filterOnly: true, displayColumnId: 'vehicle' },
+    })),
+  ];
+  writePersistedTableState(scope, {
+    version: 1,
+    config: {
+      ...savedConfig,
+      columns: {
+        visibility: {
+          vehicle: false,
+          brand: false,
+          model: false,
+          color: false,
+        },
+        order: ['vehicle', 'brand', 'model', 'color'],
+        pinnedLeft: [],
+      },
+      filters: [{ id: 'brand', value: ['Toyota'] }],
+    },
+    switches: {},
+  });
+
+  const renderVehicles = async () =>
+    act(() =>
+      Promise.resolve(
+        root.render(
+          <DataTable
+            data={vehicles}
+            columns={vehicleColumns}
+            templateScope={scope}
+            filterableColumns={['brand', 'model', 'color']}
+            persistState
+          />,
+        ),
+      ),
+    );
+
+  await renderVehicles();
+  expect(container.querySelector('thead')?.textContent).toContain('Vehículo');
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toContain('Toyota');
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const migrated = readPersistedTableState(scope, [
+    'vehicle',
+    'brand',
+    'model',
+    'color',
+  ]);
+  expect(migrated?.config.columns.visibility).toEqual({ vehicle: true });
+  expect(migrated?.config.filters).toEqual([
+    { id: 'brand', value: ['Toyota'] },
+  ]);
+
+  await act(() =>
+    Promise.resolve(
+      container
+        .querySelector<HTMLButtonElement>('[title="Columnas visibles"]')
+        ?.click(),
+    ),
+  );
+  const vehicleCheckbox =
+    container.querySelector<HTMLInputElement>('#dt-column-vehicle')!;
+  await act(() => Promise.resolve(vehicleCheckbox.click()));
+  expect(vehicleCheckbox.checked).toBe(false);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  await act(() => Promise.resolve(root.unmount()));
+  root = createRoot(container);
+  await renderVehicles();
+  expect(container.querySelector('thead')?.textContent).not.toContain(
+    'Vehículo',
   );
 });
 
