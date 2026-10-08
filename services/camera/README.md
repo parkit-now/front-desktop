@@ -229,9 +229,16 @@ Lo que sí hace el servicio para ayudar:
   barato y con el mismo veredicto.
 - Achica el preview a `CAMERA_STREAM_MAX_WIDTH` antes de codificarlo.
 
-Si el CPU sigue alto, lo que más mueve la aguja es bajarle los FPS a la cámara
-y usar H.264 en vez de H.265. Ver `docs/GUIA-CAMARA-Y-AJUSTES.md` en la raíz
-del repo.
+Si el CPU sigue alto:
+
+- Los ajustes de la cámara están en `docs/GUIA-CAMARA-Y-AJUSTES.md`. Ojo con el
+  códec: NO hay una respuesta fija, hay que medir los dos. En la instalación de
+  referencia ganó H.265+.
+- El cambio estructural pendiente —detectar el movimiento sobre el sub-stream y
+  pedir la foto grande sólo al disparar— está planificado en
+  `docs/PLAN-SUBSTREAM-DETECCION.md`. Cortaría el decodificado un 90%, pero hay
+  condiciones que pueden volverlo innecesario: leer la sección final antes de
+  empezar.
 
 ### Endpoints
 
