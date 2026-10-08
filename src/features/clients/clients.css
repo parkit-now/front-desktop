@@ -1,0 +1,94 @@
+.clients-dialog {
+  width: min(92vw, 680px);
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+  padding: 28px;
+}
+.clients-dialog .rate-dialog-header {
+  align-items: center;
+  margin-bottom: 24px;
+}
+.clients-dialog .rate-dialog-header h3 {
+  margin: 0;
+  font-size: 22px;
+}
+.client-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 20px;
+  row-gap: 22px;
+}
+.clients-dialog .form-field {
+  gap: 8px;
+}
+.client-plate-field {
+  grid-column: 1 / -1;
+  justify-items: start;
+}
+.client-plate-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.client-plate-row input {
+  flex: 1;
+  min-width: 0;
+}
+.clients-dialog .rate-dialog-actions {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid #e5ecf6;
+}
+.clients-dialog .rate-dialog-actions .primary-button {
+  width: auto;
+  min-width: 160px;
+  padding: 0 20px;
+}
+.client-plates {
+  display: inline-block;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .clients-dialog {
+    padding: 20px;
+  }
+  .client-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .clients-dialog .rate-dialog-actions .primary-button {
+    width: 100%;
+  }
+}
+.client-contact {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #d6e0ee;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 13px;
+}
+.client-contact-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.client-contact-row span {
+  overflow-wrap: anywhere;
+  margin-right: auto;
+}
+.client-contact-row button {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d6e0ee;
+  border-radius: 5px;
+  background: white;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}

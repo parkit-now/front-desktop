@@ -1249,6 +1249,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ClientsController_list"];
+        put?: never;
+        post: operations["ClientsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/clients/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ClientsController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["ClientsController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/clients/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ClientsController_changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/entries": {
         parameters: {
             query?: never;
@@ -2954,6 +3002,29 @@ export interface components {
             updatedAt: string;
             version: number;
         };
+        ClientChangesDto: {
+            items: components["schemas"]["ClientDto"][];
+            maxSeq: number;
+        };
+        ClientDto: {
+            /** Format: date-time */
+            createdAt: string;
+            cuit: string | null;
+            /** Format: date-time */
+            deletedAt: string | null;
+            email: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string | null;
+            phone: string | null;
+            plates: string[];
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            version: number;
+        };
         CloseCashSessionDto: {
             /**
              * Format: date-time
@@ -3197,6 +3268,25 @@ export interface components {
              * @default 0
              */
             openingCash: number;
+        };
+        CreateClientDto: {
+            /** @example 20427205208 */
+            cuit?: string | null;
+            email?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Confirm moving plates belonging to other clients. */
+            movePlates?: boolean;
+            name?: string | null;
+            /** @description Name came from an ARCA lookup, not an owner edit. */
+            nameIsAutomatic?: boolean;
+            phone?: string | null;
+            /**
+             * @example [
+             *       "IAG574"
+             *     ]
+             */
+            plates: string[];
         };
         CreateDriverVehicleDto: {
             brand?: string | null;
@@ -4330,9 +4420,8 @@ export interface components {
             /** Format: date-time */
             issuedAt?: string | null;
             ptoVta?: number | null;
-            /** @description CUIT del receptor, o `0` a consumidor final. */
             receptorDocNro?: string | null;
-            /** @description DocTipo de ARCA: 80 = CUIT (Factura A), 99 = consumidor final. */
+            /** @description 80 = CUIT; 99 = consumidor final. */
             receptorDocTipo?: number | null;
             /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
@@ -4384,6 +4473,9 @@ export interface components {
             /** Format: uuid */
             id: string;
             ptoVta?: number | null;
+            receptorDocNro?: string | null;
+            /** @description 80 = CUIT; 99 = consumidor final. */
+            receptorDocTipo?: number | null;
             /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
             status: components["schemas"]["InvoiceStatus"];
@@ -5307,7 +5399,7 @@ export interface components {
             maxSeq: number;
         };
         /**
-         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después.
          * @enum {string}
          */
         PaymentMethodInvoiceMode: "none" | "auto" | "manual";
@@ -5363,7 +5455,7 @@ export interface components {
              */
             id: string;
             /**
-             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después.
              * @example none
              */
             invoiceMode: components["schemas"]["PaymentMethodInvoiceMode"];
@@ -6158,7 +6250,7 @@ export interface components {
              * @example true
              */
             enabled?: boolean;
-            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial. */
+            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después. */
             invoiceMode?: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this method becomes the default for the entity.
@@ -6291,6 +6383,23 @@ export interface components {
         UpdateCashSessionDto: {
             /** @description Shift notes. Send an empty string to clear them. Omitting the field leaves them untouched. */
             notes?: string;
+        };
+        UpdateClientDto: {
+            /** @example 20427205208 */
+            cuit?: string | null;
+            email?: string | null;
+            /** @description Confirm moving plates belonging to other clients. */
+            movePlates?: boolean;
+            name?: string | null;
+            /** @description Name came from an ARCA lookup, not an owner edit. */
+            nameIsAutomatic?: boolean;
+            phone?: string | null;
+            /**
+             * @example [
+             *       "IAG574"
+             *     ]
+             */
+            plates?: string[];
         };
         UpdateDesktopCameraConfigDto: {
             /** @description Stable camera identifier sent with LPR detections. */
@@ -10132,6 +10241,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CashSessionChangesResponseDto"];
+                };
+            };
+        };
+    };
+    ClientsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDto"][];
+                };
+            };
+        };
+    };
+    ClientsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateClientDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDto"];
+                };
+            };
+        };
+    };
+    ClientsController_remove: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDto"];
+                };
+            };
+        };
+    };
+    ClientsController_update: {
+        parameters: {
+            query: {
+                /** @description Expected current version of the row. Used for optimistic locking. */
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateClientDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDto"];
+                };
+            };
+        };
+    };
+    ClientsController_changes: {
+        parameters: {
+            query?: {
+                afterSeq?: components["schemas"]["Object"];
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientChangesDto"];
                 };
             };
         };

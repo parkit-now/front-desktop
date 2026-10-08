@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Download, FolderOpen, X } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   closeEntry,
@@ -7,12 +8,14 @@ import {
   type PaymentLineDto,
 } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
+import { getInvoiceDocument } from '../../lib/api/arca';
 import {
   localDb,
   type LocalEntry,
   type LocalPaymentTransaction,
 } from '../../lib/db/localDb';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
+import { syncService } from '../../lib/sync/SyncService';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
@@ -31,12 +34,16 @@ import {
   describeInvoiceResult,
   describeIssueConfirmation,
   expectedLetter,
+  invoicePdfFileName,
   type InvoiceNotice,
 } from './invoiceUtils';
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import { useArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
+import { ClientContact } from '../clients/ClientContact';
+import { renderInvoiceHtml } from './invoiceDocument';
+import { saveInvoicePdf } from './saveInvoicePdf';
 import {
   INVOICE_HISTORY_REFRESH_WARNING,
   refreshInvoiceHistory,
@@ -182,6 +189,11 @@ export function ExitModal({
   const [lastInvoice, setLastInvoice] = useState<InvoiceSummaryDto | null>(
     null,
   );
+  const [pdfBusy, setPdfBusy] = useState<'save' | 'folder' | null>(null);
+  const [savedPdf, setSavedPdf] = useState<{
+    invoiceId: string;
+    path: string;
+  } | null>(null);
   const [issuePanelOpen, setIssuePanelOpen] = useState(false);
   const confirmation = useInvoiceConfirmation({
     tenantId,
@@ -411,6 +423,7 @@ export function ExitModal({
     // checking de TS no aplicaba — el campo se mandaba sin que nada lo
     // verificara. Ahora sí lo verifica el contrato.
     let payments: PaymentLineDto[] | undefined;
+    let issuedOnCharge = false;
 
     if (splitEnabled) {
       const lines = pms
@@ -471,6 +484,7 @@ export function ExitModal({
           },
         });
         setLastInvoice(result.invoice ?? null);
+        issuedOnCharge = result.invoice?.status === 'issued';
         const txs: LocalPaymentTransaction[] = (payments ?? []).map((p) => ({
           id: p.id,
           tenantId,
@@ -600,6 +614,8 @@ export function ExitModal({
       ) {
         showToast({ message: INVOICE_HISTORY_REFRESH_WARNING, kind: 'info' });
       }
+      if (isOnline && issuedOnCharge)
+        void syncService.pullClients().catch(() => undefined);
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
@@ -647,7 +663,61 @@ export function ExitModal({
         describeInvoiceResult({ invoice, offline: false, lineModes: [] }),
       );
       if (invoice.status === 'issued') setIssuePanelOpen(false);
+      if (invoice.status === 'issued')
+        void syncService.pullClients().catch(() => undefined);
     });
+  }
+
+  async function downloadInvoicePdf(): Promise<void> {
+    if (!lastInvoice || lastInvoice.status !== 'issued' || pdfBusy) return;
+    setPdfBusy('save');
+    try {
+      const document = await getInvoiceDocument({
+        tenantId,
+        invoiceId: lastInvoice.id,
+        bearer: accessToken,
+      });
+      const qr = await QRCode.toDataURL(document.qrUrl, {
+        width: 200,
+        margin: 0,
+        errorCorrectionLevel: 'M',
+      });
+      const saved = await saveInvoicePdf(
+        invoicePdfFileName({ plate: entry.plate, ...lastInvoice }),
+        renderInvoiceHtml(document, qr),
+      );
+      if (saved) {
+        setSavedPdf({ invoiceId: lastInvoice.id, path: saved });
+        showToast({ message: 'PDF guardado.', kind: 'success' });
+      }
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setPdfBusy(null);
+    }
+  }
+
+  async function showPdfInFolder(): Promise<void> {
+    const desktop = window.parkitDesktop;
+    if (
+      !savedPdf ||
+      savedPdf.invoiceId !== lastInvoice?.id ||
+      !desktop?.showSavedFileInFolder ||
+      pdfBusy
+    )
+      return;
+    setPdfBusy('folder');
+    try {
+      const result = await desktop.showSavedFileInFolder(savedPdf.path);
+      if (!result.ok) throw new Error('show-file-failed');
+    } catch {
+      showToast({
+        message: 'No se pudo encontrar o abrir el PDF guardado.',
+        kind: 'error',
+      });
+    } finally {
+      setPdfBusy(null);
+    }
   }
 
   return (
@@ -729,6 +799,46 @@ export function ExitModal({
               ) : null}
             </div>
 
+            {lastInvoice?.status === 'issued' ? (
+              <>
+                <ClientContact
+                  tenantId={tenantId}
+                  plate={entry.plate}
+                  receiverCuit={
+                    lastInvoice.receptorDocTipo === 80
+                      ? lastInvoice.receptorDocNro
+                      : null
+                  }
+                />
+                <div className="exit-receipt-pdf-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={pdfBusy !== null}
+                    onClick={() => void downloadInvoicePdf()}
+                  >
+                    <Download size={16} />
+                    {pdfBusy === 'save' ? 'Preparando PDF...' : 'Descargar PDF'}
+                  </button>
+                  {savedPdf &&
+                  savedPdf.invoiceId === lastInvoice.id &&
+                  window.parkitDesktop?.showSavedFileInFolder ? (
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      title="Mostrar PDF en carpeta"
+                      aria-label="Mostrar PDF en carpeta"
+                      aria-busy={pdfBusy === 'folder'}
+                      disabled={pdfBusy !== null}
+                      onClick={() => void showPdfInFolder()}
+                    >
+                      <FolderOpen size={18} />
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
             {issuePanelOpen ? (
               // El panel reemplaza a los botones del comprobante: mientras se
               // elige la factura, la única salida es emitir o volver.
@@ -776,7 +886,8 @@ export function ExitModal({
                 >
                   {printingReceipt ? 'Imprimiendo...' : 'Comprobante no fiscal'}
                 </button>
-                {!invoicingPaused && canIssueAfterCharge(lastInvoice) ? (
+                {!invoicingPaused &&
+                canIssueAfterCharge(lastInvoice, selectedModes) ? (
                   <button
                     type="button"
                     className="ghost-button"

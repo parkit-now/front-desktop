@@ -1,4 +1,7 @@
-import { Cctv, FlaskConical } from 'lucide-react';
+import { Cctv, FlaskConical, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { useToast } from '../../lib/notifications/ToastProvider';
+import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { AutoEntryCard } from './AutoEntryCard';
 import { useCameraDetections } from './useCameraDetections';
 import { useCameraTestingMode } from './testingMode';
@@ -18,8 +21,42 @@ export function AutoEntriesColumns({
   parkingAddress = null,
   parkingCuit = null,
 }: Props) {
-  const { detections, dismiss, ack } = useCameraDetections(tenantId);
+  const { detections, dismiss, dismissAll, ack } =
+    useCameraDetections(tenantId);
   const testingMode = useCameraTestingMode();
+  const { showToast } = useToast();
+  const [discardIds, setDiscardIds] = useState<string[] | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const discardingRef = useRef(false);
+
+  async function handleDiscardAll(): Promise<void> {
+    if (!discardIds || discardingRef.current) return;
+    discardingRef.current = true;
+    setDiscarding(true);
+    try {
+      const { dismissed, failed } = await dismissAll(discardIds);
+      setDiscardIds(null);
+      if (failed > 0) {
+        showToast({
+          message: `Se descartaron ${dismissed} detecciones; ${failed} no se pudieron descartar.`,
+          kind: 'error',
+        });
+      } else if (dismissed > 0) {
+        showToast({
+          message: `${dismissed} ${dismissed === 1 ? 'detección descartada' : 'detecciones descartadas'}.`,
+          kind: 'success',
+        });
+      }
+    } catch {
+      showToast({
+        message: 'No se pudieron descartar las detecciones. Intentá de nuevo.',
+        kind: 'error',
+      });
+    } finally {
+      discardingRef.current = false;
+      setDiscarding(false);
+    }
+  }
 
   return (
     <section className="auto-entries">
@@ -29,7 +66,19 @@ export function AutoEntriesColumns({
           Ingresos detectados
         </h3>
         {detections.length > 0 ? (
-          <span className="auto-entries__count">{detections.length}</span>
+          <>
+            <span className="auto-entries__count">{detections.length}</span>
+            <button
+              type="button"
+              className="auto-entries__clear"
+              title="Descartar todas las detecciones"
+              aria-label={`Descartar las ${detections.length} detecciones automáticas`}
+              onClick={() => setDiscardIds(detections.map((d) => d.id))}
+              disabled={discarding}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </>
         ) : null}
       </header>
 
@@ -68,6 +117,17 @@ export function AutoEntriesColumns({
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={discardIds !== null}
+        title="¿Descartar todas las detecciones?"
+        message={`Se descartarán ${discardIds?.length ?? 0} detecciones pendientes. Los registros de auditoría se conservarán.`}
+        confirmLabel="Descartar todas"
+        variant="danger"
+        isPending={discarding}
+        onCancel={() => setDiscardIds(null)}
+        onConfirm={handleDiscardAll}
+      />
     </section>
   );
 }

@@ -338,6 +338,7 @@ export interface SyncState {
 }
 
 export type LocalLprIgnoredPlate = components['schemas']['LprIgnoredPlateDto'];
+export type LocalClient = components['schemas']['ClientDto'];
 
 // 'unreviewed' is for audit-only ops (e.g. a freshly-detected LPR plate the
 // operator hasn't registered/dismissed yet) — they still get pushed like any
@@ -356,6 +357,7 @@ export type PendingOpEntity =
   | 'vehicle'
   | 'vehicleType'
   | 'lprIgnoredPlate'
+  | 'client'
   | 'paymentMethod'
   | 'cashSession'
   | 'lprDetectionEvent';
@@ -390,6 +392,7 @@ class ParkitLocalDb extends Dexie {
   vehicles!: Table<LocalVehicle>;
   vehicleTypes!: Table<LocalVehicleType>;
   lprIgnoredPlates!: Table<LocalLprIgnoredPlate>;
+  clients!: Table<LocalClient>;
   vehicleCategories!: Table<LocalVehicleCategory>;
   paymentMethods!: Table<LocalPaymentMethod>;
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
@@ -739,6 +742,9 @@ class ParkitLocalDb extends Dexie {
     });
     this.version(20).stores({
       lprIgnoredPlates: 'id, tenantId, [tenantId+plate]',
+    });
+    this.version(21).stores({
+      clients: 'id, tenantId, cuit, *plates',
     });
   }
 }

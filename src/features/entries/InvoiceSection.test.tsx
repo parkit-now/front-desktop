@@ -31,12 +31,16 @@ vi.mock('../../lib/db/localDb', () => ({
       where: () => ({ equals: () => ({ first: () => mock.invoice }) }),
     },
     entries: { get: () => undefined },
+    clients: { where: () => ({ equals: () => ({ toArray: () => [] }) }) },
   },
 }));
 vi.mock('../../lib/api/arca', () => ({ getInvoiceDocument: mock.document }));
 vi.mock('../../lib/api/entries', () => ({ correctEntry: vi.fn() }));
 vi.mock('../../lib/sync/SyncService', () => ({
-  syncService: { pullInvoices: vi.fn() },
+  syncService: {
+    pullInvoices: vi.fn(),
+    pullClients: vi.fn(() => Promise.resolve()),
+  },
 }));
 vi.mock('../../lib/sync/enqueue', () => ({ enqueuePendingOp: vi.fn() }));
 vi.mock('../../lib/notifications/ToastProvider', () => ({

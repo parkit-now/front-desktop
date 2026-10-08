@@ -29,34 +29,8 @@ import type { ArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import { saveEntryInlineField } from './entryInlineFields';
-
-/**
- * Arma el PDF del comprobante con el Chromium de Electron y lo ofrece con
- * «Guardar como…». Devuelve la ruta o `null` si no se guardó en Electron.
- */
-async function savePdf(fileName: string, html: string): Promise<string | null> {
-  const desktop = window.parkitDesktop;
-  if (!desktop?.renderPdf || !desktop.saveFile) {
-    // Renderer abierto en un navegador (dev sin Electron): el diálogo de
-    // impresión del navegador deja guardarlo como PDF.
-    const preview = window.open('', '_blank');
-    if (!preview) throw new Error('popup-blocked');
-    preview.document.write(html);
-    preview.document.close();
-    preview.print();
-    return null;
-  }
-  const pdf = await desktop.renderPdf({ html });
-  if (!pdf.ok) throw new Error(pdf.detail ?? pdf.reason);
-  const result = await desktop.saveFile({
-    defaultName: fileName,
-    data: pdf.data,
-  });
-  if (!result.ok && result.reason === 'write-failed') {
-    throw new Error(result.detail ?? 'write-failed');
-  }
-  return result.ok ? result.path : null;
-}
+import { ClientContact } from '../clients/ClientContact';
+import { saveInvoicePdf } from './saveInvoicePdf';
 
 /**
  * Bloque «Factura» del diálogo de un movimiento del historial: el comprobante
@@ -189,7 +163,7 @@ export function InvoiceSection({
           margin: 0,
           errorCorrectionLevel: 'M',
         });
-        const saved = await savePdf(
+        const saved = await saveInvoicePdf(
           invoicePdfFileName({ plate: current.plate, ...invoice }),
           renderInvoiceHtml(doc, qr),
         );
@@ -352,6 +326,15 @@ export function InvoiceSection({
           </>
         ) : null}
       </dl>
+      {state === 'issued' ? (
+        <ClientContact
+          tenantId={tenantId}
+          plate={current.plate}
+          receiverCuit={
+            invoice?.receptorDocTipo === 80 ? invoice.receptorDocNro : null
+          }
+        />
+      ) : null}
 
       {errorText ? (
         <div className="entry-invoice-error" role="status">
@@ -368,6 +351,13 @@ export function InvoiceSection({
             disabled={actionBusy}
             showLabel={false}
           />
+          {(receiver.choice === 'final' || receiver.cuitToSend) && (
+            <ClientContact
+              tenantId={tenantId}
+              plate={current.plate}
+              receiverCuit={receiver.cuitToSend}
+            />
+          )}
           <div className="entry-invoice-actions">
             <button
               type="button"
