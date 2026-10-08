@@ -1222,7 +1222,7 @@ def stream_status():
     return {**_watchdog.status(), "source": source}
 
 
-def _downscale_for_stream(frame):
+def _downscale_for_stream(frame, max_width: int):
     """Achica el cuadro al ancho del preview antes de codificarlo a JPEG.
 
     Codificar 2560×1440 diez veces por segundo cuesta ~15-28 ms por cuadro; a
@@ -1234,22 +1234,22 @@ def _downscale_for_stream(frame):
     las dos salen del cuadro original. Esto es sólo lo que se dibuja en
     pantalla.
     """
-    if STREAM_MAX_WIDTH <= 0:
+    if max_width <= 0:
         return frame
 
     height, width = frame.shape[:2]
-    if width <= STREAM_MAX_WIDTH:
+    if width <= max_width:
         return frame
 
-    scale = STREAM_MAX_WIDTH / width
+    scale = max_width / width
     return cv2.resize(
         frame,
-        (STREAM_MAX_WIDTH, max(1, int(round(height * scale)))),
+        (max_width, max(1, int(round(height * scale)))),
         interpolation=cv2.INTER_AREA,
     )
 
 
-def _mjpeg_frames():
+def _mjpeg_frames(max_width: int):
     """Yield the latest camera frame as an endless multipart JPEG stream.
 
     Consumed directly by an <img> tag in the renderer (browsers render
@@ -1265,7 +1265,9 @@ def _mjpeg_frames():
         if frame is None:
             time.sleep(0.1)  # camera not ready yet — wait without busy-looping
             continue
-        ok, buf = cv2.imencode(".jpg", _downscale_for_stream(frame), _STREAM_JPEG)
+        ok, buf = cv2.imencode(
+            ".jpg", _downscale_for_stream(frame, max_width), _STREAM_JPEG
+        )
         if not ok:
             time.sleep(interval)
             continue
@@ -1274,8 +1276,28 @@ def _mjpeg_frames():
 
 
 @app.get("/stream/mjpeg")
-def stream_mjpeg():
+def stream_mjpeg(maxWidth: int | None = None):  # noqa: N803 (query param)
     """Live MJPEG preview for the desktop UI.
+
+    `maxWidth` pisa `CAMERA_STREAM_MAX_WIDTH` para esta conexión; `0` manda el
+    cuadro SIN achicar.
+
+    POR QUÉ HACE FALTA EL OVERRIDE, Y ES IMPORTANTE
+
+    El editor de ROI convierte lo que el usuario arrastra a píxeles usando el
+    `naturalWidth` del `<img>`, o sea **el tamaño del cuadro que le llega por
+    este endpoint** (`RoiEditor.tsx`). El servicio después aplica ese ROI sobre
+    el cuadro ORIGINAL a resolución completa.
+
+    O sea que las dos resoluciones tienen que ser la misma o el ROI queda mal:
+    achicar el preview a 960 y seguir aplicando el recorte sobre 2560 hace que
+    la zona marcada cubra apenas un tercio de lo que el usuario dibujó, y que
+    un ROI ya guardado se dibuje fuera de pantalla. Pasó: lo introdujo el
+    cambio que achicó el preview para ahorrar CPU.
+
+    Por eso el editor pide `maxWidth=0` y el preview normal no. Si algún día el
+    ROI pasa a guardarse en coordenadas relativas (0-1), esto deja de hacer
+    falta.
 
     Devuelve 503 cuando no hay nada que mostrar, en vez de abrir un stream que
     se queda esperando frames para siempre. Sin esto, con la cámara caída el
@@ -1286,8 +1308,9 @@ def stream_mjpeg():
     """
     if _capture is None or _capture.latest_frame() is None:
         raise HTTPException(status_code=503, detail="camera has no frames yet")
+    width = STREAM_MAX_WIDTH if maxWidth is None else max(0, maxWidth)
     return StreamingResponse(
-        _mjpeg_frames(),
+        _mjpeg_frames(width),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 

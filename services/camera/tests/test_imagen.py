@@ -123,3 +123,43 @@ def test_no_dibuja_el_recuadro(cliente):
     # habría píxeles con verde dominante.
     b, g, r = img[:, :, 0].astype(int), img[:, :, 1].astype(int), img[:, :, 2].astype(int)
     assert not ((g - b > 40) & (g - r > 40)).any()
+
+
+def test_el_preview_del_editor_de_ROI_va_sin_achicar():
+    """El ROI se dibuja contra el cuadro que llega por `/stream/mjpeg`.
+
+    `RoiEditor.tsx` convierte lo arrastrado a píxeles con el `naturalWidth` del
+    `<img>`, y el servicio aplica ese ROI sobre el cuadro ORIGINAL. Si las dos
+    resoluciones difieren, la zona marcada cubre otra cosa.
+
+    Ya pasó una vez: achicar el preview a 960 px para ahorrar CPU hizo que un
+    ROI dibujado cubriera un tercio de lo elegido. Por eso el editor pide
+    `maxWidth=0`, y por eso `0` tiene que significar "no toques el cuadro".
+    """
+    import numpy as np
+
+    import main
+
+    frame = np.zeros((1440, 2560, 3), dtype=np.uint8)
+    assert main._downscale_for_stream(frame, 0).shape == frame.shape
+
+
+def test_el_preview_normal_si_se_achica():
+    import numpy as np
+
+    import main
+
+    frame = np.zeros((1440, 2560, 3), dtype=np.uint8)
+    salida = main._downscale_for_stream(frame, 960)
+    assert salida.shape[1] == 960
+    # Mantiene la proporción: si no, el ROI se deformaría.
+    assert salida.shape[0] == 540
+
+
+def test_un_cuadro_mas_chico_que_el_tope_no_se_toca():
+    import numpy as np
+
+    import main
+
+    frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    assert main._downscale_for_stream(frame, 960).shape == frame.shape
