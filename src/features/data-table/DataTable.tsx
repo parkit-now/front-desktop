@@ -131,6 +131,50 @@ function columnIdsFromDefinitions<TData>(
   });
 }
 
+function filterOnlyColumnIds<TData>(
+  definitions: ColumnDef<TData, unknown>[],
+): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const column of definitions) {
+    if (!column.meta?.filterOnly) continue;
+    const id =
+      'id' in column && column.id
+        ? column.id
+        : 'accessorKey' in column
+          ? String(column.accessorKey)
+          : '';
+    if (!id) continue;
+    const displayId = column.meta.displayColumnId ?? '';
+    groups.set(displayId, [...(groups.get(displayId) ?? []), id]);
+  }
+  return groups;
+}
+
+function cleanFilterOnlyVisibility<TData>(
+  definitions: ColumnDef<TData, unknown>[],
+  visibility: VisibilityState,
+  migrateLegacy: boolean,
+): VisibilityState {
+  const cleaned = { ...visibility };
+  for (const [displayId, oldIds] of filterOnlyColumnIds(definitions)) {
+    const oldValues = oldIds
+      .filter((id) => Object.hasOwn(visibility, id))
+      .map((id) => visibility[id]);
+    if (
+      migrateLegacy &&
+      displayId &&
+      oldValues.length > 0 &&
+      (cleaned[displayId] === undefined ||
+        (cleaned[displayId] === false &&
+          oldValues.every((value) => value === false)))
+    ) {
+      cleaned[displayId] = true;
+    }
+    oldIds.forEach((id) => delete cleaned[id]);
+  }
+  return cleaned;
+}
+
 function isDateRangeColumn<TData>(
   definition: ColumnDef<TData, unknown>,
 ): boolean {
@@ -304,16 +348,17 @@ export function DataTable<TData>({
       initialPersistedStateRef.current?.config.sorting ?? initialSorting ?? [],
   );
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    // Lo guardado gana, pero una columna nueva que arranca oculta sigue
-    // oculta para quien ya tenía la vista persistida de antes.
     () => ({
       ...initialColumnVisibility,
-      ...initialPersistedStateRef.current?.config.columns.visibility,
+      ...cleanFilterOnlyVisibility(
+        columns,
+        initialPersistedStateRef.current?.config.columns.visibility ?? {},
+        true,
+      ),
     }),
   );
   const effectiveColumnVisibility = useMemo<VisibilityState>(() => {
     const visibility = { ...columnVisibility };
-    const grouped = new Map<string, string[]>();
     columns.forEach((column) => {
       if (!column.meta?.filterOnly) return;
       const id =
@@ -324,18 +369,6 @@ export function DataTable<TData>({
             : '';
       if (!id) return;
       visibility[id] = false;
-      const displayId = column.meta.displayColumnId;
-      if (displayId) {
-        grouped.set(displayId, [...(grouped.get(displayId) ?? []), id]);
-      }
-    });
-    grouped.forEach((oldIds, displayId) => {
-      if (columnVisibility[displayId] !== undefined) return;
-      if (oldIds.some((id) => columnVisibility[id] === true)) {
-        visibility[displayId] = true;
-      } else if (oldIds.every((id) => columnVisibility[id] === false)) {
-        visibility[displayId] = false;
-      }
     });
     return visibility;
   }, [columnVisibility, columns]);
@@ -502,7 +535,14 @@ export function DataTable<TData>({
       setGlobalFilter(sanitized.globalSearch);
       setColumnFilters(sanitized.filters);
       setSorting(sanitized.sorting);
-      setColumnVisibility(sanitized.columns.visibility);
+      setColumnVisibility({
+        ...initialColumnVisibility,
+        ...cleanFilterOnlyVisibility(
+          columns,
+          sanitized.columns.visibility,
+          true,
+        ),
+      });
       setColumnOrder(sanitized.columns.order);
       setColumnPinning({ left: sanitized.columns.pinnedLeft });
       setPagination({ pageIndex: 0, pageSize: sanitized.pagination.pageSize });
@@ -519,6 +559,7 @@ export function DataTable<TData>({
       initialColumnFilters,
       initialPageSize,
       initialSorting,
+      columns,
       filterNormalizers,
       knownColumnIds,
       persistState,
@@ -585,7 +626,7 @@ export function DataTable<TData>({
     return {
       version: 1,
       columns: {
-        visibility: effectiveColumnVisibility,
+        visibility: cleanFilterOnlyVisibility(columns, columnVisibility, false),
         order: columnOrder,
         pinnedLeft: columnPinning.left ?? [],
       },
@@ -601,7 +642,8 @@ export function DataTable<TData>({
     columnFilters,
     columnOrder,
     columnPinning.left,
-    effectiveColumnVisibility,
+    columnVisibility,
+    columns,
     globalFilter,
     pagination.pageSize,
     sorting,
