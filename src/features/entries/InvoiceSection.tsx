@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { FolderOpen, Save } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getInvoiceDocument } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
@@ -28,6 +28,7 @@ import {
 import type { ArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
+import { saveEntryInlineField } from './entryInlineFields';
 
 /**
  * Arma el PDF del comprobante con el Chromium de Electron y lo ofrece con
@@ -83,7 +84,12 @@ export function InvoiceSection({
   emitter: ArcaEmitter | null;
 }) {
   const { showToast } = useToast();
-  const [busy, setBusy] = useState<'pdf' | 'manual' | 'folder' | null>(null);
+  const [busy, setBusy] = useState<
+    'pdf' | 'manual' | 'number' | 'folder' | null
+  >(null);
+  const [manualNumberDraft, setManualNumberDraft] = useState(
+    entry.manualInvoiceNumber ?? '',
+  );
   const [savedPdf, setSavedPdf] = useState<{
     invoiceId: string;
     path: string;
@@ -116,6 +122,10 @@ export function InvoiceSection({
     [entry.id],
   );
   const current = liveEntry ?? entry;
+
+  useEffect(() => {
+    setManualNumberDraft(current.manualInvoiceNumber ?? '');
+  }, [entry.id, current.manualInvoiceNumber]);
 
   const state = resolveInvoiceState(
     {
@@ -236,11 +246,13 @@ export function InvoiceSection({
         });
         await localDb.entries.update(entry.id, {
           manuallyInvoiced: result.manuallyInvoiced,
+          manualInvoiceNumber: result.manualInvoiceNumber ?? undefined,
           version: result.version,
           syncSeq: result.syncSeq,
           updatedAt: result.updatedAt,
         });
       } else {
+        const expectedVersion = current.version;
         await localDb.transaction(
           'rw',
           localDb.entries,
@@ -248,7 +260,10 @@ export function InvoiceSection({
           async () => {
             await localDb.entries.update(entry.id, {
               manuallyInvoiced: next,
-              version: current.version + 1,
+              manualInvoiceNumber: next
+                ? current.manualInvoiceNumber
+                : undefined,
+              version: expectedVersion + 1,
               updatedAt: new Date().toISOString(),
             });
             await enqueuePendingOp({
@@ -258,7 +273,7 @@ export function InvoiceSection({
               entityId: entry.id,
               payload: {
                 kind: 'correction',
-                expectedVersion: current.version,
+                expectedVersion,
                 body,
               },
               status: 'pending',
@@ -266,6 +281,35 @@ export function InvoiceSection({
           },
         );
       }
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveManualNumber() {
+    if (
+      actionBusy ||
+      manualNumberDraft.trim() === (current.manualInvoiceNumber ?? '')
+    )
+      return;
+    setBusy('number');
+    try {
+      await saveEntryInlineField({
+        tenantId,
+        entryId: entry.id,
+        accessToken,
+        isOnline,
+        field: 'manualInvoiceNumber',
+        value: manualNumberDraft,
+      });
+      showToast({
+        message: isOnline
+          ? 'Número de factura guardado.'
+          : 'Número de factura guardado localmente.',
+        kind: 'success',
+      });
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
@@ -404,6 +448,43 @@ export function InvoiceSection({
           </span>
         ) : null}
       </div>
+
+      {showManual && state === 'manual' ? (
+        <div className="entry-manual-invoice-number">
+          <label htmlFor={`manual-invoice-number-${entry.id}`}>
+            Número de factura
+          </label>
+          <div>
+            <input
+              id={`manual-invoice-number-${entry.id}`}
+              type="text"
+              value={manualNumberDraft}
+              maxLength={40}
+              disabled={actionBusy}
+              onChange={(event) => setManualNumberDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void saveManualNumber();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="ghost-button"
+              title="Guardar número de factura"
+              aria-label="Guardar número de factura"
+              disabled={
+                actionBusy ||
+                manualNumberDraft.trim() === (current.manualInvoiceNumber ?? '')
+              }
+              onClick={() => void saveManualNumber()}
+            >
+              <Save size={17} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {confirmation.snapshot ? (
         <ConfirmDialog

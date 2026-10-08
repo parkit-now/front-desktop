@@ -112,17 +112,18 @@ describe('filtro inicial de caja', () => {
   });
 });
 
-it('conserva filtros independientes de marca y modelo sin mostrar sus columnas en una vista guardada', async () => {
+it('conserva filtros independientes de marca, modelo y color en una sola columna', async () => {
   const vehicles = [
-    { brand: 'Toyota', model: 'Etios' },
-    { brand: 'Toyota', model: 'Corolla' },
-    { brand: 'Ford', model: 'Etios' },
+    { brand: 'Toyota', model: 'Etios', color: 'BLANCO' },
+    { brand: 'Toyota', model: 'Etios', color: 'ROJO' },
+    { brand: 'Toyota', model: 'Corolla', color: 'BLANCO' },
+    { brand: 'Ford', model: 'Etios', color: 'BLANCO' },
   ];
   const vehicleColumns: ColumnDef<(typeof vehicles)[number], unknown>[] = [
     {
       id: 'vehicle',
       header: 'Vehículo',
-      accessorFn: (row) => `${row.brand} ${row.model}`,
+      accessorFn: (row) => `${row.brand} ${row.model} ${row.color}`,
     },
     {
       accessorKey: 'brand',
@@ -136,19 +137,26 @@ it('conserva filtros independientes de marca y modelo sin mostrar sus columnas e
       enableHiding: false,
       meta: { filterOnly: true, displayColumnId: 'vehicle' },
     },
+    {
+      accessorKey: 'color',
+      header: 'Color',
+      enableHiding: false,
+      meta: { filterOnly: true, displayColumnId: 'vehicle' },
+    },
   ];
   saveTableTemplate(scope, {
     name: 'Vista antigua',
     config: {
       ...savedConfig,
       columns: {
-        visibility: { brand: true, model: true },
-        order: ['brand', 'model'],
+        visibility: { brand: true, model: true, color: true },
+        order: ['brand', 'model', 'color'],
         pinnedLeft: [],
       },
       filters: [
         { id: 'brand', value: ['Toyota'] },
         { id: 'model', value: ['Etios'] },
+        { id: 'color', value: ['BLANCO'] },
       ],
     },
   });
@@ -160,7 +168,7 @@ it('conserva filtros independientes de marca y modelo sin mostrar sus columnas e
           data={vehicles}
           columns={vehicleColumns}
           templateScope={scope}
-          filterableColumns={['brand', 'model']}
+          filterableColumns={['brand', 'model', 'color']}
         />,
       ),
     ),
@@ -170,7 +178,7 @@ it('conserva filtros independientes de marca y modelo sin mostrar sus columnas e
     [...container.querySelectorAll('thead th')].map((th) => th.textContent),
   ).toEqual(['Vehículo']);
   expect(rows()).toHaveLength(1);
-  expect(rows()[0]).toContain('Toyota Etios');
+  expect(rows()[0]).toContain('Toyota Etios BLANCO');
   await act(() =>
     Promise.resolve(
       container.querySelector<HTMLButtonElement>('.dt-filter-trigger')?.click(),
@@ -181,6 +189,9 @@ it('conserva filtros independientes de marca y modelo sin mostrar sus columnas e
   );
   expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
     'Modelo',
+  );
+  expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
+    'Color',
   );
 });
 

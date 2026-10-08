@@ -2181,6 +2181,29 @@ h2 {
   font-size: 12px;
 }
 
+.dt-vehicle-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.dt-vehicle-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  text-transform: capitalize;
+}
+
+.dt-vehicle-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border: 1px solid #98a6b9;
+  border-radius: 50%;
+}
+
 .dt-table .pinned-left {
   position: sticky;
   z-index: 2;
@@ -4714,12 +4737,149 @@ h2 {
   z-index: 5;
 }
 
-.dt-cell-notes {
+.dt-inline-field-value {
   display: block;
-  max-width: 200px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dt-inline-field {
+  min-width: 0;
+}
+
+.dt-inline-field--notes {
+  width: 190px;
+  max-width: 190px;
+}
+
+.entry-manual-invoice-number {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.entry-manual-invoice-number > div {
+  display: flex;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.entry-manual-invoice-number input {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #cbd9ed;
+  border-radius: 7px;
+  background: #fff;
+  color: #1d2939;
+}
+
+.dt-inline-field-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.dt-inline-field-trigger.is-empty {
+  justify-content: center;
+  width: 30px;
+  padding: 4px;
+}
+
+.dt-inline-field-trigger span {
+  flex: 1;
+  min-width: 0;
+}
+
+.dt-inline-field-trigger svg {
+  flex: none;
+  color: var(--color-muted);
+  opacity: 0.65;
+}
+
+.dt-inline-field-trigger:hover:not([aria-disabled='true']),
+.dt-inline-field-trigger:focus-visible {
+  border-color: #bdd3f2;
+  background: #f7fbff;
+}
+
+.dt-inline-field-trigger[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.dt-inline-field-trigger[aria-disabled='true'] svg {
+  opacity: 0.35;
+}
+
+.dt-inline-field-editor textarea,
+.dt-inline-field-editor input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #bdd3f2;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.dt-inline-field-editor textarea {
+  min-height: 66px;
+  max-height: 160px;
+  resize: vertical;
+}
+
+.dt-inline-field-editor input {
+  min-height: 34px;
+}
+
+.dt-inline-field-editor textarea:focus-visible,
+.dt-inline-field-editor input:focus-visible {
+  outline: 2px solid var(--color-brand-strong);
+  outline-offset: 1px;
+}
+
+.dt-inline-field-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.dt-inline-field-actions button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #bdd3f2;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-brand-strong);
+  cursor: pointer;
+}
+
+.dt-inline-field-actions button:hover:not(:disabled) {
+  background: #eaf3ff;
+}
+
+.dt-inline-field-actions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 /* AppSelect — custom combobox trigger */

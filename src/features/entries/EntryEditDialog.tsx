@@ -525,7 +525,10 @@ export function EntryEditDialog({
     body.payments !== undefined;
 
   const valid =
-    !readOnly &&
+    (!readOnly ||
+      (actorRole === 'owner' &&
+        body.notes !== undefined &&
+        Object.keys(body).every((field) => field === 'notes'))) &&
     changed &&
     !!nextPlate &&
     !!nextEnteredAt &&
@@ -665,6 +668,8 @@ export function EntryEditDialog({
                 result.rateSnapshotMediaEstadiaPriceArs != null
                   ? String(result.rateSnapshotMediaEstadiaPriceArs)
                   : undefined,
+              manuallyInvoiced: result.manuallyInvoiced,
+              manualInvoiceNumber: result.manualInvoiceNumber ?? undefined,
               version: result.version,
               syncSeq: result.syncSeq,
               updatedAt: result.updatedAt,
@@ -781,7 +786,9 @@ export function EntryEditDialog({
             <h3>Editar movimiento</h3>
             {readOnly ? (
               <p className="muted">
-                La caja está cerrada. Este movimiento no se puede editar.
+                {actorRole === 'owner'
+                  ? 'La caja está cerrada. Solo podés editar las notas.'
+                  : 'La caja está cerrada. Este movimiento no se puede editar.'}
               </p>
             ) : null}
           </div>
@@ -905,7 +912,7 @@ export function EntryEditDialog({
             Notas
             <textarea
               value={notes}
-              disabled={readOnly}
+              disabled={readOnly && actorRole !== 'owner'}
               onChange={(event) => setNotes(event.target.value)}
             />
           </label>

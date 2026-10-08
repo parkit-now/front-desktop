@@ -107,6 +107,7 @@ beforeEach(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
   vi.resetAllMocks();
   mock.invoice.id = 'invoice-1';
+  mock.invoice.status = 'issued';
   mock.document.mockResolvedValue({ qrUrl: 'https://example.test/qr' });
   mock.qr.mockResolvedValue('data:image/png;base64,qr');
   mock.render.mockResolvedValue({ ok: true, data: new Uint8Array([1, 2]) });
@@ -227,5 +228,25 @@ describe('acceso a la carpeta del PDF', () => {
     await update(() => resolve({ ok: true }));
     expect(mock.reveal).toHaveBeenCalledOnce();
     expect(folderButton()!.disabled).toBe(false);
+  });
+});
+
+describe('factura manual', () => {
+  it('muestra el número guardado y permite corregirlo desde el detalle', async () => {
+    mock.invoice.status = 'not_required';
+    await render(true, {
+      ...entry,
+      manuallyInvoiced: true,
+      manualInvoiceNumber: '0001-00000042',
+    });
+
+    expect(container.textContent).toContain('Facturada a mano');
+    const number = container.querySelector<HTMLInputElement>(
+      'input[id^="manual-invoice-number-"]',
+    );
+    expect(number?.value).toBe('0001-00000042');
+    expect(
+      container.querySelector('[aria-label="Guardar número de factura"]'),
+    ).not.toBeNull();
   });
 });

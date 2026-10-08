@@ -20,6 +20,7 @@ import { useNetwork } from '../../lib/network/NetworkContext';
 import { EntryDeleteAction } from './EntryDeleteAction';
 import { EntryDeleteDialog } from './EntryDeleteDialog';
 import { entryDeletionBlockers } from './entryDeletion';
+import { InlineEntryField } from './InlineEntryField';
 
 interface Props {
   tenantId: string;
@@ -246,13 +247,16 @@ export function ActiveVehiclesDialog({
       {
         id: 'vehicle',
         accessorFn: (row) =>
-          [row.vehicleBrand, row.vehicleModel].filter(Boolean).join(' '),
+          [row.vehicleBrand, row.vehicleModel, row.color]
+            .filter((value) => value && value !== '—')
+            .join(' '),
         header: 'Vehículo',
         size: 160,
         cell: ({ row }) => (
           <VehicleCell
             brand={row.original.vehicleBrand}
             model={row.original.vehicleModel}
+            color={row.original.color}
           />
         ),
       },
@@ -292,26 +296,50 @@ export function ActiveVehiclesDialog({
       {
         accessorKey: 'color',
         header: 'Color',
-        size: 110,
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         accessorKey: 'cochera',
         header: 'Cochera',
         size: 100,
-        cell: ({ row }) => row.original.cochera || '—',
+        cell: ({ row }) => (
+          <InlineEntryField
+            entry={row.original.entry}
+            field="cochera"
+            tenantId={tenantId}
+            accessToken={accessToken}
+            isOnline={isOnline}
+            disabledReason={
+              allSessions?.find(
+                (session) => session.id === row.original.entry.cashSessionId,
+              )?.closedAt
+                ? 'La caja está cerrada; no se pueden editar sus ingresos.'
+                : undefined
+            }
+          />
+        ),
       },
       {
         accessorKey: 'notes',
         header: 'Notas',
-        size: 200,
-        cell: ({ row }) =>
-          row.original.notes ? (
-            <span className="dt-cell-notes" title={row.original.notes}>
-              {row.original.notes}
-            </span>
-          ) : (
-            '—'
-          ),
+        size: 190,
+        cell: ({ row }) => (
+          <InlineEntryField
+            entry={row.original.entry}
+            field="notes"
+            tenantId={tenantId}
+            accessToken={accessToken}
+            isOnline={isOnline}
+            disabledReason={
+              allSessions?.find(
+                (session) => session.id === row.original.entry.cashSessionId,
+              )?.closedAt && actorRole !== 'owner'
+                ? 'La caja está cerrada; no se pueden editar sus ingresos.'
+                : undefined
+            }
+          />
+        ),
       },
       {
         id: 'actions',
@@ -359,7 +387,16 @@ export function ActiveVehiclesDialog({
         ),
       },
     ],
-    [onExit, actorRole, allInvoices, allSessions, pendingOps, isOnline],
+    [
+      onExit,
+      actorRole,
+      allInvoices,
+      allSessions,
+      pendingOps,
+      isOnline,
+      tenantId,
+      accessToken,
+    ],
   );
 
   return (
@@ -408,12 +445,13 @@ export function ActiveVehiclesDialog({
               allLprDetections === undefined
             }
             emptyMessage="No hay vehículos estacionados en este momento."
-            searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
+            searchPlaceholder="Buscar por ticket, patente, vehículo, color o notas…"
             searchableKeys={[
               'ticketNumber',
               'plate',
               'vehicleBrand',
               'vehicleModel',
+              'color',
               'cochera',
               'notes',
             ]}

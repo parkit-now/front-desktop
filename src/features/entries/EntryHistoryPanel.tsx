@@ -48,6 +48,7 @@ import { DetectionImageDialog } from '../camera/DetectionImageDialog';
 import { EntryDeleteAction } from './EntryDeleteAction';
 import { EntryDeleteDialog } from './EntryDeleteDialog';
 import { entryDeletionBlockers } from './entryDeletion';
+import { InlineEntryField } from './InlineEntryField';
 
 interface Props {
   tenantId: string;
@@ -100,6 +101,9 @@ function invoiceExportValue(row: EntryHistoryRow): string {
       : null;
   return [
     INVOICE_STATE_LABEL[row.invoiceState],
+    row.invoiceState === 'manual' && row.manualInvoiceNumber
+      ? `Número ${row.manualInvoiceNumber}`
+      : null,
     letter ? `Factura ${letter}` : invoice ? voucherLabel(invoice) : null,
     number,
   ]
@@ -132,6 +136,11 @@ function InvoiceCell({ row }: { row: EntryHistoryRow }) {
       ) : null}
       {voucherNumber ? (
         <span className="entry-invoice-number">{voucherNumber}</span>
+      ) : null}
+      {row.invoiceState === 'manual' && row.manualInvoiceNumber ? (
+        <span className="entry-invoice-number">
+          N° {row.manualInvoiceNumber}
+        </span>
       ) : null}
     </div>
   );
@@ -247,17 +256,20 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
   {
     id: 'vehicle',
     accessorFn: (row) =>
-      [row.vehicleBrand, row.vehicleModel].filter(Boolean).join(' '),
+      [row.vehicleBrand, row.vehicleModel, row.color].filter(Boolean).join(' '),
     header: 'Vehículo',
     size: 160,
     meta: {
       exportValue: (row) =>
-        [row.vehicleBrand, row.vehicleModel].filter(Boolean).join('\n'),
+        [row.vehicleBrand, row.vehicleModel, row.color]
+          .filter(Boolean)
+          .join('\n'),
     },
     cell: ({ row }) => (
       <VehicleCell
         brand={row.original.vehicleBrand}
         model={row.original.vehicleModel}
+        color={row.original.color}
       />
     ),
   },
@@ -386,52 +398,76 @@ const INVOICE_COLUMNS: ColumnDef<EntryHistoryRow, unknown>[] = [
   },
 ];
 
-const COLUMNS_TAIL: ColumnDef<EntryHistoryRow, unknown>[] = [
-  {
-    accessorKey: 'rateSnapshotName',
-    header: 'Tarifa',
-    size: 140,
-    cell: ({ row }) =>
-      row.original.rateSnapshotName ? (
-        row.original.rateSnapshotName
-      ) : (
-        <span className="muted">—</span>
+function buildTailColumns(
+  tenantId: string,
+  accessToken: string,
+  isOnline: boolean,
+  closedSessionIds: Set<string>,
+  sessionsLoaded: boolean,
+  canEditClosedNotes: boolean,
+): ColumnDef<EntryHistoryRow, unknown>[] {
+  const disabledReason = (
+    entry: EntryHistoryRow,
+    field: 'notes' | 'cochera',
+  ) =>
+    !sessionsLoaded
+      ? 'Cargando el estado de las cajas.'
+      : entry.cashSessionId &&
+          closedSessionIds.has(entry.cashSessionId) &&
+          !(field === 'notes' && canEditClosedNotes)
+        ? 'La caja está cerrada; no se pueden editar sus ingresos.'
+        : undefined;
+
+  return [
+    {
+      accessorKey: 'rateSnapshotName',
+      header: 'Tarifa',
+      size: 140,
+      cell: ({ row }) =>
+        row.original.rateSnapshotName ? (
+          row.original.rateSnapshotName
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      accessorKey: 'color',
+      header: 'Color',
+      enableHiding: false,
+      meta: { filterOnly: true, displayColumnId: 'vehicle' },
+    },
+    {
+      accessorKey: 'notes',
+      header: 'Notas',
+      size: 190,
+      cell: ({ row }) => (
+        <InlineEntryField
+          entry={row.original}
+          field="notes"
+          tenantId={tenantId}
+          accessToken={accessToken}
+          isOnline={isOnline}
+          disabledReason={disabledReason(row.original, 'notes')}
+        />
       ),
-  },
-  {
-    accessorKey: 'color',
-    header: 'Color',
-    size: 90,
-    cell: ({ row }) =>
-      row.original.color ? (
-        row.original.color
-      ) : (
-        <span className="muted">—</span>
+    },
+    {
+      accessorKey: 'cochera',
+      header: 'Cochera',
+      size: 85,
+      cell: ({ row }) => (
+        <InlineEntryField
+          entry={row.original}
+          field="cochera"
+          tenantId={tenantId}
+          accessToken={accessToken}
+          isOnline={isOnline}
+          disabledReason={disabledReason(row.original, 'cochera')}
+        />
       ),
-  },
-  {
-    accessorKey: 'notes',
-    header: 'Notas',
-    size: 220,
-    cell: ({ row }) =>
-      row.original.notes ? (
-        row.original.notes
-      ) : (
-        <span className="muted">—</span>
-      ),
-  },
-  {
-    accessorKey: 'cochera',
-    header: 'Cochera',
-    size: 85,
-    cell: ({ row }) =>
-      row.original.cochera ? (
-        row.original.cochera
-      ) : (
-        <span className="muted">—</span>
-      ),
-  },
-];
+    },
+  ];
+}
 
 const FILTERABLE_COLUMNS = [
   'enteredAt',
@@ -452,6 +488,7 @@ const SEARCHABLE_KEYS = [
   'plate',
   'vehicleBrand',
   'vehicleModel',
+  'color',
   'invoiceReceiver',
   'notes',
 ];
@@ -548,6 +585,12 @@ export function EntryHistoryPanel({
     [allSessions],
   );
 
+  const closedSessionIds = useMemo(
+    () =>
+      new Set((allSessions ?? []).filter((s) => s.closedAt).map((s) => s.id)),
+    [allSessions],
+  );
+
   const cashSessionFilterOptions = useMemo<DataTableFilterOption[]>(
     () =>
       (allSessions ?? []).map((s) => ({
@@ -564,7 +607,14 @@ export function EntryHistoryPanel({
       AMOUNT_PAID_COLUMN,
       ...INVOICE_COLUMNS,
       buildCashSessionColumn(sessionLabelById, sessionOpenedAtById),
-      ...COLUMNS_TAIL,
+      ...buildTailColumns(
+        tenantId,
+        accessToken,
+        isOnline,
+        closedSessionIds,
+        allSessions !== undefined,
+        actorRole === 'owner',
+      ),
       ...(actorRole === 'owner'
         ? [
             {
@@ -603,6 +653,9 @@ export function EntryHistoryPanel({
       allSessions,
       pendingOps,
       isOnline,
+      tenantId,
+      accessToken,
+      closedSessionIds,
     ],
   );
 
