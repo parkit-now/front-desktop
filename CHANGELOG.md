@@ -1,3 +1,22 @@
+# [1.15.0](https://github.com/parkit-now/front-desktop/compare/v1.14.0...v1.15.0) (2026-10-08)
+
+
+### Features
+
+* add Excel export functionality to DataTable ([9aa3e79](https://github.com/parkit-now/front-desktop/commit/9aa3e79ae633dec741c23aa6645473b2582820fc))
+* add InlineEntryField component for editable fields in entry dialogs ([c602da8](https://github.com/parkit-now/front-desktop/commit/c602da828c0247feae5b828c82c7b4144e7cfd8b))
+* **api-types:** add manualInvoiceNumber field to components for invoice tracking ([399f9ef](https://github.com/parkit-now/front-desktop/commit/399f9efec89a4362997d30238a39eb01f65b307a))
+* **cash-session:** refactor cash session components and add movements dialog ([6734d77](https://github.com/parkit-now/front-desktop/commit/6734d770db8b0201af55eea7495804f651388823))
+* **data-table:** add dateTimeSorting utility and apply to relevant components ([9c183f9](https://github.com/parkit-now/front-desktop/commit/9c183f9241c3c7401c9934696216af43cf9d96e3))
+* **data-table:** add VehicleCell component and enhance vehicle display in tables ([9b824b9](https://github.com/parkit-now/front-desktop/commit/9b824b977d26e6f4f3d66021ef5b767634bcda5d))
+* **facturacion:** autocompletar el CUIT del pagador QR al cobrar y facturar ([7b6fd15](https://github.com/parkit-now/front-desktop/commit/7b6fd15f6c188037357e356fa183d00847195a02))
+* implement entry deletion functionality with confirmation dialog ([7e0f499](https://github.com/parkit-now/front-desktop/commit/7e0f499203133a087210d5deebbdd2f10087f0e4))
+* **invoice-confirmation:** implement useInvoiceConfirmation hook for managing invoice issuance and preview ([9d09e36](https://github.com/parkit-now/front-desktop/commit/9d09e3656d7b146fd601cf3468da559ca1a57893))
+* **invoice-history:** implement invoice history refresh functionality and related tests ([0e6b39c](https://github.com/parkit-now/front-desktop/commit/0e6b39c238fb0f965e5aeec36ed601c26217bdfd))
+* **invoice:** update PDF filename format and handle missing data gracefully ([d04afe4](https://github.com/parkit-now/front-desktop/commit/d04afe4d929dce313cd66a27ae9cfe3c5b292549))
+* **saved-files:** implement functionality to remember and show saved files in folder ([8a19fb7](https://github.com/parkit-now/front-desktop/commit/8a19fb78a4c86cf7dd39ba387d558dabd3b70f05))
+* **SessionView:** enhance workspace content styling for history section ([d68f30a](https://github.com/parkit-now/front-desktop/commit/d68f30a567c0f971c342e45d9e76f06170e857b0))
+
 # [1.14.0](https://github.com/parkit-now/front-desktop/compare/v1.13.0...v1.14.0) (2026-10-06)
 
 
