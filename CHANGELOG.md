@@ -1,3 +1,12 @@
+# [1.16.0](https://github.com/parkit-now/front-desktop/compare/v1.15.0...v1.16.0) (2026-10-08)
+
+
+### Features
+
+* **clientes:** gestionar fichas y mostrar contactos al facturar ([1802e5e](https://github.com/parkit-now/front-desktop/commit/1802e5e4b5d652cab524baaeece4de4391cacec8))
+* implement discard all detections functionality with confirmation dialog and toast notifications ([7a3e205](https://github.com/parkit-now/front-desktop/commit/7a3e205d177d5e1b14b48846a27bcc9081e0e855))
+* update invoice status handling and improve documentation for payment methods ([aff32e9](https://github.com/parkit-now/front-desktop/commit/aff32e9d2e768036884acaa658d4171526f2fa0b))
+
 # [1.15.0](https://github.com/parkit-now/front-desktop/compare/v1.14.0...v1.15.0) (2026-10-08)
 
 
