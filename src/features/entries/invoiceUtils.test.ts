@@ -539,7 +539,7 @@ describe('historial: estado de facturación (gemelo del panel web)', () => {
     expect(countInvoiceChips(rows)).toEqual({ all: 6, unbilled: 3 });
   });
 
-  it('el PDF se llama patente-CAE-número.pdf', () => {
+  it('el PDF se llama número-punto de venta_CAE_patente.pdf', () => {
     expect(
       invoicePdfFileName({
         plate: 'AB123CD',
@@ -547,6 +547,29 @@ describe('historial: estado de facturación (gemelo del panel web)', () => {
         ptoVta: 1,
         cbteNro: 6,
       }),
-    ).toBe('AB123CD-86390928613357-0001-00000006.pdf');
+    ).toBe('00000006-0001_86390928613357_AB123CD.pdf');
+    expect(
+      invoicePdfFileName({
+        plate: 'IXO431',
+        cae: '86406602350114',
+        ptoVta: 7,
+        cbteNro: 9,
+      }),
+    ).toBe('00000009-0007_86406602350114_IXO431.pdf');
+  });
+
+  it('el nombre del PDF omite datos ausentes sin separadores sobrantes', () => {
+    expect(invoicePdfFileName({ plate: 'IXO431', ptoVta: 7, cbteNro: 9 })).toBe(
+      '00000009-0007_IXO431.pdf',
+    );
+    expect(
+      invoicePdfFileName({
+        plate: 'IXO431',
+        cae: '86406602350114',
+        ptoVta: 7,
+        cbteNro: null,
+      }),
+    ).toBe('86406602350114_IXO431.pdf');
+    expect(invoicePdfFileName({ plate: 'IXO431' })).toBe('IXO431.pdf');
   });
 });

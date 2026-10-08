@@ -79,6 +79,23 @@ export function defaultSortOrder(keys: string[]): SortingState {
   return keys.map((id) => ({ id, desc: false }));
 }
 
+// Keep date-only accessors for filters while sorting by the full timestamp.
+export function dateTimeSorting<TData>(
+  getDate: (row: TData) => string | null | undefined,
+): SortingFn<TData> {
+  const timestamp = (row: TData) => {
+    const value = getDate(row);
+    const parsed = value ? Date.parse(value) : NaN;
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+  };
+
+  return (rowA, rowB) => {
+    const left = timestamp(rowA.original);
+    const right = timestamp(rowB.original);
+    return left === right ? 0 : left < right ? -1 : 1;
+  };
+}
+
 export function dedupeIds(ids: readonly string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];

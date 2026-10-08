@@ -1,14 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { FolderOpen, Save } from 'lucide-react';
 import QRCode from 'qrcode';
-import { getInvoiceDocument, issueInvoice } from '../../lib/api/arca';
+import { getInvoiceDocument } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
 import { translateApiError, translateErrorCode } from '../../lib/api/translate';
 import { localDb, type LocalEntry } from '../../lib/db/localDb';
 import { formatArs } from '../../lib/format/argentina';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
-import { syncService } from '../../lib/sync/SyncService';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
 import { Switch } from '../../lib/ui/Switch';
 import { renderInvoiceHtml } from './invoiceDocument';
@@ -27,12 +27,14 @@ import {
 } from './invoiceUtils';
 import type { ArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
+import { useInvoiceConfirmation } from './useInvoiceConfirmation';
+import { saveEntryInlineField } from './entryInlineFields';
 
 /**
  * Arma el PDF del comprobante con el Chromium de Electron y lo ofrece con
- * «Guardar como…». `false` si la persona canceló el diálogo.
+ * «Guardar como…». Devuelve la ruta o `null` si no se guardó en Electron.
  */
-async function savePdf(fileName: string, html: string): Promise<boolean> {
+async function savePdf(fileName: string, html: string): Promise<string | null> {
   const desktop = window.parkitDesktop;
   if (!desktop?.renderPdf || !desktop.saveFile) {
     // Renderer abierto en un navegador (dev sin Electron): el diálogo de
@@ -42,7 +44,7 @@ async function savePdf(fileName: string, html: string): Promise<boolean> {
     preview.document.write(html);
     preview.document.close();
     preview.print();
-    return false;
+    return null;
   }
   const pdf = await desktop.renderPdf({ html });
   if (!pdf.ok) throw new Error(pdf.detail ?? pdf.reason);
@@ -53,7 +55,7 @@ async function savePdf(fileName: string, html: string): Promise<boolean> {
   if (!result.ok && result.reason === 'write-failed') {
     throw new Error(result.detail ?? 'write-failed');
   }
-  return result.ok;
+  return result.ok ? result.path : null;
 }
 
 /**
@@ -82,8 +84,22 @@ export function InvoiceSection({
   emitter: ArcaEmitter | null;
 }) {
   const { showToast } = useToast();
-  const [busy, setBusy] = useState<'issue' | 'pdf' | 'manual' | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState<
+    'pdf' | 'manual' | 'number' | 'folder' | null
+  >(null);
+  const [manualNumberDraft, setManualNumberDraft] = useState(
+    entry.manualInvoiceNumber ?? '',
+  );
+  const [savedPdf, setSavedPdf] = useState<{
+    invoiceId: string;
+    path: string;
+  } | null>(null);
+  const confirmation = useInvoiceConfirmation({
+    tenantId,
+    entryId: entry.id,
+    bearer: accessToken,
+  });
+  const actionBusy = busy !== null || confirmation.busy;
   // «Emitir factura» abre primero el receptor (consumidor final o CUIT).
   const [issueOpen, setIssueOpen] = useState(false);
   const receiver = useInvoiceReceiver({
@@ -91,6 +107,9 @@ export function InvoiceSection({
     accessToken,
     isOnline,
     plate: entry.plate,
+    entryId: entry.id,
+    suggestionEnabled: issueOpen,
+    frozen: actionBusy || confirmation.snapshot !== null,
   });
   const invoice = useLiveQuery(
     () => localDb.invoices.where('entryId').equals(entry.id).first(),
@@ -103,6 +122,10 @@ export function InvoiceSection({
     [entry.id],
   );
   const current = liveEntry ?? entry;
+
+  useEffect(() => {
+    setManualNumberDraft(current.manualInvoiceNumber ?? '');
+  }, [entry.id, current.manualInvoiceNumber]);
 
   const state = resolveInvoiceState(
     {
@@ -131,14 +154,7 @@ export function InvoiceSection({
   });
 
   async function issue() {
-    setBusy('issue');
-    try {
-      const result = await issueInvoice({
-        tenantId,
-        entryId: entry.id,
-        bearer: accessToken,
-        receiverCuit: receiver.cuitToSend,
-      });
+    await confirmation.confirm((result) => {
       if (result.status === 'issued') setIssueOpen(false);
       showToast(
         result.status === 'issued'
@@ -153,14 +169,7 @@ export function InvoiceSection({
               kind: 'error',
             },
       );
-    } catch (error) {
-      showToast({ message: translateApiError(error), kind: 'error' });
-    } finally {
-      setBusy(null);
-      setConfirmOpen(false);
-      // La fila completa (CAE, receptor, número) llega por el feed de sync.
-      void syncService.pullInvoices().catch(() => undefined);
-    }
+    });
   }
 
   async function downloadPdf() {
@@ -184,7 +193,10 @@ export function InvoiceSection({
           invoicePdfFileName({ plate: current.plate, ...invoice }),
           renderInvoiceHtml(doc, qr),
         );
-        if (saved) showToast({ message: 'PDF guardado.', kind: 'success' });
+        if (saved) {
+          setSavedPdf({ invoiceId: invoice.id, path: saved });
+          showToast({ message: 'PDF guardado.', kind: 'success' });
+        }
       } catch {
         showToast({
           message: 'No se pudo generar el PDF. Probá de nuevo.',
@@ -193,6 +205,28 @@ export function InvoiceSection({
       }
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function showPdfInFolder() {
+    const desktop = window.parkitDesktop;
+    if (
+      !savedPdf ||
+      savedPdf.invoiceId !== invoice?.id ||
+      !desktop?.showSavedFileInFolder
+    )
+      return;
+    setBusy('folder');
+    try {
+      const result = await desktop.showSavedFileInFolder(savedPdf.path);
+      if (!result.ok) throw new Error('show-file-failed');
+    } catch {
+      showToast({
+        message: 'No se pudo encontrar o abrir el PDF guardado.',
+        kind: 'error',
+      });
     } finally {
       setBusy(null);
     }
@@ -212,11 +246,13 @@ export function InvoiceSection({
         });
         await localDb.entries.update(entry.id, {
           manuallyInvoiced: result.manuallyInvoiced,
+          manualInvoiceNumber: result.manualInvoiceNumber ?? undefined,
           version: result.version,
           syncSeq: result.syncSeq,
           updatedAt: result.updatedAt,
         });
       } else {
+        const expectedVersion = current.version;
         await localDb.transaction(
           'rw',
           localDb.entries,
@@ -224,7 +260,10 @@ export function InvoiceSection({
           async () => {
             await localDb.entries.update(entry.id, {
               manuallyInvoiced: next,
-              version: current.version + 1,
+              manualInvoiceNumber: next
+                ? current.manualInvoiceNumber
+                : undefined,
+              version: expectedVersion + 1,
               updatedAt: new Date().toISOString(),
             });
             await enqueuePendingOp({
@@ -234,7 +273,7 @@ export function InvoiceSection({
               entityId: entry.id,
               payload: {
                 kind: 'correction',
-                expectedVersion: current.version,
+                expectedVersion,
                 body,
               },
               status: 'pending',
@@ -242,6 +281,35 @@ export function InvoiceSection({
           },
         );
       }
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveManualNumber() {
+    if (
+      actionBusy ||
+      manualNumberDraft.trim() === (current.manualInvoiceNumber ?? '')
+    )
+      return;
+    setBusy('number');
+    try {
+      await saveEntryInlineField({
+        tenantId,
+        entryId: entry.id,
+        accessToken,
+        isOnline,
+        field: 'manualInvoiceNumber',
+        value: manualNumberDraft,
+      });
+      showToast({
+        message: isOnline
+          ? 'Número de factura guardado.'
+          : 'Número de factura guardado localmente.',
+        kind: 'success',
+      });
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
@@ -297,14 +365,14 @@ export function InvoiceSection({
             receiver={receiver}
             emitter={emitter?.condicionIva}
             isOnline={isOnline}
-            disabled={busy !== null}
+            disabled={actionBusy}
             showLabel={false}
           />
           <div className="entry-invoice-actions">
             <button
               type="button"
               className="ghost-button"
-              disabled={busy !== null}
+              disabled={actionBusy}
               onClick={() => setIssueOpen(false)}
             >
               Cancelar
@@ -312,8 +380,14 @@ export function InvoiceSection({
             <button
               type="button"
               className="primary-button"
-              disabled={busy !== null || !isOnline || !receiver.ready}
-              onClick={() => setConfirmOpen(true)}
+              disabled={actionBusy || !isOnline || !receiver.ready}
+              onClick={() =>
+                void confirmation.open({
+                  letter,
+                  cuit: receiver.cuitToSend,
+                  receiverName: receiver.receiverName,
+                })
+              }
             >
               {letter ? `Emitir Factura ${letter}` : 'Emitir factura'}
             </button>
@@ -326,17 +400,33 @@ export function InvoiceSection({
           <button
             type="button"
             className="ghost-button"
-            disabled={busy !== null || !isOnline}
+            disabled={actionBusy || !isOnline}
             onClick={() => void downloadPdf()}
           >
             {busy === 'pdf' ? 'Descargando…' : 'Descargar PDF'}
+          </button>
+        ) : null}
+        {state === 'issued' &&
+        savedPdf &&
+        savedPdf.invoiceId === invoice?.id &&
+        window.parkitDesktop?.showSavedFileInFolder ? (
+          <button
+            type="button"
+            className="ghost-button"
+            title="Mostrar PDF en carpeta"
+            aria-label="Mostrar PDF en carpeta"
+            aria-busy={busy === 'folder'}
+            disabled={actionBusy}
+            onClick={() => void showPdfInFolder()}
+          >
+            <FolderOpen size={18} />
           </button>
         ) : null}
         {canIssue && !issueOpen ? (
           <button
             type="button"
             className="primary-button"
-            disabled={busy !== null || !isOnline}
+            disabled={actionBusy || !isOnline}
             onClick={() => setIssueOpen(true)}
           >
             {state === 'error' ? 'Reintentar' : 'Emitir factura'}
@@ -345,28 +435,69 @@ export function InvoiceSection({
         {showManual ? (
           <Switch
             checked={state === 'manual'}
-            disabled={busy !== null}
+            disabled={actionBusy}
             onChange={(next) => void toggleManual(next)}
             label="Facturada"
           />
         ) : null}
         {!isOnline && (canIssue || state === 'issued') ? (
-          <span className="muted">Necesitás conexión para esto.</span>
+          <span className="muted">
+            {state === 'issued'
+              ? 'Necesitás conexión para descargar el PDF.'
+              : 'Necesitás conexión para emitir la factura.'}
+          </span>
         ) : null}
       </div>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        {...describeIssueConfirmation({
-          letter,
-          cuit: receiver.cuitToSend,
-          receiverName: receiver.receiverName,
-          amount: formatArs(paidTotal ?? 0),
-        })}
-        isPending={busy === 'issue'}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={issue}
-      />
+      {showManual && state === 'manual' ? (
+        <div className="entry-manual-invoice-number">
+          <label htmlFor={`manual-invoice-number-${entry.id}`}>
+            Número de factura
+          </label>
+          <div>
+            <input
+              id={`manual-invoice-number-${entry.id}`}
+              type="text"
+              value={manualNumberDraft}
+              maxLength={40}
+              disabled={actionBusy}
+              onChange={(event) => setManualNumberDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void saveManualNumber();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="ghost-button"
+              title="Guardar número de factura"
+              aria-label="Guardar número de factura"
+              disabled={
+                actionBusy ||
+                manualNumberDraft.trim() === (current.manualInvoiceNumber ?? '')
+              }
+              onClick={() => void saveManualNumber()}
+            >
+              <Save size={17} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmation.snapshot ? (
+        <ConfirmDialog
+          open
+          {...describeIssueConfirmation({
+            ...confirmation.snapshot,
+            amount: formatArs(confirmation.snapshot.amount),
+          })}
+          isPending={confirmation.busy}
+          onCancel={confirmation.close}
+          onConfirm={issue}
+        />
+      ) : null}
     </section>
   );
 }

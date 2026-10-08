@@ -33,6 +33,10 @@ import { calcSuggestedAmount, generateUuidV7 } from './entryUtils';
 import { calcAmountDue } from './pricing';
 import { prepaidOf } from './reservationUtils';
 import { InvoiceSection } from './InvoiceSection';
+import {
+  INVOICE_HISTORY_REFRESH_WARNING,
+  refreshInvoiceHistory,
+} from './invoiceHistory';
 import type { ArcaEmitter } from './useArcaEmitter';
 import { sortByName } from '../payment-methods/paymentMethodUtils';
 import { AppSelect } from '../../lib/ui/AppSelect';
@@ -521,7 +525,10 @@ export function EntryEditDialog({
     body.payments !== undefined;
 
   const valid =
-    !readOnly &&
+    (!readOnly ||
+      (actorRole === 'owner' &&
+        body.notes !== undefined &&
+        Object.keys(body).every((field) => field === 'notes'))) &&
     changed &&
     !!nextPlate &&
     !!nextEnteredAt &&
@@ -661,6 +668,8 @@ export function EntryEditDialog({
                 result.rateSnapshotMediaEstadiaPriceArs != null
                   ? String(result.rateSnapshotMediaEstadiaPriceArs)
                   : undefined,
+              manuallyInvoiced: result.manuallyInvoiced,
+              manualInvoiceNumber: result.manualInvoiceNumber ?? undefined,
               version: result.version,
               syncSeq: result.syncSeq,
               updatedAt: result.updatedAt,
@@ -742,6 +751,12 @@ export function EntryEditDialog({
           : 'Movimiento actualizado localmente.',
         kind: 'success',
       });
+      if (
+        isOnline &&
+        !(await refreshInvoiceHistory({ tenantId, bearer: accessToken }))
+      ) {
+        showToast({ message: INVOICE_HISTORY_REFRESH_WARNING, kind: 'info' });
+      }
       onClose();
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
@@ -771,7 +786,9 @@ export function EntryEditDialog({
             <h3>Editar movimiento</h3>
             {readOnly ? (
               <p className="muted">
-                La caja está cerrada. Este movimiento no se puede editar.
+                {actorRole === 'owner'
+                  ? 'La caja está cerrada. Solo podés editar las notas.'
+                  : 'La caja está cerrada. Este movimiento no se puede editar.'}
               </p>
             ) : null}
           </div>
@@ -895,7 +912,7 @@ export function EntryEditDialog({
             Notas
             <textarea
               value={notes}
-              disabled={readOnly}
+              disabled={readOnly && actorRole !== 'owner'}
               onChange={(event) => setNotes(event.target.value)}
             />
           </label>

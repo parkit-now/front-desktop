@@ -1208,6 +1208,30 @@ h2 {
   overflow-y: auto;
 }
 
+.workspace-content--history {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-content--history > .dt-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workspace-content--history .dt-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.workspace-content--history .dt-column-panel {
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+}
+
 .dashboard-card {
   min-width: 0;
   border: 1px solid #d0d9e6;
@@ -2139,6 +2163,47 @@ h2 {
   background: #e3efff;
 }
 
+.dt-vehicle-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.dt-vehicle-cell strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dt-vehicle-cell span {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.dt-vehicle-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.dt-vehicle-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  text-transform: capitalize;
+}
+
+.dt-vehicle-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border: 1px solid #98a6b9;
+  border-radius: 50%;
+}
+
 .dt-table .pinned-left {
   position: sticky;
   z-index: 2;
@@ -2171,6 +2236,101 @@ h2 {
   background: #f8fafc;
   color: #b7c4d7;
   cursor: not-allowed;
+}
+
+.entry-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.entry-delete-action {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid #f3c3c3;
+  border-radius: 8px;
+  background: #fff;
+  color: #b42318;
+  cursor: pointer;
+}
+
+.entry-delete-action:hover:not([aria-disabled='true']),
+.entry-delete-action:focus-visible:not([aria-disabled='true']) {
+  background: #fff1f0;
+}
+
+.entry-delete-action[aria-disabled='true'] {
+  border-color: #e3e8ef;
+  color: #aeb7c3;
+  background: #f8fafc;
+  cursor: not-allowed;
+}
+
+.entry-delete-tooltip {
+  position: fixed;
+  z-index: 110;
+  max-width: min(290px, calc(100vw - 16px));
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: #233044;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2);
+}
+
+.entry-delete-backdrop {
+  z-index: 100;
+}
+
+.entry-delete-dialog {
+  width: min(500px, 100%);
+  max-height: min(90vh, 700px);
+  overflow-y: auto;
+}
+
+.entry-delete-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 0;
+  border-block: 1px solid #e5ecf6;
+}
+
+.entry-delete-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.entry-delete-summary dt {
+  color: #667085;
+}
+.entry-delete-summary dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.entry-delete-reason {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.entry-delete-reason textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid #c9d6e8;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
 }
 
 .entry-payment-summary {
@@ -4485,6 +4645,49 @@ h2 {
   flex: none;
 }
 
+.cash-session-movements-backdrop {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.cash-session-movements-dialog {
+  width: min(1400px, 100%);
+  min-width: 0;
+  max-width: 1400px;
+  height: min(800px, 90vh);
+  display: flex;
+  flex-direction: column;
+}
+
+.cash-session-movements-dialog .rate-dialog-header {
+  flex: none;
+}
+
+.cash-session-movements-dialog__table {
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding-top: 16px;
+}
+
+.cash-session-movements-dialog__table .dt-card {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cash-session-movements-dialog__table .dt-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 .active-vehicles-dialog__table {
   flex: 1;
   min-height: 0;
@@ -4534,12 +4737,149 @@ h2 {
   z-index: 5;
 }
 
-.dt-cell-notes {
+.dt-inline-field-value {
   display: block;
-  max-width: 200px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dt-inline-field {
+  min-width: 0;
+}
+
+.dt-inline-field--notes {
+  width: 190px;
+  max-width: 190px;
+}
+
+.entry-manual-invoice-number {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.entry-manual-invoice-number > div {
+  display: flex;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.entry-manual-invoice-number input {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #cbd9ed;
+  border-radius: 7px;
+  background: #fff;
+  color: #1d2939;
+}
+
+.dt-inline-field-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.dt-inline-field-trigger.is-empty {
+  justify-content: center;
+  width: 30px;
+  padding: 4px;
+}
+
+.dt-inline-field-trigger span {
+  flex: 1;
+  min-width: 0;
+}
+
+.dt-inline-field-trigger svg {
+  flex: none;
+  color: var(--color-muted);
+  opacity: 0.65;
+}
+
+.dt-inline-field-trigger:hover:not([aria-disabled='true']),
+.dt-inline-field-trigger:focus-visible {
+  border-color: #bdd3f2;
+  background: #f7fbff;
+}
+
+.dt-inline-field-trigger[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.dt-inline-field-trigger[aria-disabled='true'] svg {
+  opacity: 0.35;
+}
+
+.dt-inline-field-editor textarea,
+.dt-inline-field-editor input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #bdd3f2;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.dt-inline-field-editor textarea {
+  min-height: 66px;
+  max-height: 160px;
+  resize: vertical;
+}
+
+.dt-inline-field-editor input {
+  min-height: 34px;
+}
+
+.dt-inline-field-editor textarea:focus-visible,
+.dt-inline-field-editor input:focus-visible {
+  outline: 2px solid var(--color-brand-strong);
+  outline-offset: 1px;
+}
+
+.dt-inline-field-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.dt-inline-field-actions button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #bdd3f2;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-brand-strong);
+  cursor: pointer;
+}
+
+.dt-inline-field-actions button:hover:not(:disabled) {
+  background: #eaf3ff;
+}
+
+.dt-inline-field-actions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 /* AppSelect — custom combobox trigger */

@@ -38,7 +38,7 @@ export function ExitControls({
       localDb.entries
         .where('tenantId')
         .equals(tenantId)
-        .filter((e) => !e.leftAt)
+        .filter((e) => !e.leftAt && !e.deletedAt)
         .count(),
     [tenantId],
   );
@@ -54,7 +54,7 @@ export function ExitControls({
       const inSession = await localDb.entries
         .where('cashSessionId')
         .equals(session.id)
-        .filter((e) => e.ticketNumber === n && !e.leftAt)
+        .filter((e) => e.ticketNumber === n && !e.leftAt && !e.deletedAt)
         .first();
       if (inSession) return inSession;
     }
@@ -63,7 +63,7 @@ export function ExitControls({
     return localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((e) => e.ticketNumber === n && !e.leftAt)
+      .filter((e) => e.ticketNumber === n && !e.leftAt && !e.deletedAt)
       .first();
   }
 

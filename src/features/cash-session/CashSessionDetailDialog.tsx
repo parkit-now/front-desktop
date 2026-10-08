@@ -1,5 +1,6 @@
 import { History, X } from 'lucide-react';
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
+import { useEscapeKey } from '../../lib/ui/useEscapeKey';
 import { updateCashSession } from '../../lib/api/cash-sessions';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb, type LocalCashSession } from '../../lib/db/localDb';
@@ -17,6 +18,7 @@ interface Props {
   accessToken: string;
   onClose: () => void;
   onViewMovements?: (session: LocalCashSession) => void;
+  suspended?: boolean;
 }
 
 export function CashSessionDetailDialog({
@@ -25,18 +27,13 @@ export function CashSessionDetailDialog({
   accessToken,
   onClose,
   onViewMovements,
+  suspended = false,
 }: Props) {
   const { isOnline } = useNetwork();
   const { triggerSync } = useSync();
   const { showToast } = useToast();
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose, !suspended);
 
   const saveNotes = useCallback(
     async (notes: string): Promise<void> => {
@@ -95,6 +92,8 @@ export function CashSessionDetailDialog({
     <div
       className="rate-dialog-backdrop"
       role="presentation"
+      inert={suspended}
+      aria-hidden={suspended || undefined}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -102,7 +101,7 @@ export function CashSessionDetailDialog({
       <section
         className="rate-dialog cash-session-detail-dialog"
         role="dialog"
-        aria-modal="true"
+        aria-modal={!suspended}
         aria-labelledby="cash-session-detail-title"
       >
         <header className="rate-dialog-header">
@@ -135,7 +134,7 @@ export function CashSessionDetailDialog({
               onClick={() => onViewMovements(session)}
             >
               <History size={15} aria-hidden="true" />
-              Ver movimientos en el historial
+              Ver movimientos
             </button>
           ) : null}
         </div>

@@ -32,6 +32,7 @@ import {
   writePersistedTableState,
 } from '../table-view-template';
 import { ColumnPicker } from './components/ColumnPicker';
+import { ExcelExportButton } from './components/ExcelExportButton';
 import { FilterPanel } from './components/FilterPanel';
 import { Pagination } from './components/Pagination';
 import { Switch } from '../../lib/ui/Switch';
@@ -251,6 +252,7 @@ export function DataTable<TData>({
   templateScope,
   headerAction,
   toolbarExtra,
+  excelExport,
   onRefresh,
   refreshDisabled,
   serverState,
@@ -309,6 +311,34 @@ export function DataTable<TData>({
       ...initialPersistedStateRef.current?.config.columns.visibility,
     }),
   );
+  const effectiveColumnVisibility = useMemo<VisibilityState>(() => {
+    const visibility = { ...columnVisibility };
+    const grouped = new Map<string, string[]>();
+    columns.forEach((column) => {
+      if (!column.meta?.filterOnly) return;
+      const id =
+        'id' in column && column.id
+          ? column.id
+          : 'accessorKey' in column
+            ? String(column.accessorKey)
+            : '';
+      if (!id) return;
+      visibility[id] = false;
+      const displayId = column.meta.displayColumnId;
+      if (displayId) {
+        grouped.set(displayId, [...(grouped.get(displayId) ?? []), id]);
+      }
+    });
+    grouped.forEach((oldIds, displayId) => {
+      if (columnVisibility[displayId] !== undefined) return;
+      if (oldIds.some((id) => columnVisibility[id] === true)) {
+        visibility[displayId] = true;
+      } else if (oldIds.every((id) => columnVisibility[id] === false)) {
+        visibility[displayId] = false;
+      }
+    });
+    return visibility;
+  }, [columnVisibility, columns]);
   const [columnOrder, setColumnOrder] = useState<string[]>(
     () => initialPersistedStateRef.current?.config.columns.order ?? [],
   );
@@ -362,7 +392,7 @@ export function DataTable<TData>({
       columnFilters,
       globalFilter,
       sorting,
-      columnVisibility,
+      columnVisibility: effectiveColumnVisibility,
       columnOrder,
       columnPinning,
       pagination,
@@ -442,7 +472,7 @@ export function DataTable<TData>({
 
       if (!sanitized) {
         setGlobalFilter('');
-        setColumnFilters([]);
+        setColumnFilters(initialColumnFilters ?? []);
         setSorting(initialSorting ?? []);
         setColumnVisibility(initialColumnVisibility);
         setColumnOrder([]);
@@ -458,7 +488,7 @@ export function DataTable<TData>({
                 order: [],
                 pinnedLeft: [],
               },
-              filters: [],
+              filters: initialColumnFilters ?? [],
               sorting: initialSorting ?? [],
               globalSearch: '',
               pagination: { pageSize: initialPageSize },
@@ -486,6 +516,7 @@ export function DataTable<TData>({
     },
     [
       initialColumnVisibility,
+      initialColumnFilters,
       initialPageSize,
       initialSorting,
       filterNormalizers,
@@ -554,7 +585,7 @@ export function DataTable<TData>({
     return {
       version: 1,
       columns: {
-        visibility: columnVisibility,
+        visibility: effectiveColumnVisibility,
         order: columnOrder,
         pinnedLeft: columnPinning.left ?? [],
       },
@@ -570,7 +601,7 @@ export function DataTable<TData>({
     columnFilters,
     columnOrder,
     columnPinning.left,
-    columnVisibility,
+    effectiveColumnVisibility,
     globalFilter,
     pagination.pageSize,
     sorting,
@@ -685,6 +716,13 @@ export function DataTable<TData>({
             filterOptionsByColumn={filterOptionsByColumn}
           />
           {toolbarExtra}
+          {excelExport && !serverState ? (
+            <ExcelExportButton
+              table={table}
+              options={excelExport}
+              disabled={isLoading}
+            />
+          ) : null}
           <TemplateSelector
             scope={templateScope}
             selectedTemplateId={selectedTemplateId}

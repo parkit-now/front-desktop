@@ -18,7 +18,7 @@ export function CameraRulesBridge({ tenantId }: { tenantId: string | null }) {
         const entries = await localDb.entries
           .where('tenantId')
           .equals(tenantId)
-          .filter((row) => !row.leftAt)
+          .filter((row) => !row.leftAt && !row.deletedAt)
           .toArray();
         const pending = await localDb.lprDetectionEvents
           .where('[tenantId+status]')

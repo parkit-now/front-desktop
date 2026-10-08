@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { localDb, type LocalCashSession } from '../../lib/db/localDb';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { DataTable } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import { CashSessionDetailDialog } from './CashSessionDetailDialog';
 import {
   computeSummariesBySession,
@@ -14,6 +15,7 @@ interface Props {
   tenantId: string;
   accessToken: string;
   onSelectSession?: (session: LocalCashSession) => void;
+  detailSuspended?: boolean;
 }
 
 const FILTERABLE_COLUMNS = ['openedAt', 'closedAt'];
@@ -28,6 +30,7 @@ const COLUMNS_HEAD: ColumnDef<LocalCashSession, unknown>[] = [
     header: 'Apertura',
     size: 160,
     filterFn: 'dateRange',
+    sortingFn: dateTimeSorting((row) => row.openedAt),
     cell: ({ row }) => formatArgentinaDateTime(row.original.openedAt),
   },
   {
@@ -35,6 +38,7 @@ const COLUMNS_HEAD: ColumnDef<LocalCashSession, unknown>[] = [
     header: 'Cierre',
     size: 160,
     filterFn: 'dateRange',
+    sortingFn: dateTimeSorting((row) => row.closedAt),
     cell: ({ row }) =>
       row.original.closedAt ? (
         formatArgentinaDateTime(row.original.closedAt)
@@ -120,6 +124,7 @@ export function CashSessionHistoryPanel({
   tenantId,
   accessToken,
   onSelectSession,
+  detailSuspended = false,
 }: Props) {
   const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
 
@@ -141,13 +146,20 @@ export function CashSessionHistoryPanel({
 
   const transactions = useLiveQuery(
     () =>
-      localDb.paymentTransactions.where('tenantId').equals(tenantId).toArray(),
+      localDb.paymentTransactions
+        .where('tenantId')
+        .equals(tenantId)
+        .filter((tx) => !tx.deletedAt)
+        .toArray(),
     [tenantId],
   );
 
   // Counting through the cashSessionId index keeps this off the full entry rows.
   const vehicleCounts = useLiveQuery(async () => {
-    const keys = await localDb.entries.orderBy('cashSessionId').keys();
+    const keys = await localDb.entries
+      .orderBy('cashSessionId')
+      .filter((entry) => !entry.deletedAt)
+      .keys();
     const counts = new Map<string, number>();
     for (const key of keys) {
       if (typeof key !== 'string') continue;
@@ -205,14 +217,8 @@ export function CashSessionHistoryPanel({
           tenantId={tenantId}
           accessToken={accessToken}
           onClose={() => setDetailSessionId(null)}
-          onViewMovements={
-            onSelectSession
-              ? (session) => {
-                  setDetailSessionId(null);
-                  onSelectSession(session);
-                }
-              : undefined
-          }
+          suspended={detailSuspended}
+          onViewMovements={onSelectSession}
         />
       ) : null}
     </div>

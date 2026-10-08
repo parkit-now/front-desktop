@@ -67,6 +67,7 @@ export function ArrivalNotices({ tenantId }: Props) {
       .filter(
         (entry) =>
           !entry.leftAt &&
+          !entry.deletedAt &&
           Boolean(entry.reservationId) &&
           now - Date.parse(entry.enteredAt) <= ARRIVAL_NOTICE_TTL_MS,
       )

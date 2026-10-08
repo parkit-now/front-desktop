@@ -44,8 +44,7 @@ import {
 import type { DesktopServiceName } from '../system/useDesktopServiceFailures';
 import { getWorkspaceHeaderAlerts } from '../system/workspaceHeaderAlerts';
 import { NoCashSessionScreen } from '../cash-session/NoCashSessionScreen';
-import { CashSessionPanel } from '../cash-session/CashSessionPanel';
-import { CashSessionHistoryPanel } from '../cash-session/CashSessionHistoryPanel';
+import { CashSessionWorkspace } from '../cash-session/CashSessionWorkspace';
 import { PrinterSettingsPanel } from '../printer/PrinterSettingsPanel';
 import { localDb } from '../../lib/db/localDb';
 import {
@@ -83,11 +82,6 @@ type Props = {
   /** Restored from local cache, not yet re-validated against the server. */
   sessionStale?: boolean;
 };
-
-/** Cómo se abrió Historial cuando se entra desde la sección Caja. */
-type HistorialFocus =
-  | { kind: 'cashSession'; sessionId: string }
-  | { kind: 'activeCashSession' };
 
 type WorkspaceSection =
   | 'dashboard'
@@ -342,9 +336,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
   const [cameraSettingsOpen, setCameraSettingsOpen] = useState(false);
-  const [historialFocus, setHistorialFocus] = useState<HistorialFocus | null>(
-    null,
-  );
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
   );
@@ -892,7 +883,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
               type="button"
               className={`nav-item ${section === 'historial' ? 'active' : ''}`}
               onClick={() => {
-                setHistorialFocus(null);
                 setSection('historial');
               }}
             >
@@ -1007,7 +997,13 @@ export function SessionView({ session, sessionStale = false }: Props) {
             </div>
           </header>
 
-          <div className="workspace-content">
+          <div
+            className={`workspace-content${
+              section === 'historial' && activeTenantId
+                ? ' workspace-content--history'
+                : ''
+            }`}
+          >
             {section === 'operativo' ? (
               activeTenantId ? (
                 activeCashSession ? (
@@ -1101,25 +1097,9 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   userId={session.user.id}
                   accessToken={session.access_token}
                   actorRole={activeRole}
-                  initialCashSessionId={
-                    historialFocus?.kind === 'cashSession'
-                      ? historialFocus.sessionId
-                      : undefined
-                  }
-                  initialOnlyCurrentSession={
-                    historialFocus?.kind === 'activeCashSession'
-                  }
                   parkingName={activeTenantName}
                   parkingAddress={activeTenantAddress}
                   parkingCuit={activeTenantCuit}
-                  onBackToCaja={
-                    historialFocus
-                      ? () => {
-                          setHistorialFocus(null);
-                          setSection('caja');
-                        }
-                      : undefined
-                  }
                 />
               ) : (
                 <section className="dashboard-card warning">
@@ -1191,29 +1171,17 @@ export function SessionView({ session, sessionStale = false }: Props) {
               ) : null
             ) : section === 'caja' ? (
               activeTenantId ? (
-                <div className="caja-layout">
-                  <CashSessionPanel
-                    tenantId={activeTenantId}
-                    accessToken={session.access_token}
-                    onViewMovements={() => {
-                      setHistorialFocus({ kind: 'activeCashSession' });
-                      setSection('historial');
-                    }}
-                  />
-                  {canViewCashSessionHistory ? (
-                    <CashSessionHistoryPanel
-                      tenantId={activeTenantId}
-                      accessToken={session.access_token}
-                      onSelectSession={(cashSession) => {
-                        setHistorialFocus({
-                          kind: 'cashSession',
-                          sessionId: cashSession.id,
-                        });
-                        setSection('historial');
-                      }}
-                    />
-                  ) : null}
-                </div>
+                <CashSessionWorkspace
+                  key={activeTenantId}
+                  tenantId={activeTenantId}
+                  userId={session.user.id}
+                  accessToken={session.access_token}
+                  actorRole={activeRole}
+                  canViewHistory={canViewCashSessionHistory}
+                  parkingName={activeTenantName}
+                  parkingAddress={activeTenantAddress}
+                  parkingCuit={activeTenantCuit}
+                />
               ) : (
                 <section className="dashboard-card warning">
                   <h2>Falta estacionamiento activo</h2>

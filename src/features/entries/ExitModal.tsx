@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { issueInvoice } from '../../lib/api/arca';
 import {
   closeEntry,
   type InvoiceSummaryDto,
@@ -37,6 +36,11 @@ import {
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import { useArcaEmitter } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
+import { useInvoiceConfirmation } from './useInvoiceConfirmation';
+import {
+  INVOICE_HISTORY_REFRESH_WARNING,
+  refreshInvoiceHistory,
+} from './invoiceHistory';
 import {
   computeChange,
   formatDuration,
@@ -161,6 +165,7 @@ export function ExitModal({
   const [selectedPmId, setSelectedPmId] = useState('');
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   useEscapeKey(onClose, !saving);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState(false);
@@ -174,23 +179,16 @@ export function ExitModal({
   // factura queda pendiente hasta que el dueño lo renueve).
   const invoicingPaused = emitter?.certExpired ?? false;
   const offersReceiver = emitter !== null && !invoicingPaused;
-  const receiver = useInvoiceReceiver({
-    tenantId,
-    accessToken,
-    isOnline,
-    plate: entry.plate,
-  });
-  const letter = expectedLetter({
-    emitter: emitter?.condicionIva,
-    choice: receiver.choice,
-    lookup: receiver.lookup,
-  });
   const [lastInvoice, setLastInvoice] = useState<InvoiceSummaryDto | null>(
     null,
   );
   const [issuePanelOpen, setIssuePanelOpen] = useState(false);
-  const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
-  const [issuing, setIssuing] = useState(false);
+  const confirmation = useInvoiceConfirmation({
+    tenantId,
+    entryId: entry.id,
+    bearer: accessToken,
+  });
+  const issuing = confirmation.busy;
 
   const enabledPms = useLiveQuery(
     () =>
@@ -287,11 +285,6 @@ export function ExitModal({
   // En efectivo hay que cargar lo que entregó el cliente, y tiene que cubrir
   // el total (justo o con vuelto). Con CUIT, hay que esperar al padrón.
   const cashCovered = isCashCovered(amountToCharge, receivedAmount);
-  const canConfirm =
-    (!isCash || cashCovered) && !(showInvoiceChooser && !receiver.ready);
-  const invoiceReceiverCuit = showInvoiceChooser
-    ? receiver.cuitToSend
-    : undefined;
 
   // ── Cobro con QR de Mercado Pago ──────────────────────────────────────────
   // Sólo en cobro de un solo medio: repartir una estadía entre QR y efectivo
@@ -313,6 +306,28 @@ export function ExitModal({
     entryId: entry.id,
     amount: amountToCharge,
   });
+  const qrApproved = mpIntent.intent?.status === 'approved';
+  const receiver = useInvoiceReceiver({
+    tenantId,
+    accessToken,
+    isOnline,
+    plate: entry.plate,
+    entryId: entry.id,
+    paymentIntentId: qrApproved && !receipt ? mpIntent.intent?.id : undefined,
+    suggestionEnabled:
+      issuePanelOpen || (showInvoiceChooser && qrApproved && !receipt),
+    frozen: saving || confirmation.busy || confirmation.snapshot !== null,
+  });
+  const letter = expectedLetter({
+    emitter: emitter?.condicionIva,
+    choice: receiver.choice,
+    lookup: receiver.lookup,
+  });
+  const canConfirm =
+    (!isCash || cashCovered) && !(showInvoiceChooser && !receiver.ready);
+  const invoiceReceiverCuit = showInvoiceChooser
+    ? receiver.cuitToSend
+    : undefined;
 
   // El error del POST sale por el mismo canal que el resto de la app: un toast
   // con el texto de `translateApiError`. Ahí es donde el 409 de caja ocupada
@@ -377,6 +392,8 @@ export function ExitModal({
    *   que el intento respalda es UNA línea del cobro y no el egreso entero.
    */
   async function handleConfirm(paymentIntentId?: string): Promise<void> {
+    if (savingRef.current || (showInvoiceChooser && !receiver.ready)) return;
+    savingRef.current = true;
     setSaving(true);
     const leftAt = new Date().toISOString();
     const cashSessionId = entry.cashSessionId ?? activeSession?.id;
@@ -577,9 +594,16 @@ export function ExitModal({
         enteredAt: entry.enteredAt,
         leftAt,
       });
+      if (
+        isOnline &&
+        !(await refreshInvoiceHistory({ tenantId, bearer: accessToken }))
+      ) {
+        showToast({ message: INVOICE_HISTORY_REFRESH_WARNING, kind: 'info' });
+      }
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -617,24 +641,13 @@ export function ExitModal({
       receiver.markTouched();
       return;
     }
-    setIssuing(true);
-    try {
-      const invoice = await issueInvoice({
-        tenantId,
-        entryId: entry.id,
-        bearer: accessToken,
-        receiverCuit: receiver.cuitToSend,
-      });
+    await confirmation.confirm((invoice) => {
       setLastInvoice(invoice);
       setInvoiceNotice(
         describeInvoiceResult({ invoice, offline: false, lineModes: [] }),
       );
       if (invoice.status === 'issued') setIssuePanelOpen(false);
-    } catch (error) {
-      showToast({ message: translateApiError(error), kind: 'error' });
-    } finally {
-      setIssuing(false);
-    }
+    });
   }
 
   return (
@@ -740,7 +753,13 @@ export function ExitModal({
                   <button
                     type="button"
                     className="primary-button compact"
-                    onClick={() => setConfirmIssueOpen(true)}
+                    onClick={() =>
+                      void confirmation.open({
+                        letter,
+                        cuit: receiver.cuitToSend,
+                        receiverName: receiver.receiverName,
+                      })
+                    }
                     disabled={issuing || !receiver.ready}
                   >
                     {letter ? `Emitir Factura ${letter}` : 'Emitir factura'}
@@ -777,21 +796,18 @@ export function ExitModal({
               </div>
             )}
 
-            <ConfirmDialog
-              open={confirmIssueOpen}
-              {...describeIssueConfirmation({
-                letter,
-                cuit: receiver.cuitToSend,
-                receiverName: receiver.receiverName,
-                amount: formatArs(receipt.amountDue),
-              })}
-              isPending={issuing}
-              onCancel={() => setConfirmIssueOpen(false)}
-              onConfirm={async () => {
-                await handleIssue();
-                setConfirmIssueOpen(false);
-              }}
-            />
+            {confirmation.snapshot ? (
+              <ConfirmDialog
+                open
+                {...describeIssueConfirmation({
+                  ...confirmation.snapshot,
+                  amount: formatArs(confirmation.snapshot.amount),
+                })}
+                isPending={issuing}
+                onCancel={confirmation.close}
+                onConfirm={handleIssue}
+              />
+            ) : null}
           </div>
         ) : mpIntent.intent && mpIntent.view ? (
           <MercadoPagoQrPanel
@@ -804,11 +820,21 @@ export function ExitModal({
             secondsLeft={mpIntent.secondsLeft}
             isCanceling={mpIntent.isCanceling}
             isConfirming={saving}
+            confirmDisabled={showInvoiceChooser && !receiver.ready}
             onCancel={() => void mpIntent.cancel()}
             onRetry={handleStartQr}
             onUseAnotherMethod={mpIntent.reset}
             onConfirm={() => void handleConfirm(mpIntent.intent?.id)}
-          />
+          >
+            {qrApproved && showInvoiceChooser ? (
+              <InvoiceReceiverChooser
+                receiver={receiver}
+                emitter={emitter?.condicionIva}
+                isOnline={isOnline}
+                disabled={saving}
+              />
+            ) : null}
+          </MercadoPagoQrPanel>
         ) : (
           <form
             onSubmit={(e) => {

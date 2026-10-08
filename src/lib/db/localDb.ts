@@ -64,6 +64,7 @@ export interface LocalEntry {
    * bumpear `sync_seq`, así que una fila vieja no lo trae; `undefined` = no.
    */
   manuallyInvoiced?: boolean;
+  manualInvoiceNumber?: string;
   /**
    * Tipo y categoría del vehículo, congelados al ingresar. Opcionales: los
    * ingresos anteriores a la v17 y los que mandó una caja vieja no los tienen,
@@ -84,6 +85,7 @@ export interface LocalEntry {
   version: number;
   syncSeq: number;
   updatedAt: string;
+  deletedAt?: string;
 }
 
 /**

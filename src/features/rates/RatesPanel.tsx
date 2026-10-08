@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, type DataTableFilterOption } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import {
   createRate,
   deactivateRate as deleteRateApi,
@@ -539,7 +540,11 @@ export function RatesPanel({
         // escanearía todo el historial del estacionamiento en cada egreso.
         if (hasPriceChange(body)) {
           const abiertas = openEntriesForRate(
-            await localDb.entries.where('tenantId').equals(tenantId).toArray(),
+            await localDb.entries
+              .where('tenantId')
+              .equals(tenantId)
+              .filter((entry) => !entry.deletedAt)
+              .toArray(),
             editingRate.id,
           );
 
@@ -666,7 +671,10 @@ export function RatesPanel({
     await localDb.entries
       .where('tenantId')
       .equals(tenantId)
-      .filter((entry) => !entry.leftAt && entry.rateId === rate.id)
+      .filter(
+        (entry) =>
+          !entry.deletedAt && !entry.leftAt && entry.rateId === rate.id,
+      )
       // No se tocan `version` ni `syncSeq`: son del servidor, y el próximo
       // pull trae la fila autoritativa.
       .modify({ ...snapshot, updatedAt: new Date().toISOString() });
@@ -893,6 +901,7 @@ export function RatesPanel({
         accessorKey: 'updatedAt',
         header: 'Actualizada',
         size: 170,
+        sortingFn: dateTimeSorting((row) => row.updatedAt),
         cell: ({ row }) => formatArgentinaDateTime(row.original.updatedAt),
       },
     ];

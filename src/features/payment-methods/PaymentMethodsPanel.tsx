@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Power, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, type DataTableFilterOption } from '../data-table';
+import { dateTimeSorting } from '../data-table/utils';
 import {
   createPaymentMethod,
   deletePaymentMethod,
@@ -533,6 +534,7 @@ export function PaymentMethodsPanel({
         accessorKey: 'updatedAt',
         header: 'Actualizado',
         size: 170,
+        sortingFn: dateTimeSorting((row) => row.updatedAt),
         cell: ({ row }) => formatArgentinaDateTime(row.original.updatedAt),
       },
     ];

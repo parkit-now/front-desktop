@@ -10,6 +10,7 @@ import type {
   LocalInvoice,
   LocalLprDetectionEvent,
   LocalPaymentMethod,
+  LocalPaymentTransaction,
   LocalRate,
   LocalVehicle,
   LocalVehicleCategory,
@@ -85,6 +86,7 @@ const h = vi.hoisted(() => {
   const paymentMethods = makeTable<LocalPaymentMethod>();
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
   const invoices = makeTable<LocalInvoice>();
+  const paymentTransactions = makeTable<LocalPaymentTransaction>();
 
   // Tabla keyed por `code` (no por `id`): sólo lo que usa pullVehicleCategories.
   const vehicleCategories = new Map<string, LocalVehicleCategory>();
@@ -102,6 +104,9 @@ const h = vi.hoisted(() => {
   const localDb = {
     vehicleCategories: vehicleCategoriesTable,
     entries: {
+      bulkGet(ids: string[]): Promise<(LocalEntry | undefined)[]> {
+        return Promise.resolve(ids.map((id) => entries.get(id)));
+      },
       bulkPut(rows: LocalEntry[]): Promise<void> {
         for (const row of rows) entries.set(row.id, row);
         return Promise.resolve();
@@ -114,6 +119,7 @@ const h = vi.hoisted(() => {
     paymentMethods,
     lprDetectionEvents,
     invoices,
+    paymentTransactions,
     syncState: {
       get(key: string): Promise<SyncState | undefined> {
         return Promise.resolve(syncState.get(key));
@@ -185,6 +191,7 @@ const h = vi.hoisted(() => {
     paymentMethods,
     lprDetectionEvents,
     invoices,
+    paymentTransactions,
     localDb,
     listVehicleCategories: vi.fn(),
     pullEntryChanges,
@@ -210,6 +217,10 @@ const h = vi.hoisted(() => {
     pullVehicleChanges: changesMock<VehicleDto>(),
     pullVehicleTypeChanges: changesMock<VehicleTypeDto>(),
     pullPaymentMethodChanges: changesMock<PaymentMethodDto>(),
+    pullPaymentTransactionChanges:
+      changesMock<
+        import('../api/payment-transactions').PaymentTransactionDto
+      >(),
     pullLprDetectionEventChanges: changesMock<LprDetectionEventDto>(),
     uploadLprDetectionEventImage: vi.fn(),
   };
@@ -253,6 +264,10 @@ vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
   pullPaymentMethodChanges: h.pullPaymentMethodChanges,
   listPaymentMethods: h.listPaymentMethods,
+}));
+vi.mock('../api/payment-transactions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/payment-transactions')>()),
+  pullPaymentTransactionChanges: h.pullPaymentTransactionChanges,
 }));
 vi.mock('../api/arca', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/arca')>()),
@@ -340,6 +355,7 @@ function stillOpenOnServer(id: string): EntryDto {
 
 beforeEach(() => {
   h.entries.clear();
+  h.paymentTransactions.rows.clear();
   h.syncState.clear();
   h.pendingOps.length = 0;
   h.rates.rows.clear();
@@ -359,6 +375,7 @@ beforeEach(() => {
   h.pullVehicleChanges.mockReset();
   h.pullVehicleTypeChanges.mockReset();
   h.pullPaymentMethodChanges.mockReset();
+  h.pullPaymentTransactionChanges.mockReset();
   h.pullLprDetectionEventChanges.mockReset();
   h.listRates.mockReset();
   h.listVehicleTypes.mockReset();
@@ -408,6 +425,48 @@ describe('sincronización de Lista blanca', () => {
 });
 
 describe('pullEntries y los cambios locales sin sincronizar', () => {
+  it('conserva la baja lógica y no la revive una respuesta anterior', async () => {
+    h.entries.set(
+      'e-1',
+      localEntry('e-1', { deletedAt: LEFT_AT, syncSeq: 10 }),
+    );
+    h.pullEntryChanges.mockResolvedValue({
+      items: [serverEntry('e-1', { syncSeq: 9 })],
+      maxSeq: 9,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-1')?.deletedAt).toBe(LEFT_AT);
+    expect(h.syncState.get(STATE_KEY)?.lastSeq).toBe(9);
+  });
+
+  it('aplica el tombstone remoto de un ingreso', async () => {
+    h.entries.set('e-1', localEntry('e-1', { syncSeq: 4 }));
+    h.pullEntryChanges.mockResolvedValue({
+      items: [serverEntry('e-1', { deletedAt: LEFT_AT, syncSeq: 5 })],
+      maxSeq: 5,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-1')?.deletedAt).toBe(LEFT_AT);
+  });
+
+  it('la baja remota prevalece aunque este equipo tenga cambios pendientes', async () => {
+    h.entries.set('e-1', closedLocally('e-1'));
+    queueEntryOp('e-1', 'pending');
+    h.pullEntryChanges.mockResolvedValue({
+      items: [serverEntry('e-1', { deletedAt: LEFT_AT, syncSeq: 10 })],
+      maxSeq: 10,
+    });
+
+    await syncService.pullEntries();
+
+    expect(h.entries.get('e-1')?.deletedAt).toBe(LEFT_AT);
+    expect(h.pendingOps).toHaveLength(1);
+  });
+
   it('no pisa una entry que tiene una op encolada', async () => {
     // ESTE es el bug. `ExitModal` escribe `leftAt` y `amountPaid` en local y
     // encola la op; hasta que el push salga, el feed del servidor sigue
@@ -1159,6 +1218,66 @@ describe('pullInvoices', () => {
     await syncService.pullInvoices();
 
     expect(h.invoices.rows.get('x')?.status).toBe('issued');
+  });
+  it('usa credenciales explicitas aunque el sync de fondo tenga otro estacionamiento', async () => {
+    syncService.setCredentials('other-tenant', 'other-token');
+    h.pullInvoiceChanges.mockResolvedValueOnce({
+      items: [invoice('x', 2)],
+      maxSeq: 2,
+    });
+    await syncService.pullInvoices({ tenantId: TENANT, bearer: TOKEN });
+    expect(h.pullInvoiceChanges).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      bearer: TOKEN,
+      afterSeq: 0,
+      limit: 500,
+    });
+    expect(h.syncState.get('invoices:other-tenant')).toBeUndefined();
+    expect(h.invoices.rows.get('x')?.status).toBe('issued');
+  });
+  it('congela estacionamiento y token para todas las paginas del mismo pull', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => invoice(`a${i}`, i + 1));
+    h.pullInvoiceChanges
+      .mockImplementationOnce(() => {
+        syncService.setCredentials('other-tenant', 'other-token');
+        return Promise.resolve({ items: full, maxSeq: 500 });
+      })
+      .mockResolvedValueOnce({ items: [invoice('x', 501)], maxSeq: 501 });
+    await syncService.pullInvoices();
+    expect(h.pullInvoiceChanges.mock.calls).toEqual([
+      [{ tenantId: TENANT, bearer: TOKEN, afterSeq: 0, limit: 500 }],
+      [{ tenantId: TENANT, bearer: TOKEN, afterSeq: 500, limit: 500 }],
+    ]);
+    expect(h.syncState.get(`invoices:${TENANT}`)?.lastSeq).toBe(501);
+    expect(h.syncState.get('invoices:other-tenant')).toBeUndefined();
+  });
+  it('un pull atrasado no revierte una factura emitida ni su cursor', async () => {
+    let finish!: (page: { items: LocalInvoice[]; maxSeq: number }) => void;
+    h.pullInvoiceChanges.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const oldPull = syncService.pullInvoices();
+    await Promise.resolve();
+    h.pullInvoiceChanges.mockResolvedValueOnce({
+      items: [{ ...invoice('x', 3), version: 3, cbteNro: 9, cae: '123' }],
+      maxSeq: 3,
+    });
+    await syncService.pullInvoices({ tenantId: TENANT, bearer: TOKEN });
+    finish({
+      items: [{ ...invoice('x', 2), version: 2, status: 'pending' }],
+      maxSeq: 2,
+    });
+    await oldPull;
+    expect(h.invoices.rows.get('x')).toMatchObject({
+      status: 'issued',
+      cbteNro: 9,
+      cae: '123',
+      version: 3,
+      syncSeq: 3,
+    });
+    expect(h.syncState.get(`invoices:${TENANT}`)?.lastSeq).toBe(3);
   });
 });
 

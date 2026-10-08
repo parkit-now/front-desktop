@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
+import { VehicleCell } from '../data-table/components/VehicleCell';
 import {
   createTenantVehicle,
   updateTenantVehicle,
@@ -425,16 +426,25 @@ export function VehiclesPanel({
   const columns = useMemo<ColumnDef<VehicleRow, unknown>[]>(() => {
     const baseColumns: ColumnDef<VehicleRow, unknown>[] = [
       {
+        id: 'vehicle',
+        accessorFn: (row) => `${row.brand} ${row.model}`,
+        header: 'Vehículo',
+        size: 180,
+        cell: ({ row }) => (
+          <VehicleCell brand={row.original.brand} model={row.original.model} />
+        ),
+      },
+      {
         accessorKey: 'brand',
         header: 'Marca',
-        size: 160,
-        cell: ({ row }) => <strong>{row.original.brand}</strong>,
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         accessorKey: 'model',
         header: 'Modelo',
-        size: 160,
-        cell: ({ row }) => row.original.model,
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         id: 'type',
@@ -514,7 +524,7 @@ export function VehiclesPanel({
             }
             searchPlaceholder="Buscar por marca o modelo..."
             searchableKeys={['brand', 'model']}
-            filterableColumns={['type']}
+            filterableColumns={['brand', 'model', 'type']}
             getRowId={(v) => v.id}
             initialPageSize={15}
             templateScope={{ userId, tenantId, tableKey: 'vehicles' }}

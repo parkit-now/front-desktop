@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
+import { VehicleCell } from '../data-table/components/VehicleCell';
+import { dateTimeSorting } from '../data-table/utils';
 import {
   localDb,
   type LocalCashSession,
@@ -14,6 +16,11 @@ import { formatArgentinaDateTime } from '../../lib/format/argentina';
 import { formatDuration } from './entryUtils';
 import { EntryEditDialog } from './EntryEditDialog';
 import { DetectionImageDialog } from '../camera/DetectionImageDialog';
+import { useNetwork } from '../../lib/network/NetworkContext';
+import { EntryDeleteAction } from './EntryDeleteAction';
+import { EntryDeleteDialog } from './EntryDeleteDialog';
+import { entryDeletionBlockers } from './entryDeletion';
+import { InlineEntryField } from './InlineEntryField';
 
 interface Props {
   tenantId: string;
@@ -85,6 +92,9 @@ export function ActiveVehiclesDialog({
   const [editingEntry, setEditingEntry] = useState<EditableActiveEntry | null>(
     null,
   );
+  const [deletingEntry, setDeletingEntry] =
+    useState<EditableActiveEntry | null>(null);
+  const { isOnline } = useNetwork();
   const [photoDetection, setPhotoDetection] =
     useState<LocalLprDetectionEvent | null>(null);
   const activeEntries = useLiveQuery(
@@ -92,7 +102,7 @@ export function ActiveVehiclesDialog({
       localDb.entries
         .where('tenantId')
         .equals(tenantId)
-        .filter((e) => !e.leftAt)
+        .filter((e) => !e.leftAt && !e.deletedAt)
         .toArray(),
     [tenantId],
   );
@@ -100,6 +110,15 @@ export function ActiveVehiclesDialog({
   const allPaymentTransactions = useLiveQuery(
     () =>
       localDb.paymentTransactions.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+
+  const allInvoices = useLiveQuery(
+    () => localDb.invoices.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+  const pendingOps = useLiveQuery(
+    () => localDb.pendingOps.where('tenantId').equals(tenantId).toArray(),
     [tenantId],
   );
 
@@ -116,11 +135,11 @@ export function ActiveVehiclesDialog({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape' && !editingEntry) onClose();
+      if (event.key === 'Escape' && !editingEntry && !deletingEntry) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editingEntry, onClose]);
+  }, [editingEntry, deletingEntry, onClose]);
 
   const rows = useMemo<ActiveRow[]>(() => {
     const paymentsByEntryId = new Map<string, LocalPaymentTransaction[]>();
@@ -226,16 +245,32 @@ export function ActiveVehiclesDialog({
         cell: ({ row }) => <strong>{row.original.plate}</strong>,
       },
       {
+        id: 'vehicle',
+        accessorFn: (row) =>
+          [row.vehicleBrand, row.vehicleModel, row.color]
+            .filter((value) => value && value !== '—')
+            .join(' '),
+        header: 'Vehículo',
+        size: 160,
+        cell: ({ row }) => (
+          <VehicleCell
+            brand={row.original.vehicleBrand}
+            model={row.original.vehicleModel}
+            color={row.original.color}
+          />
+        ),
+      },
+      {
         accessorKey: 'vehicleBrand',
         header: 'Marca',
-        size: 110,
-        cell: ({ row }) => row.original.vehicleBrand || '—',
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         accessorKey: 'vehicleModel',
         header: 'Modelo',
-        size: 120,
-        cell: ({ row }) => row.original.vehicleModel || '—',
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         id: 'enteredAt',
@@ -243,6 +278,7 @@ export function ActiveVehiclesDialog({
         accessorKey: 'enteredAtLocalDate',
         size: 160,
         filterFn: 'dateRange',
+        sortingFn: dateTimeSorting((row) => row.enteredAt),
         cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
       },
       {
@@ -260,49 +296,107 @@ export function ActiveVehiclesDialog({
       {
         accessorKey: 'color',
         header: 'Color',
-        size: 110,
+        enableHiding: false,
+        meta: { filterOnly: true, displayColumnId: 'vehicle' },
       },
       {
         accessorKey: 'cochera',
         header: 'Cochera',
         size: 100,
-        cell: ({ row }) => row.original.cochera || '—',
+        cell: ({ row }) => (
+          <InlineEntryField
+            entry={row.original.entry}
+            field="cochera"
+            tenantId={tenantId}
+            accessToken={accessToken}
+            isOnline={isOnline}
+            disabledReason={
+              allSessions?.find(
+                (session) => session.id === row.original.entry.cashSessionId,
+              )?.closedAt
+                ? 'La caja está cerrada; no se pueden editar sus ingresos.'
+                : undefined
+            }
+          />
+        ),
       },
       {
         accessorKey: 'notes',
         header: 'Notas',
-        size: 200,
-        cell: ({ row }) =>
-          row.original.notes ? (
-            <span className="dt-cell-notes" title={row.original.notes}>
-              {row.original.notes}
-            </span>
-          ) : (
-            '—'
-          ),
+        size: 190,
+        cell: ({ row }) => (
+          <InlineEntryField
+            entry={row.original.entry}
+            field="notes"
+            tenantId={tenantId}
+            accessToken={accessToken}
+            isOnline={isOnline}
+            disabledReason={
+              allSessions?.find(
+                (session) => session.id === row.original.entry.cashSessionId,
+              )?.closedAt && actorRole !== 'owner'
+                ? 'La caja está cerrada; no se pueden editar sus ingresos.'
+                : undefined
+            }
+          />
+        ),
       },
       {
         id: 'actions',
         header: 'Acción',
         enableHiding: false,
         enableSorting: false,
-        size: 150,
+        size: actorRole === 'owner' ? 190 : 150,
+        meta: { excludeFromExport: true },
         cell: ({ row }) => (
-          <button
-            type="button"
-            className="primary-button compact"
-            onClick={(event) => {
-              event.stopPropagation();
-              onExit(row.original.entry);
-            }}
-          >
-            <LogOut size={15} aria-hidden="true" />
-            Egreso
-          </button>
+          <div className="entry-row-actions">
+            <button
+              type="button"
+              className="primary-button compact"
+              onClick={(event) => {
+                event.stopPropagation();
+                onExit(row.original.entry);
+              }}
+            >
+              <LogOut size={15} aria-hidden="true" />
+              Egreso
+            </button>
+            {actorRole === 'owner' && (
+              <EntryDeleteAction
+                plate={row.original.plate}
+                blockers={
+                  allInvoices === undefined ||
+                  allSessions === undefined ||
+                  pendingOps === undefined
+                    ? ['Cargando el estado del ingreso.']
+                    : entryDeletionBlockers({
+                        entry: row.original.entry,
+                        invoice: allInvoices.find(
+                          (item) => item.entryId === row.original.id,
+                        ),
+                        payments: row.original.entry.paymentLines,
+                        sessions: allSessions,
+                        pendingOps,
+                        isOnline,
+                      })
+                }
+                onClick={() => setDeletingEntry(row.original.entry)}
+              />
+            )}
+          </div>
         ),
       },
     ],
-    [onExit],
+    [
+      onExit,
+      actorRole,
+      allInvoices,
+      allSessions,
+      pendingOps,
+      isOnline,
+      tenantId,
+      accessToken,
+    ],
   );
 
   return (
@@ -345,16 +439,19 @@ export function ActiveVehiclesDialog({
             isLoading={
               activeEntries === undefined ||
               allPaymentTransactions === undefined ||
+              allInvoices === undefined ||
+              pendingOps === undefined ||
               allSessions === undefined ||
               allLprDetections === undefined
             }
             emptyMessage="No hay vehículos estacionados en este momento."
-            searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
+            searchPlaceholder="Buscar por ticket, patente, vehículo, color o notas…"
             searchableKeys={[
               'ticketNumber',
               'plate',
               'vehicleBrand',
               'vehicleModel',
+              'color',
               'cochera',
               'notes',
             ]}
@@ -392,6 +489,24 @@ export function ActiveVehiclesDialog({
           onClose={() => setPhotoDetection(null)}
         />
       ) : null}
+      {deletingEntry && (
+        <EntryDeleteDialog
+          tenantId={tenantId}
+          accessToken={accessToken}
+          entry={deletingEntry}
+          paidTotal={
+            deletingEntry.paymentLines.length > 0
+              ? deletingEntry.paymentLines.reduce(
+                  (sum, line) => sum + line.amount,
+                  0,
+                )
+              : deletingEntry.amountPaid != null
+                ? Number(deletingEntry.amountPaid)
+                : null
+          }
+          onClose={() => setDeletingEntry(null)}
+        />
+      )}
     </div>
   );
 }

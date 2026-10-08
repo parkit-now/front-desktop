@@ -59,6 +59,19 @@ function session(overrides: Partial<LocalCashSession> = {}): LocalCashSession {
 }
 
 describe('computeSessionSummary', () => {
+  it('excluye cobros dados de baja del total, efectivo y cantidad', () => {
+    const summary = computeSessionSummary(
+      [
+        tx({ id: 'live', amount: 10 }),
+        tx({ id: 'deleted', amount: 100, deletedAt: '2026-10-07T12:00:00Z' }),
+      ],
+      50,
+    );
+    expect(summary.grandTotal).toBe(10);
+    expect(summary.cashTotal).toBe(60);
+    expect(summary.txCount).toBe(1);
+  });
+
   it('sin transacciones deja el total en cero y el efectivo en el fondo inicial', () => {
     const summary = computeSessionSummary([], 5000);
     expect(summary.byPm).toEqual([]);
