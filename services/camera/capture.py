@@ -274,20 +274,29 @@ def _open_params() -> list[int]:
 
     # Decodificación por hardware (D3D11VA/DXVA2 en Windows, VA-API en Linux).
     #
-    # Decodificar 2560×1440 por software es el gasto más grande del servicio, y
-    # la PC de la playa tiene dos núcleos. Si la GPU puede hacerlo, el ahorro es
-    # enorme.
+    # Descomprimir 2560×1440 por software es el gasto más grande del servicio y
+    # la PC de una playa tiene dos núcleos, así que delegarlo en la GPU suena
+    # obvio. En la práctica NO siempre conviene: el cuadro se decodifica en la
+    # GPU pero hay que bajarlo a memoria del sistema y convertirlo de NV12 a
+    # BGR, y esa bajada se paga en CPU. En una gráfica integrada que comparte
+    # memoria puede costar más de lo que ahorró.
     #
-    # `VIDEO_ACCELERATION_ANY` pide "usá lo que haya" y **cae en silencio a
-    # software** si el build de OpenCV no lo trae o el equipo no tiene GPU
-    # capaz: nunca falla, como mucho no hace nada. Por eso hay que MEDIR el CPU
-    # antes y después en vez de asumir que sirvió.
+    # Medido en la instalación de referencia (Pentium G4400, 2 núcleos):
+    # con H.265+ quedó en 24,0% de CPU y 11,3% de GPU, contra 25,0% de CPU y
+    # 0% de GPU con H.264 sin aceleración. O sea un punto de CPU a cambio de
+    # once de GPU — un intercambio discutible, y las dos mediciones además
+    # cambiaban el códec, así que no aíslan esta variable.
     #
-    # Importa el códec: H.264 lo acelera prácticamente cualquier GPU; H.265 es
-    # mucho más desparejo. Ver la guía del dueño.
-    hw_accel = getattr(cv2, "CAP_PROP_HW_ACCELERATION", None)
-    accel_any = getattr(cv2, "VIDEO_ACCELERATION_ANY", None)
-    if hw_accel is not None and accel_any is not None:
-        params += [int(hw_accel), int(accel_any)]
+    # POR ESO ES APAGABLE. `CAMERA_HW_ACCEL=0` la desactiva sin recompilar:
+    # `services.ts` hereda `process.env`, así que alcanza con definirla en
+    # Windows y reiniciar la app. Es la única forma de medir cuánto aporta de
+    # verdad, porque `VIDEO_ACCELERATION_ANY` **cae en silencio a software** si
+    # el build o el equipo no la soportan: nunca falla, y sin poder apagarla no
+    # hay con qué comparar.
+    if os.environ.get("CAMERA_HW_ACCEL", "1") != "0":
+        hw_accel = getattr(cv2, "CAP_PROP_HW_ACCELERATION", None)
+        accel_any = getattr(cv2, "VIDEO_ACCELERATION_ANY", None)
+        if hw_accel is not None and accel_any is not None:
+            params += [int(hw_accel), int(accel_any)]
 
     return params

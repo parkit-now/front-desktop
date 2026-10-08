@@ -266,7 +266,16 @@ def _print_banner() -> None:
     print(f"  storage  : {IMAGES_DIR}  |  {DB_PATH}")
     print(f"  motion   : threshold={MOTION_THRESHOLD}  cooldown={MOTION_COOLDOWN}s  roi={roi_label}")
     print(f"  fallback : every {FALLBACK_INTERVAL:.0f}s")
-    print(f"  filter   : min_conf={MIN_CONFIDENCE:.0%}  plate_cooldown={COOLDOWN}s")
+    print(
+        f"  filter   : min_conf={MIN_CONFIDENCE:.0%}  discard_below={DISCARD_BELOW:.0%}"
+        f"  plate_cooldown={COOLDOWN}s"
+    )
+    # Que el banner diga si la aceleración por hardware está pedida. No dice si
+    # la GPU la concedió —OpenCV cae a software en silencio y no lo reporta—,
+    # pero al menos separa "no la pedí" de "la pedí y no sirvió", que sin esto
+    # son indistinguibles desde afuera.
+    hw = "off" if os.environ.get("CAMERA_HW_ACCEL", "1") == "0" else "requested"
+    print(f"  decode   : hw_accel={hw}  (CAMERA_HW_ACCEL=0 para apagarla)")
     # Los valores EFECTIVOS, ya clampeados: si el banner mostrara lo pedido y
     # el servicio corriera con otra cosa, no habría forma de darse cuenta.
     print(

@@ -62,10 +62,13 @@ gastado en nada.
 
 Así tiene que quedar esa pantalla, con los dos cambios (1.1 y 1.2) ya hechos:
 
-![Pantalla Video/Audio con 12 fps y H.264](img/camara-video-fps-codec.png)
+![Pantalla Video/Audio con 12 fps](img/camara-video-fps-codec.png)
 
-Fijate en esos tres: **Video Frame Rate: 12**, **Video Encoding: H.264** y
-**H.264+ apagado**. El resto se deja como está.
+Lo que importa de esa pantalla es **Video Frame Rate: 12**. El resto se deja
+como está.
+
+_(En la captura el códec quedó en H.264, que fue el primer intento. Terminó en
+H.265+ después de medir — ver el paso siguiente.)_
 
 > **Importante:** si hacés este paso, **tenés que hacer también el 1.3**
 > (el obturador). Si no, las fotos de noche van a salir más movidas que ahora.
@@ -73,25 +76,57 @@ Fijate en esos tres: **Video Frame Rate: 12**, **Video Encoding: H.264** y
 
 ---
 
-## 1.2 — Cambiar la compresión a H.264
+## 1.2 — El códec: probar los dos y quedarse con el que mida menos
 
-**Por qué:** la cámara comprime el video en un formato (H.265) que la
-computadora tiene que descomprimir, y es el formato más pesado de los dos.
-Cambiarlo a H.264 le saca bastante trabajo de encima, y además permite que la
-placa de video ayude, cosa que con el otro formato no puede.
+> ⚠️ **Este paso NO tiene una respuesta única. Hay que medirlo.**
+>
+> En la primera versión de esta guía decía "cambiá a H.264" y **resultó
+> equivocado para esta PC**. Lo dejo documentado porque el razonamiento parecía
+> sólido y no lo era.
+>
+> Medido en la playa, con todo lo demás igual:
+>
+> | Códec      | CPU       | Red          |
+> | ---------- | --------- | ------------ |
+> | H.264      | 32,9%     | 6,1 Mbps     |
+> | **H.265+** | **28,0%** | **1,7 Mbps** |
+>
+> Gana H.265+ por un 15%.
 
-El video va a ocupar un poco más de red, pero como va por cable dentro del
-local, no importa.
+**Por qué no hay una respuesta fija:** hay dos fuerzas que tiran para lados
+opuestos.
 
-**Pasos:**
+- **H.265 es más caro de descomprimir** por cada cuadro. Eso favorece a H.264.
+- **H.265+ comprime mucho mejor** — salta lo que no cambia en la escena, y en
+  una entrada de garaje casi nada cambia. Eso significa muchos menos datos que
+  procesar, y favorece a H.265+.
 
-1. En la misma pantalla de **Vídeo/Audio** donde estuviste recién.
-2. Buscá **Tipo de codificación de vídeo** (o "Video Encoding").
-3. Cambialo a **H.264**.
-   - ⚠️ **No elijas "H.264+"**, el que tiene el signo más. Elegí **H.264** a
-     secas. El "+" comprime más pero le complica la vida al programa.
-4. Si aparece un campo **Perfil** (Profile), dejalo en **Main** o **High**.
-5. Clic en **Guardar**.
+Cuál gana depende de si la placa de video puede descomprimir por hardware. **Si
+puede**, H.264 gana cómodo porque la GPU hace el trabajo pesado. **Si no**, el
+ahorro de datos de H.265+ es lo que manda.
+
+En esta PC —un Pentium G4400 con una GT 730 y la gráfica integrada aparentemente
+deshabilitada— no hay aceleración, y por eso gana H.265+.
+
+**Pasos — es un experimento de cinco minutos:**
+
+1. En la misma pantalla de **Vídeo/Audio**, buscá **Tipo de codificación de
+   vídeo** (o "Video Encoding").
+2. Dejalo en **H.265+** (o ponelo, si no está).
+3. Guardá, **reiniciá el servicio de cámara** desde Parkit y medí el CPU 30
+   segundos con la app en **Operativo**. Anotá el número.
+4. Ahora cambialo a **H.264** (sin el "+"), guardá, reiniciá y medí igual.
+5. **Quedate con el que dio menos.**
+
+> **Reiniciar el servicio no es opcional.** Parkit mantiene la conexión con la
+> cámara abierta, y los parámetros del video se acuerdan al conectar. Si no
+> reiniciás, seguís midiendo el códec viejo.
+
+> **Y medí siempre desde Operativo, nunca desde la pantalla de Cámara.** Con el
+> video en vivo abierto el servicio trabaja bastante más para mostrártelo, y
+> ese costo no existe el resto del día. En esta instalación la diferencia entre
+> una pantalla y la otra fue de 8 puntos de CPU — suficiente para sacar una
+> conclusión equivocada.
 
 ---
 
@@ -463,14 +498,26 @@ completo, como antes.
 2. Clic derecho en la barra de abajo → **Administrador de tareas**.
 3. Buscá **Parkit desktop app** y miralo 30 segundos.
 
-| Momento                                 | Qué deberías ver |
-| --------------------------------------- | ---------------- |
-| Antes de todo esto                      | ~30%             |
-| Después de los pasos 1.1 y 1.2 (cámara) | **15–18%**       |
-| Con la app nueva además                 | **menos de 15%** |
+| Momento                            | Qué deberías ver |
+| ---------------------------------- | ---------------- |
+| Momento                            | CPU medido       |
+| -------                            | ----------       |
+| Antes de todo                      | 30,4%            |
+| Con la app nueva, códec H.264      | 25,0%            |
+| **Con la app nueva, códec H.265+** | **24,0%**        |
 
-> Si lo mirás con la pantalla de **Cámara** abierta va a dar más alto, y está
-> bien: ahí hay un video corriendo. Medí siempre desde Operativo.
+**Son números reales medidos en esta instalación, no estimaciones.** Un 21%
+menos. Si en tu equipo da parecido, está funcionando.
+
+> Si lo mirás con la pantalla de **Cámara** abierta va a dar unos 8 puntos más,
+> y está bien: ahí hay un video corriendo que el resto del día no existe. Medí
+> siempre desde Operativo.
+
+> **Por qué no bajó más.** Lo que queda es descomprimir un video de 2560×1440
+> en una PC de dos núcleos, y eso tiene un piso que ningún ajuste rompe. Para
+> bajar de ahí habría que cambiar cómo funciona el sistema —usar el video chico
+> de la cámara para detectar el movimiento y pedirle una foto grande sólo
+> cuando algo se mueve—, que es un cambio de programa, no de configuración.
 
 ## Las lecturas de patentes
 
@@ -495,7 +542,7 @@ por cada una que registrás.
 | Las patentes salen blancas de noche              | Bajá más la **intensidad del infrarrojo** (paso 1.4)                                                                        |
 | Se escapan autos que antes detectaba             | Bajá **"Descartar por debajo de"** a 0,50                                                                                   |
 | Siguen llegando muchas tarjetas para descartar   | Subí **"Descartar por debajo de"** a 0,70                                                                                   |
-| El video se entrecorta                           | Volvé el códec a H.265 (paso 1.2)                                                                                           |
+| El video se entrecorta                           | Probá el otro códec (paso 1.2) y bajá **Max. Bit Rate** a ~2048 Kbps                                                        |
 | La imagen quedó rara al mediodía                 | Apagá el **WDR** y dejá sólo **BLC** (paso 1.5)                                                                             |
 | Se ven franjas negras que bajan                  | Obturador en **1/100** **y** WDR en **Off**: hacen falta las dos. El interruptor "Anti-Banding" no sirve con obturador fijo |
 | De golpe volvió el blur de noche                 | ¿Tocaste "Scene Mode"? Revisá que el obturador siga en 1/250 (paso 1.3)                                                     |
@@ -528,7 +575,7 @@ Esa es la posición en la que la patente se lee mejor.
 **En la cámara (Configuración → Vídeo/Audio):**
 
 - Velocidad de fotogramas: **12**
-- Codificación de vídeo: **H.264** (sin el "+")
+- Codificación de vídeo: **el que mida menos CPU** (acá ganó **H.265+**)
 
 **En la cámara (Configuración → Imagen):**
 
