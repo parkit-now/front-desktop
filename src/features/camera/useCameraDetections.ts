@@ -78,6 +78,10 @@ export type PendingDetection = LocalLprDetectionEvent;
 interface CameraDetections {
   detections: PendingDetection[];
   dismiss: (eventId: string) => void;
+  dismissAll: (eventIds: readonly string[]) => Promise<{
+    dismissed: number;
+    failed: number;
+  }>;
   ack: (eventId: string, entryId: string) => void;
 }
 
@@ -474,6 +478,18 @@ async function queueStatusUpdate(
   );
 }
 
+async function dismissPendingDetection(
+  tenantId: string,
+  eventId: string,
+): Promise<boolean> {
+  const event = await localDb.lprDetectionEvents.get(eventId);
+  if (!event || event.tenantId !== tenantId || event.status !== 'pending')
+    return false;
+  await queueStatusUpdate(tenantId, event, 'dismissed');
+  void patchCameraEvent(eventId, 'dismissed');
+  return true;
+}
+
 async function patchCameraEvent(
   eventId: string,
   status: LprDetectionStatus,
@@ -696,6 +712,7 @@ export async function pushKnownPlatesSnapshot(
 }
 
 export const cameraDetectionTestUtils = {
+  dismissPendingDetection,
   keeperByPlate,
   normalisePlate,
   parseCameraEventMessage,
@@ -892,19 +909,38 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     nowMs,
   ]);
 
+  const dismissPending = useCallback(
+    async (eventId: string): Promise<boolean> => {
+      if (!tenantId) return false;
+      return dismissPendingDetection(tenantId, eventId);
+    },
+    [tenantId],
+  );
+
   const dismiss = useCallback(
     (eventId: string) => {
-      if (!tenantId) return;
-      void localDb.lprDetectionEvents.get(eventId).then(async (event) => {
-        if (!event) return;
-        await queueStatusUpdate(tenantId, event, 'dismissed');
-        void patchCameraEvent(eventId, 'dismissed');
-        // The operator just made a real decision — push it now instead of
-        // waiting for the next unrelated sync trigger.
-        if (isOnline) void triggerSync();
+      void dismissPending(eventId).then((changed) => {
+        if (changed && isOnline) void triggerSync();
       });
     },
-    [tenantId, isOnline, triggerSync],
+    [dismissPending, isOnline, triggerSync],
+  );
+
+  const dismissAll = useCallback(
+    async (eventIds: readonly string[]) => {
+      let dismissed = 0;
+      let failed = 0;
+      for (const eventId of new Set(eventIds)) {
+        try {
+          if (await dismissPending(eventId)) dismissed += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (dismissed > 0 && isOnline) void triggerSync();
+      return { dismissed, failed };
+    },
+    [dismissPending, isOnline, triggerSync],
   );
 
   const ack = useCallback(
@@ -920,5 +956,5 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
     [tenantId, isOnline, triggerSync],
   );
 
-  return { detections, dismiss, ack };
+  return { detections, dismiss, dismissAll, ack };
 }
