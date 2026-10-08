@@ -130,7 +130,10 @@ export function AutoEntryCard({
 
       {viewerOpen ? (
         <DetectionImageDialog
+          key={detection.id}
           detection={detection}
+          tenantId={tenantId}
+          accessToken={accessToken}
           onClose={() => setViewerOpen(false)}
         />
       ) : null}

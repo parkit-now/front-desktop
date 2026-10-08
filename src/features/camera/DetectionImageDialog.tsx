@@ -1,10 +1,14 @@
 import { Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { getLprDetectionEventImageSignedUrl } from '../../lib/api/lpr-events';
+import { useNetwork } from '../../lib/network/NetworkContext';
 import { plateOverlayStyle } from './plateBbox';
 import { CAMERA_BASE_URL, type PendingDetection } from './useCameraDetections';
 
 interface Props {
   detection: PendingDetection;
+  tenantId: string;
+  accessToken: string;
   onClose: () => void;
 }
 
@@ -16,9 +20,8 @@ interface Props {
  * modelo ni color, que es justo lo que necesita cuando la lectura es dudosa o
  * cuando hay que reclamar algo después.
  *
- * Pide la imagen SIN parámetros de compresión: el archivo está en el disco de
- * este mismo equipo, así que acá se muestra en calidad original. La versión
- * liviana es sólo para lo que se sube a la nube.
+ * Prioriza la captura original de este equipo. Si falta (por ejemplo, en otra
+ * PC), pide una URL temporal para la copia privada subida al backend.
  */
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
@@ -28,8 +31,22 @@ function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
 }
 
-export function DetectionImageDialog({ detection, onClose }: Props) {
-  const [failed, setFailed] = useState(false);
+type ImageSource =
+  | { kind: 'local' | 'remote'; url: string }
+  | { kind: 'loading' | 'missing' };
+
+export function DetectionImageDialog({
+  detection,
+  tenantId,
+  accessToken,
+  onClose,
+}: Props) {
+  const localImageUrl = detection.bestCaptureId
+    ? `${CAMERA_BASE_URL}/capture/${encodeURIComponent(detection.bestCaptureId)}/image.jpg`
+    : null;
+  const [imageSource, setImageSource] = useState<ImageSource>(() =>
+    localImageUrl ? { kind: 'local', url: localImageUrl } : { kind: 'loading' },
+  );
   const [retry, setRetry] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -43,6 +60,36 @@ export function DetectionImageDialog({ detection, onClose }: Props) {
   } | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const { isOnline } = useNetwork();
+
+  useEffect(() => {
+    if (imageSource.kind !== 'loading') return;
+    if (!isOnline) {
+      setImageSource({ kind: 'missing' });
+      return;
+    }
+
+    let active = true;
+    void getLprDetectionEventImageSignedUrl({
+      tenantId,
+      bearer: accessToken,
+      eventId: detection.id,
+    })
+      .then(({ url }) => {
+        if (active) setImageSource({ kind: 'remote', url });
+      })
+      .catch(() => {
+        if (active) setImageSource({ kind: 'missing' });
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken, detection.id, imageSource.kind, isOnline, tenantId]);
+
+  const imageUrl =
+    imageSource.kind === 'local' || imageSource.kind === 'remote'
+      ? imageSource.url
+      : null;
 
   function updateZoom(delta: number, point?: { x: number; y: number }) {
     const next = clampZoom(zoom + delta);
@@ -103,8 +150,8 @@ export function DetectionImageDialog({ detection, onClose }: Props) {
     frame.addEventListener('wheel', onWheel, { passive: false });
     return () => frame.removeEventListener('wheel', onWheel);
     // `updateZoom` lee `zoom` de la clausura, así que hay que reatar el
-    // listener cuando cambia. `failed` y `retry` remontan el marco.
-  }, [zoom, failed, retry]);
+    // listener cuando cambia. La fuente de imagen y `retry` remontan el marco.
+  }, [zoom, imageSource.kind, retry]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -140,7 +187,7 @@ export function DetectionImageDialog({ detection, onClose }: Props) {
             </span>
           </div>
           <div className="detection-image-dialog__actions">
-            {!failed && detection.bestCaptureId ? (
+            {imageUrl ? (
               <div
                 className="detection-image-dialog__zoom-controls"
                 aria-label="Zoom de imagen"
@@ -187,15 +234,24 @@ export function DetectionImageDialog({ detection, onClose }: Props) {
           </div>
         </header>
 
-        {failed || !detection.bestCaptureId ? (
+        {imageSource.kind === 'loading' ? (
+          <div className="detection-image-dialog__error" role="status">
+            Buscando imagen...
+          </div>
+        ) : imageSource.kind === 'missing' ? (
           <div className="detection-image-dialog__error">
             <p>No se pudo cargar la imagen.</p>
             <button
               type="button"
               className="ghost-button"
               onClick={() => {
-                setFailed(false);
+                setImageSource(
+                  localImageUrl
+                    ? { kind: 'local', url: localImageUrl }
+                    : { kind: 'loading' },
+                );
                 setRetry((n) => n + 1);
+                resetZoom();
               }}
             >
               Reintentar
@@ -244,9 +300,13 @@ export function DetectionImageDialog({ detection, onClose }: Props) {
             >
               <img
                 key={retry}
-                src={`${CAMERA_BASE_URL}/capture/${encodeURIComponent(detection.bestCaptureId)}/image.jpg`}
+                src={imageUrl ?? undefined}
                 alt={`Vehículo de la detección ${plate}`}
-                onError={() => setFailed(true)}
+                onError={() =>
+                  setImageSource({
+                    kind: imageSource.kind === 'local' ? 'loading' : 'missing',
+                  })
+                }
                 draggable={false}
               />
               {/* El recuadro va por CSS y no quemado en el JPEG: los mismos

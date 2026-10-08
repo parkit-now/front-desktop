@@ -112,6 +112,8 @@ const ENTRY_MAX_PAGES = 20;
 const INVOICE_PAGE_SIZE = 500;
 /** Tope de páginas por sync: lo que falte entra en la próxima vuelta. */
 const INVOICE_MAX_PAGES = 20;
+const LPR_EVENT_PAGE_SIZE = 500;
+const LPR_EVENT_MAX_PAGES = 20;
 
 function rateToLocal(r: RateDto): LocalRate {
   return {
@@ -969,15 +971,16 @@ class SyncService {
 
     const stateKey = `lprDetectionEvents:${this.tenantId}`;
     const state = await localDb.syncState.get(stateKey);
-    const afterSeq = state?.lastSeq ?? 0;
+    let afterSeq = state?.lastSeq ?? 0;
 
-    const response = await pullLprDetectionEventChanges({
-      tenantId: this.tenantId,
-      bearer: this.accessToken,
-      query: { afterSeq },
-    });
+    for (let page = 0; page < LPR_EVENT_MAX_PAGES; page++) {
+      const response = await pullLprDetectionEventChanges({
+        tenantId: this.tenantId,
+        bearer: this.accessToken,
+        query: { afterSeq, limit: LPR_EVENT_PAGE_SIZE },
+      });
+      const nextSeq = Math.max(afterSeq, response.maxSeq);
 
-    if (response.items.length > 0) {
       // Acá el filtro NO reemplaza a la preservación de campos del `bulkGet`:
       // cubren filas distintas y protegen cosas distintas.
       //
@@ -1018,19 +1021,17 @@ class SyncService {
               lprDetectionEventToLocal(item, existingRows[index]),
             ),
           );
+          const currentState = await localDb.syncState.get(stateKey);
           await localDb.syncState.put({
             key: stateKey,
-            lastSeq: response.maxSeq,
+            lastSeq: Math.max(currentState?.lastSeq ?? 0, nextSeq),
             lastSyncAt: new Date().toISOString(),
           });
         },
       );
-    } else {
-      await localDb.syncState.put({
-        key: stateKey,
-        lastSeq: afterSeq,
-        lastSyncAt: new Date().toISOString(),
-      });
+      if (response.items.length < LPR_EVENT_PAGE_SIZE || nextSeq === afterSeq)
+        return;
+      afterSeq = nextSeq;
     }
   }
 

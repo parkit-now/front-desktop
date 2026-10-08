@@ -1,0 +1,137 @@
+.dt-plate {
+  box-sizing: border-box;
+  display: inline-grid;
+  grid-template-rows: 7px minmax(25px, auto);
+  width: 100px;
+  min-height: 34px;
+  vertical-align: middle;
+  overflow: hidden;
+  border: 2px solid #263243;
+  border-radius: 4px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 2px #14213826;
+}
+
+.dt-plate--moto {
+  width: 91px;
+  min-height: 35px;
+  grid-template-rows: 8px minmax(25px, auto);
+}
+
+.dt-plate__band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  background: #08439d;
+  color: #fff;
+  font:
+    700 5px/1 Arial,
+    sans-serif;
+  letter-spacing: 0;
+}
+
+.dt-plate__flag {
+  position: absolute;
+  right: 3px;
+  width: 9px;
+  height: 5px;
+  border: 1px solid #fff8;
+  background: linear-gradient(
+    to bottom,
+    #70c4ee 0 33%,
+    #fff 33% 67%,
+    #70c4ee 67%
+  );
+}
+
+.dt-plate__number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 3px;
+  font:
+    800 16px/1 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.dt-plate__number--spread {
+  justify-content: space-evenly;
+}
+
+.dt-plate__number--official {
+  gap: 7px;
+}
+
+.dt-plate--moto .dt-plate__number--official {
+  gap: 5px;
+}
+
+.dt-plate--legacy {
+  grid-template-rows: 7px minmax(25px, auto);
+  min-height: 39px;
+  padding-bottom: 3px;
+  border-color: #b8c0cb;
+  background: #e8ecf1;
+  color: #f8fafc;
+}
+
+.dt-plate--legacy.dt-plate--moto {
+  grid-template-rows: 8px minmax(25px, auto);
+  min-height: 40px;
+}
+
+.dt-plate--legacy .dt-plate__band {
+  background: #e8ecf1;
+  color: #1687af;
+}
+
+.dt-plate--legacy .dt-plate__number {
+  background: #111318;
+}
+
+.dt-plate--generic {
+  position: relative;
+  grid-template-rows: minmax(30px, auto);
+  width: auto;
+  max-width: min(160px, 100%);
+  min-width: 88px;
+  min-height: 34px;
+  border: 2px solid #7c8892;
+  background: #f4f8f8;
+  color: #172d35;
+  box-shadow: 0 1px 2px #14213826;
+}
+
+.dt-plate--generic::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: #d4962e;
+  content: '';
+}
+
+.dt-plate--generic .dt-plate__number {
+  padding: 2px 7px 2px 12px;
+  overflow-wrap: anywhere;
+}
+
+.dt-plate-empty {
+  color: #8290a3;
+}
+
+.dt-plate-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { DataTable } from '../data-table';
+import { PlateCell } from '../data-table/components/PlateCell';
 import { localDb, type LocalClient } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useSync } from '../../lib/sync/SyncContext';
@@ -166,9 +167,12 @@ export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
         id: 'plates',
         accessorFn: (row) => row.plates.join(', '),
         header: 'Patentes',
+        size: 230,
         cell: ({ row }) => (
-          <span className="client-plates">
-            {row.original.plates.join(' · ')}
+          <span className="dt-plate-list">
+            {row.original.plates.map((plate) => (
+              <PlateCell key={plate} plate={plate} />
+            ))}
           </span>
         ),
       },

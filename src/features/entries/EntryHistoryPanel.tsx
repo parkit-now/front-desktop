@@ -30,6 +30,12 @@ import {
 } from '../table-view-template';
 import { DataTable, type DataTableFilterOption } from '../data-table';
 import { VehicleCell } from '../data-table/components/VehicleCell';
+import { PlateCell } from '../data-table/components/PlateCell';
+import {
+  formatStayDuration,
+  StayDateCell,
+  TableDateTimeCell,
+} from '../data-table/components/StayDateCell';
 import { dateTimeSorting } from '../data-table/utils';
 import { getDateRangeExcelFileName } from '../data-table/excelExport';
 import { EntryEditDialog } from './EntryEditDialog';
@@ -45,6 +51,7 @@ import {
 } from './invoiceUtils';
 import { useArcaEmitter } from './useArcaEmitter';
 import { DetectionImageDialog } from '../camera/DetectionImageDialog';
+import { hasDetectionImage } from '../camera/detectionImage';
 import { EntryDeleteAction } from './EntryDeleteAction';
 import { EntryDeleteDialog } from './EntryDeleteDialog';
 import { entryDeletionBlockers } from './entryDeletion';
@@ -205,7 +212,7 @@ function buildPhotoColumn(
     enableHiding: false,
     cell: ({ row }) => {
       const detection = row.original.lprDetection;
-      const disabled = !detection?.bestCaptureId;
+      const disabled = !hasDetectionImage(detection);
       return (
         <button
           type="button"
@@ -223,7 +230,7 @@ function buildPhotoColumn(
           }
           onClick={(event) => {
             event.stopPropagation();
-            if (detection?.bestCaptureId) onOpen(detection);
+            if (detection && hasDetectionImage(detection)) onOpen(detection);
           }}
         >
           <Eye size={16} aria-hidden="true" />
@@ -250,8 +257,8 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
   {
     accessorKey: 'plate',
     header: 'Patente',
-    size: 100,
-    cell: ({ row }) => <strong>{row.original.plate}</strong>,
+    size: 120,
+    cell: ({ row }) => <PlateCell plate={row.original.plate} />,
   },
   {
     id: 'vehicle',
@@ -289,11 +296,19 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     id: 'enteredAt',
     accessorFn: (row) => dateOnly(row.enteredAt),
     header: 'Ingreso',
-    meta: { exportValue: (row) => formatArgentinaDateTime(row.enteredAt) },
-    size: 155,
+    meta: {
+      exportValue: (row) =>
+        `${formatArgentinaDateTime(row.enteredAt)}\n${row.leftAt ? '' : 'En curso · '}${formatStayDuration(row.enteredAt, row.leftAt)}`,
+    },
+    size: 180,
     filterFn: 'dateRange',
     sortingFn: dateTimeSorting((row) => row.enteredAt),
-    cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
+    cell: ({ row }) => (
+      <StayDateCell
+        enteredAt={row.original.enteredAt}
+        leftAt={row.original.leftAt}
+      />
+    ),
   },
   {
     id: 'leftAt',
@@ -308,7 +323,7 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     sortingFn: dateTimeSorting((row) => row.leftAt),
     cell: ({ row }) =>
       row.original.leftAt ? (
-        formatArgentinaDateTime(row.original.leftAt)
+        <TableDateTimeCell value={row.original.leftAt} />
       ) : (
         <span className="muted">—</span>
       ),
@@ -716,10 +731,7 @@ export function EntryHistoryPanel({
     );
     const detectionByEntryId = new Map<string, LocalLprDetectionEvent>();
     allLprDetections
-      .filter(
-        (event) =>
-          event.entryId && event.bestCaptureId && !event.imageDeletedAt,
-      )
+      .filter((event) => event.entryId && hasDetectionImage(event))
       .sort(
         (a, b) =>
           new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
@@ -991,7 +1003,10 @@ export function EntryHistoryPanel({
       ) : null}
       {photoDetection ? (
         <DetectionImageDialog
+          key={photoDetection.id}
           detection={photoDetection}
+          tenantId={tenantId}
+          accessToken={accessToken}
           onClose={() => setPhotoDetection(null)}
         />
       ) : null}

@@ -1084,6 +1084,41 @@ function localLprEvent(
 }
 
 describe('pullLprDetectionEvents y los cambios locales sin sincronizar', () => {
+  it('recupera varias paginas al instalar en otro equipo', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, index) =>
+      serverLprEvent(`lpr-${index + 1}`, {
+        syncSeq: index + 1,
+        entryId: `entry-${index + 1}`,
+        imageStoragePath: `${TENANT}/lpr-${index + 1}.jpg`,
+      }),
+    );
+    h.pullLprDetectionEventChanges
+      .mockResolvedValueOnce({ items: firstPage, maxSeq: 500 })
+      .mockResolvedValueOnce({
+        items: [
+          serverLprEvent('lpr-501', {
+            syncSeq: 501,
+            entryId: 'entry-501',
+            imageStoragePath: `${TENANT}/lpr-501.jpg`,
+          }),
+        ],
+        maxSeq: 501,
+      });
+
+    await syncService.pullLprDetectionEvents();
+
+    expect(h.pullLprDetectionEventChanges).toHaveBeenNthCalledWith(2, {
+      tenantId: TENANT,
+      bearer: TOKEN,
+      query: { afterSeq: 500, limit: 500 },
+    });
+    expect(h.lprDetectionEvents.rows.get('lpr-501')).toMatchObject({
+      entryId: 'entry-501',
+      imageStoragePath: `${TENANT}/lpr-501.jpg`,
+    });
+    expect(h.syncState.get(`lprDetectionEvents:${TENANT}`)?.lastSeq).toBe(501);
+  });
+
   it('no pisa la decisión del operador mientras la op sigue encolada', async () => {
     // La mitigación que ya existía (preservar campos con `bulkGet`) salvaba lo
     // que calculó el OCR y pisaba lo que decidió la PERSONA: `status`,

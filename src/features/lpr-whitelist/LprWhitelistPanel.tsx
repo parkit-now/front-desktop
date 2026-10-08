@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '../data-table';
+import { PlateCell } from '../data-table/components/PlateCell';
 import { localDb, type LocalLprIgnoredPlate } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useSync } from '../../lib/sync/SyncContext';
@@ -132,7 +133,8 @@ export function LprWhitelistPanel({
       {
         accessorKey: 'plate',
         header: 'Patente',
-        cell: (info) => <strong>{String(info.getValue())}</strong>,
+        size: 120,
+        cell: (info) => <PlateCell plate={String(info.getValue())} />,
       },
       {
         accessorKey: 'notes',
