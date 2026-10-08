@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/parkit-now/front-desktop/compare/v1.16.0...v1.17.0) (2026-10-08)
+
+
+### Features
+
+* **data-table:** enhance column visibility management and add filter-only functionality ([f2017d2](https://github.com/parkit-now/front-desktop/commit/f2017d2a3fbfe67daaae12c0c32033cd9e135646))
+
 # [1.16.0](https://github.com/parkit-now/front-desktop/compare/v1.15.0...v1.16.0) (2026-10-08)
 
 
