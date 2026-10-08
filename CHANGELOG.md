@@ -1,3 +1,11 @@
+# [1.18.0](https://github.com/parkit-now/front-desktop/compare/v1.17.0...v1.18.0) (2026-10-08)
+
+
+### Features
+
+* enhance DetectionImageDialog with tenantId and accessToken props ([3ffd74a](https://github.com/parkit-now/front-desktop/commit/3ffd74a47c09dde863be34e2665cff4164ecd347))
+* implement Mercado Pago QR payment recovery and enhance exit payment handling ([0f7facb](https://github.com/parkit-now/front-desktop/commit/0f7facb5dd249e25bca712e9bd72e8286613ab84))
+
 # [1.17.0](https://github.com/parkit-now/front-desktop/compare/v1.16.0...v1.17.0) (2026-10-08)
 
 
