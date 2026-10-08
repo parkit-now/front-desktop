@@ -145,3 +145,58 @@ def test_un_cambio_de_resolucion_no_dispara():
 def test_roi_crop_fuera_de_cuadro_devuelve_el_cuadro_entero():
     base = _frame(40, size=(100, 100))
     assert roi_crop(base, (500, 500, 600, 600)).shape == base.shape
+
+
+def test_la_zona_que_se_analiza_es_LA_MISMA_que_se_le_manda_al_LPR():
+    """El invariante que se rompió una vez y hay que dejar clavado.
+
+    Son tres cosas que tienen que coincidir y viven en lugares distintos:
+
+      1. La zona que el usuario dibuja en el panel (`RoiEditor.tsx`), en
+         píxeles del cuadro que le llega por `/stream/mjpeg`.
+      2. La zona sobre la que se busca movimiento (`_to_gray_roi`).
+      3. La zona que se recorta y se le manda al reconocedor (`main.py`).
+
+    Si cualquiera queda en otra escala, la detección empeora **en silencio**:
+    no falla, tarda. Ya pasó al achicar el preview para ahorrar CPU, que dejó
+    (1) en otra resolución que (2) y (3).
+
+    Este test cubre (2) contra (3): que el submuestreo del detector no mueva
+    las coordenadas, y que el cuadro que se devuelve para la evidencia siga
+    siendo el original a resolución completa.
+    """
+    roi = (400, 300, 1200, 900)
+    frame = _frame(40, size=(1440, 2560))
+
+    # Una marca SÓLO adentro del ROI: si el recorte se corriera, no aparece.
+    frame[350:850, 450:1150] = 200
+
+    d = MotionDetector(threshold=1.5, cooldown=0.0, roi=roi, warmup_frames=0)
+    d.check(_frame(40, size=(1440, 2560)))
+    disparo, snapshot = d.check(frame)
+
+    assert disparo is True
+    # (3) La evidencia es el cuadro ENTERO: `main.py` recorta después.
+    assert snapshot.shape == frame.shape
+    # Y ese recorte da exactamente la zona pedida, a resolución completa.
+    recorte = roi_crop(snapshot, roi)
+    assert recorte.shape[:2] == (900 - 300, 1200 - 400)
+    # La marca cae adentro, o sea que el recorte mira donde tiene que mirar.
+    assert recorte.max() == 200
+
+
+def test_el_submuestreo_no_corre_la_zona_analizada():
+    """Movimiento JUSTO afuera del ROI sigue sin disparar después de achicar.
+
+    Es la prueba de que el `resize` de `_to_gray_roi` no desplaza el recorte:
+    si lo hiciera, se colarían autos de la calle como ingresos falsos.
+    """
+    roi = (400, 300, 1200, 900)
+    base = _frame(40, size=(1440, 2560))
+    d = MotionDetector(threshold=1.5, cooldown=0.0, roi=roi, warmup_frames=0)
+    d.check(base)
+
+    afuera = base.copy()
+    afuera[0:290, 0:390] = 255  # pegado al ROI pero afuera
+
+    assert d.check(afuera)[0] is False
