@@ -3025,6 +3025,7 @@ export interface components {
             invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
             /** Format: date-time */
             leftAt?: string;
+            manualInvoiceNumber?: string | null;
             /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
             manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
@@ -3094,6 +3095,8 @@ export interface components {
             enteredAt?: string;
             /** Format: date-time */
             leftAt?: string;
+            /** @description Número de la factura emitida fuera de Parkit. */
+            manualInvoiceNumber?: string;
             /** @description Marca la estadía como facturada por fuera de Parkit (playas sin ARCA). Sólo en estadías cerradas; se permite aunque la caja esté cerrada. */
             manuallyInvoiced?: boolean;
             /** @example Cliente frecuente */
@@ -4066,6 +4069,7 @@ export interface components {
             id: string;
             /** Format: date-time */
             leftAt?: string;
+            manualInvoiceNumber?: string | null;
             /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
             manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
