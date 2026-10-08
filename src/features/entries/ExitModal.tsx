@@ -886,7 +886,8 @@ export function ExitModal({
                 >
                   {printingReceipt ? 'Imprimiendo...' : 'Comprobante no fiscal'}
                 </button>
-                {!invoicingPaused && canIssueAfterCharge(lastInvoice) ? (
+                {!invoicingPaused &&
+                canIssueAfterCharge(lastInvoice, selectedModes) ? (
                   <button
                     type="button"
                     className="ghost-button"

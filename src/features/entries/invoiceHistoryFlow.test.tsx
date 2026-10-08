@@ -324,15 +324,15 @@ describe('historial reactivo al facturar desde cualquier panel', () => {
       version: 2,
       syncSeq: 2,
       updatedAt: leftAt,
-      invoice: { ...invoice, status: 'pending' },
+      invoice: { ...invoice, status: 'not_required' },
     });
     mock.pull.mockImplementationOnce(() =>
-      localDb.invoices.bulkPut([{ ...invoice, status: 'pending' }]),
+      localDb.invoices.bulkPut([{ ...invoice, status: 'not_required' }]),
     );
     await render(true);
     const row = historyRow();
     await click('Confirmar cobro', container.querySelector('.exit-modal')!);
-    expect(historyRow().textContent).toContain('Pendiente');
+    expect(historyRow().textContent).toContain('No facturado');
     await emit(container.querySelector('.exit-modal')!);
     expect(historyRow()).toBe(row);
     expect(historyRow().textContent).toContain('Facturada');
@@ -344,7 +344,7 @@ describe('historial reactivo al facturar desde cualquier panel', () => {
       .set(entry.id, { ...entry, leftAt, amountPaid: '10' });
     await render();
     const row = historyRow();
-    expect(row.textContent).toContain('Sin factura');
+    expect(row.textContent).toContain('No facturado');
     await act(() => Promise.resolve((row as HTMLTableRowElement).click()));
     await emit(container.querySelector('.entry-invoice-section')!);
     expect(historyRow()).toBe(row);

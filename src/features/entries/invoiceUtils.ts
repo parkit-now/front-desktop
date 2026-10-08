@@ -89,7 +89,7 @@ export function describeInvoiceResult(input: {
       };
     case 'pending':
       // Pendiente CON motivo (certificado vencido, falta el receptor): se
-      // quiso emitir y no se pudo. Sin motivo es un medio en Manual: nada.
+      // quiso emitir y no se pudo. Las facturas Manuales nuevas no quedan pendientes.
       return invoice.errorCode
         ? {
             tone: 'warning',
@@ -339,8 +339,13 @@ export function describeTaxpayerLookup(
  */
 export function canIssueAfterCharge(
   invoice: InvoiceSummaryDto | null | undefined,
+  lineModes: readonly (PaymentMethodInvoiceMode | undefined)[],
 ): boolean {
-  return invoice?.status === 'pending' || invoice?.status === 'error';
+  return (
+    invoice?.status === 'pending' ||
+    invoice?.status === 'error' ||
+    (invoice?.status === 'not_required' && lineModes.includes('manual'))
+  );
 }
 
 /**
@@ -399,7 +404,7 @@ export const INVOICE_STATE_LABEL: Record<InvoiceState, string> = {
   error: 'Con error',
   pending: 'Pendiente',
   manual: 'Facturada a mano',
-  none: 'Sin factura',
+  none: 'No facturado',
   na: 'No aplica',
 };
 

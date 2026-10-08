@@ -159,14 +159,21 @@ describe('invoiceUtils', () => {
     expect(consumerFinalLetter(null)).toBe('C');
   });
 
-  it('«Emitir factura» después del cobro: pendiente o con error, no emitida ni sin factura', () => {
-    expect(canIssueAfterCharge({ ...base, status: 'pending' })).toBe(true);
-    expect(canIssueAfterCharge({ ...base, status: 'error' })).toBe(true);
-    expect(canIssueAfterCharge(base)).toBe(false);
-    expect(canIssueAfterCharge({ ...base, status: 'not_required' })).toBe(
-      false,
+  it('«Emitir factura» después del cobro: Manual sin factura, pendiente o con error', () => {
+    expect(canIssueAfterCharge({ ...base, status: 'pending' }, ['auto'])).toBe(
+      true,
     );
-    expect(canIssueAfterCharge(null)).toBe(false);
+    expect(canIssueAfterCharge({ ...base, status: 'error' }, ['auto'])).toBe(
+      true,
+    );
+    expect(
+      canIssueAfterCharge({ ...base, status: 'not_required' }, ['manual']),
+    ).toBe(true);
+    expect(
+      canIssueAfterCharge({ ...base, status: 'not_required' }, ['none']),
+    ).toBe(false);
+    expect(canIssueAfterCharge(base, ['manual'])).toBe(false);
+    expect(canIssueAfterCharge(null, ['manual'])).toBe(false);
   });
 
   it('confirmación de emisión: dice letra, a quién y el monto', () => {

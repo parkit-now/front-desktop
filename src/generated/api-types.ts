@@ -5399,7 +5399,7 @@ export interface components {
             maxSeq: number;
         };
         /**
-         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después.
          * @enum {string}
          */
         PaymentMethodInvoiceMode: "none" | "auto" | "manual";
@@ -5455,7 +5455,7 @@ export interface components {
              */
             id: string;
             /**
-             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial.
+             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después.
              * @example none
              */
             invoiceMode: components["schemas"]["PaymentMethodInvoiceMode"];
@@ -6250,7 +6250,7 @@ export interface components {
              * @example true
              */
             enabled?: boolean;
-            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = queda pendiente para el Historial. */
+            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después. */
             invoiceMode?: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this method becomes the default for the entity.
