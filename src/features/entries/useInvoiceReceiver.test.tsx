@@ -12,7 +12,13 @@ const mock = vi.hoisted(() => ({
   list: vi.fn(),
   entries: vi.fn(),
   invoices: vi.fn(),
+  clientRows: [] as
+    | { plates: string[]; cuit: string | null; deletedAt: null }[]
+    | undefined,
   history: vi.fn(),
+}));
+vi.mock('dexie-react-hooks', () => ({
+  useLiveQuery: () => mock.clientRows,
 }));
 vi.mock('../../lib/api/arca', () => ({
   getInvoiceReceiverSuggestion: mock.suggestion,
@@ -107,6 +113,7 @@ beforeEach(() => {
   mock.suggestion.mockResolvedValue({ cuit: null });
   mock.entries.mockResolvedValue([]);
   mock.invoices.mockResolvedValue([]);
+  mock.clientRows = [];
   mock.history.mockReturnValue(null);
   mock.list.mockResolvedValue([]);
   mock.lookup.mockResolvedValue({
@@ -134,6 +141,52 @@ afterEach(async () => {
 });
 
 describe('useInvoiceReceiver: CUIT del QR', () => {
+  it('prefiere el cliente al historial de la patente', async () => {
+    mock.clientRows = [{ plates: ['ABC123'], cuit: CUIT, deletedAt: null }];
+    mock.history.mockReturnValue({ cuit: HISTORY_CUIT });
+    await render({ suggestionEnabled: false });
+    expect(receiver.choice).toBe('cuit');
+    expect(receiver.cuit).toBe(CUIT);
+    expect(mock.history).not.toHaveBeenCalled();
+  });
+
+  it('respeta un CUIT borrado deliberadamente en la ficha', async () => {
+    mock.clientRows = [{ plates: ['ABC123'], cuit: null, deletedAt: null }];
+    mock.history.mockReturnValue({ cuit: HISTORY_CUIT });
+    await render({ suggestionEnabled: false });
+    expect(receiver.choice).toBe('final');
+    expect(mock.history).not.toHaveBeenCalled();
+  });
+
+  it('autocompleta una ficha que llega despues de abrir el selector y tocar Con CUIT', async () => {
+    mock.clientRows = undefined;
+    await render({ suggestionEnabled: false });
+    act(() => receiver.setChoice('cuit'));
+    expect(receiver.cuit).toBe('');
+
+    mock.clientRows = [{ plates: ['ABC123'], cuit: CUIT, deletedAt: null }];
+    await render();
+    expect(receiver.choice).toBe('cuit');
+    expect(receiver.cuit).toBe(CUIT);
+  });
+
+  it('reintenta el autocompletado si la lectura llega durante el guardado', async () => {
+    mock.clientRows = [{ plates: ['ABC123'], cuit: CUIT, deletedAt: null }];
+    await render({ suggestionEnabled: false, frozen: true });
+    expect(receiver.choice).toBe('final');
+    await render({ frozen: false });
+    expect(receiver.cuit).toBe(CUIT);
+  });
+
+  it('no pisa Consumidor Final elegido explicitamente antes de leer la ficha', async () => {
+    mock.clientRows = undefined;
+    await render({ suggestionEnabled: false });
+    act(() => receiver.setChoice('final'));
+    mock.clientRows = [{ plates: ['ABC123'], cuit: CUIT, deletedAt: null }];
+    await render();
+    expect(receiver.choice).toBe('final');
+    expect(receiver.cuit).toBe('');
+  });
   it('autocompleta Con CUIT y consulta el padron antes de habilitar', async () => {
     mock.suggestion.mockResolvedValue({ cuit: CUIT });
     await render();

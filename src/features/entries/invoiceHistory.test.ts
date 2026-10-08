@@ -4,7 +4,7 @@ import { refreshInvoiceHistory } from './invoiceHistory';
 const pullInvoices = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/sync/SyncService', () => ({
-  syncService: { pullInvoices },
+  syncService: { pullInvoices, pullClients: vi.fn(() => Promise.resolve()) },
 }));
 beforeEach(() => vi.resetAllMocks());
 describe('actualizacion fiscal del historial', () => {

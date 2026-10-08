@@ -1,4 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  shell,
+} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -333,6 +340,17 @@ if (!gotTheLock) {
     ipcMain.handle('shell:openExternal', (_event, url: string) =>
       shell.openExternal(url),
     );
+
+    ipcMain.handle('clipboard:writeText', (_event, value: unknown) => {
+      if (typeof value !== 'string' || value.length > 4096)
+        return { ok: false };
+      try {
+        clipboard.writeText(value);
+        return { ok: true };
+      } catch {
+        return { ok: false };
+      }
+    });
 
     // ── Cámara ──────────────────────────────────────────────────────────────
     //

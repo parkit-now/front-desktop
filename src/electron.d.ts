@@ -133,6 +133,7 @@ declare global {
         name: 'lpr-service' | 'camera-service',
       ) => Promise<DesktopCameraServiceStatus>;
       openExternal: (url: string) => Promise<void>;
+      copyText: (value: string) => Promise<{ ok: boolean }>;
       onOAuthCallback: (callback: (url: string) => void) => () => void;
       listPrinters: () => Promise<DesktopPrinter[]>;
       printTicket: (payload: {

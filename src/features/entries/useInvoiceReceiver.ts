@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   listInvoiceReceivers,
   getInvoiceReceiverSuggestion,
@@ -8,6 +9,7 @@ import {
 } from '../../lib/api/arca';
 import { translateApiError } from '../../lib/api/translate';
 import { localDb } from '../../lib/db/localDb';
+import { clientForInvoice } from '../clients/contactUtils';
 import {
   isReceiverReady,
   isValidCuit,
@@ -53,8 +55,8 @@ export function useInvoiceReceiver(input: {
   const [lookup, setLookup] = useState<TaxpayerLookup>({ status: 'idle' });
   const [suggestions, setSuggestions] = useState<InvoiceReceiverDto[]>([]);
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
-  const autofillKeyRef = useRef<string | null>(null);
   const userEditedRef = useRef(false);
+  const cuitEditedRef = useRef(false);
   const [userEdited, setUserEdited] = useState(false);
   const [source, setSource] = useState<'mercadopago' | null>(null);
   const sourceRef = useRef<'mercadopago' | null>(null);
@@ -78,6 +80,10 @@ export function useInvoiceReceiver(input: {
     suggestionEnabled && isOnline && Boolean(entryId && accessToken);
   const resolvingSuggestion =
     enabled && settledSuggestion !== suggestionScope && !userEdited;
+  const clients = useLiveQuery(
+    () => localDb.clients.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
 
   useEffect(() => {
     frozenRef.current = frozen;
@@ -89,8 +95,8 @@ export function useInvoiceReceiver(input: {
     if (identityRef.current === identity) return;
     identityRef.current = identity;
     userEditedRef.current = false;
+    cuitEditedRef.current = false;
     sourceRef.current = null;
-    autofillKeyRef.current = null;
     setUserEdited(false);
     setSource(null);
     setChoiceState('final');
@@ -166,13 +172,23 @@ export function useInvoiceReceiver(input: {
   const wantsCuit = choice === 'cuit' && isOnline;
 
   useEffect(() => {
-    if (!isOnline || !plate) return;
+    if (!isOnline || !plate || !clients) return;
     const normalizedPlate = plate.trim().toUpperCase();
     if (!normalizedPlate) return;
+    if (userEditedRef.current || sourceRef.current || frozenRef.current) return;
 
-    const key = `${tenantId}:${normalizedPlate}`;
-    if (autofillKeyRef.current === key || userEditedRef.current) return;
-    autofillKeyRef.current = key;
+    const matchedClient = clientForInvoice(clients, normalizedPlate);
+    if (matchedClient) {
+      if (matchedClient.cuit && isValidCuit(matchedClient.cuit)) {
+        setChoiceState('cuit');
+        setCuit(matchedClient.cuit);
+      } else {
+        setChoiceState('final');
+        setCuit('');
+      }
+      setTouched(false);
+      return; // An intentionally empty CUIT must not revive invoice history.
+    }
 
     let cancelled = false;
     Promise.all([
@@ -214,7 +230,7 @@ export function useInvoiceReceiver(input: {
     return () => {
       cancelled = true;
     };
-  }, [isOnline, plate, tenantId, identity]);
+  }, [isOnline, plate, tenantId, identity, clients, frozen]);
 
   useEffect(() => {
     if (!wantsCuit || !isValidCuit(digits) || !accessToken) {
@@ -278,8 +294,9 @@ export function useInvoiceReceiver(input: {
       /** Lo elegido; offline es siempre consumidor final. */
       choice: effectiveChoice,
       setChoice: (next: ReceiverChoice) => {
-        userEditedRef.current = true;
-        setUserEdited(true);
+        const edited = next === 'final' || cuitEditedRef.current;
+        userEditedRef.current = edited;
+        setUserEdited(edited);
         setSource(null);
         setChoiceState(next);
         setTouched(false);
@@ -287,6 +304,7 @@ export function useInvoiceReceiver(input: {
       cuit,
       setCuit: (next: string) => {
         userEditedRef.current = true;
+        cuitEditedRef.current = true;
         setUserEdited(true);
         setSource(null);
         setCuit(next);

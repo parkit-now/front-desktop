@@ -16,6 +16,7 @@ import type {
   LocalVehicleCategory,
   LocalVehicleType,
   LocalLprIgnoredPlate,
+  LocalClient,
   PendingOp,
   PendingOpEntity,
   SyncState,
@@ -83,6 +84,7 @@ const h = vi.hoisted(() => {
   const vehicles = makeTable<LocalVehicle>();
   const vehicleTypes = makeTable<LocalVehicleType>();
   const lprIgnoredPlates = makeTable<LocalLprIgnoredPlate>();
+  const clients = makeTable<LocalClient>();
   const paymentMethods = makeTable<LocalPaymentMethod>();
   const lprDetectionEvents = makeTable<LocalLprDetectionEvent>();
   const invoices = makeTable<LocalInvoice>();
@@ -116,6 +118,7 @@ const h = vi.hoisted(() => {
     vehicles,
     vehicleTypes,
     lprIgnoredPlates,
+    clients,
     paymentMethods,
     lprDetectionEvents,
     invoices,
@@ -187,6 +190,7 @@ const h = vi.hoisted(() => {
     vehicles,
     vehicleTypes,
     lprIgnoredPlates,
+    clients,
     vehicleCategories,
     paymentMethods,
     lprDetectionEvents,
@@ -206,6 +210,10 @@ const h = vi.hoisted(() => {
     listVehicleTypes: vi.fn(),
     listLprIgnoredPlates: vi.fn(() =>
       Promise.resolve([] as LocalLprIgnoredPlate[]),
+    ),
+    listClients: vi.fn(() => Promise.resolve([] as LocalClient[])),
+    pullClientChanges: vi.fn((input: { afterSeq: number }) =>
+      Promise.resolve({ items: [] as LocalClient[], maxSeq: input.afterSeq }),
     ),
     pullLprIgnoredPlateChanges: vi.fn((input: { afterSeq: number }) =>
       Promise.resolve({
@@ -259,6 +267,11 @@ vi.mock('../api/lpr-ignored-plates', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/lpr-ignored-plates')>()),
   listLprIgnoredPlates: h.listLprIgnoredPlates,
   pullLprIgnoredPlateChanges: h.pullLprIgnoredPlateChanges,
+}));
+vi.mock('../api/clients', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/clients')>()),
+  listClients: h.listClients,
+  pullClientChanges: h.pullClientChanges,
 }));
 vi.mock('../api/payment-methods', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/payment-methods')>()),
@@ -362,8 +375,11 @@ beforeEach(() => {
   h.vehicles.rows.clear();
   h.vehicleTypes.rows.clear();
   h.lprIgnoredPlates.rows.clear();
+  h.clients.rows.clear();
   h.pullLprIgnoredPlateChanges.mockReset();
   h.listLprIgnoredPlates.mockReset();
+  h.listClients.mockReset();
+  h.pullClientChanges.mockReset();
   h.vehicleCategories.clear();
   h.listVehicleCategories.mockReset();
   h.paymentMethods.rows.clear();

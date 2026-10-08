@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Settings,
   ListChecks,
+  UsersRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -34,6 +35,7 @@ import { RatesPanel } from '../rates/RatesPanel';
 import { VehiclesPanel } from '../vehicles/VehiclesPanel';
 import { VehicleTypesPanel } from '../vehicle-types/VehicleTypesPanel';
 import { LprWhitelistPanel } from '../lpr-whitelist/LprWhitelistPanel';
+import { ClientsPanel } from '../clients/ClientsPanel';
 import { CameraRulesBridge } from '../camera/CameraRulesBridge';
 import { OfflineBanner } from '../sync/OfflineBanner';
 import { SyncButton } from '../sync/SyncButton';
@@ -93,6 +95,7 @@ type WorkspaceSection =
   | 'vehicles'
   | 'vehicle-types'
   | 'lpr-whitelist'
+  | 'clients'
   | 'caja'
   | 'reservas'
   | 'impresora';
@@ -753,6 +756,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     vehicles: 'Catálogo de Vehículos',
     'vehicle-types': 'Tipos de Vehículo',
     'lpr-whitelist': 'Lista blanca',
+    clients: 'Clientes',
     caja: 'Caja',
     reservas: 'Reservas',
     impresora: 'Impresora',
@@ -766,6 +770,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
     if (s === 'lpr-whitelist') return <ListChecks size={20} aria-hidden />;
+    if (s === 'clients') return <UsersRound size={20} aria-hidden />;
     if (s === 'caja') return <Archive size={20} aria-hidden />;
     if (s === 'reservas') return <CalendarClock size={20} aria-hidden />;
     if (s === 'impresora') return <Printer size={20} aria-hidden />;
@@ -802,6 +807,15 @@ export function SessionView({ session, sessionStale = false }: Props) {
       label: 'Impresora',
       icon: <Printer size={18} aria-hidden="true" />,
     },
+    ...(activeMembership?.role === 'owner'
+      ? [
+          {
+            section: 'clients' as const,
+            label: 'Clientes',
+            icon: <UsersRound size={18} aria-hidden="true" />,
+          },
+        ]
+      : []),
     ...(ratesManageAllowed
       ? [
           {
@@ -1159,6 +1173,15 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   </p>
                 </section>
               )
+            ) : section === 'clients' ? (
+              activeTenantId && activeMembership?.role === 'owner' ? (
+                <ClientsPanel
+                  key={activeTenantId}
+                  tenantId={activeTenantId}
+                  accessToken={session.access_token}
+                  userId={session.user.id}
+                />
+              ) : null
             ) : section === 'lpr-whitelist' ? (
               activeTenantId && ratesManageAllowed ? (
                 <LprWhitelistPanel

@@ -17,6 +17,7 @@ import {
   type LocalVehicle,
   type LocalVehicleType,
   type LocalLprIgnoredPlate,
+  type LocalClient,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -84,6 +85,13 @@ import {
   listLprIgnoredPlates,
   pullLprIgnoredPlateChanges,
 } from '../api/lpr-ignored-plates';
+import {
+  createClient,
+  updateClient,
+  deleteClient,
+  listClients,
+  pullClientChanges,
+} from '../api/clients';
 import { ApiError } from '../api/client';
 import {
   CAMERA_BASE_URL,
@@ -551,6 +559,39 @@ class SyncService {
           await localDb.lprIgnoredPlates.bulkDelete(
             deleted.map((row) => row.id),
           );
+          await localDb.syncState.put({
+            key,
+            lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+      if (response.items.length < 1000 || response.maxSeq <= afterSeq) return;
+      afterSeq = response.maxSeq;
+    }
+  }
+
+  async pullClients(): Promise<void> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+    if (!tenantId || !bearer) return;
+    const key = `clients:${tenantId}`;
+    let afterSeq = (await localDb.syncState.get(key))?.lastSeq ?? 0;
+    for (let page = 0; page < 20; page += 1) {
+      const response = await pullClientChanges({ tenantId, bearer, afterSeq });
+      await localDb.transaction(
+        'rw',
+        localDb.clients,
+        localDb.pendingOps,
+        localDb.syncState,
+        async () => {
+          const incoming = await this.dropLocallyDirty(
+            'client',
+            response.items,
+          );
+          const { active, deleted } = splitTombstones(incoming);
+          await localDb.clients.bulkPut(active);
+          await localDb.clients.bulkDelete(deleted.map((row) => row.id));
           await localDb.syncState.put({
             key,
             lastSeq: response.maxSeq,
@@ -1160,6 +1201,7 @@ class SyncService {
           | LocalVehicle
           | LocalVehicleType
           | LocalLprIgnoredPlate
+          | LocalClient
           | LocalCashSession
           | LocalLprDetectionEvent
           | undefined;
@@ -1174,6 +1216,8 @@ class SyncService {
           serverEntity = await this.applyVehicleTypeOp(op);
         } else if (op.entityType === 'lprIgnoredPlate') {
           serverEntity = await this.applyLprIgnoredPlateOp(op);
+        } else if (op.entityType === 'client') {
+          serverEntity = await this.applyClientOp(op);
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
@@ -1191,6 +1235,7 @@ class SyncService {
             localDb.vehicles,
             localDb.vehicleTypes,
             localDb.lprIgnoredPlates,
+            localDb.clients,
             localDb.paymentMethods,
             localDb.cashSessions,
             localDb.lprDetectionEvents,
@@ -1220,6 +1265,13 @@ class SyncService {
                   if (row.deletedAt)
                     await localDb.lprIgnoredPlates.delete(row.id);
                   else await localDb.lprIgnoredPlates.put(row);
+                }
+              } else if (op.entityType === 'client') {
+                const row = serverEntity as LocalClient;
+                const stillDirty = await this.dirtyIds('client');
+                if (!stillDirty.has(row.id)) {
+                  if (row.deletedAt) await localDb.clients.delete(row.id);
+                  else await localDb.clients.put(row);
                 }
               } else if (op.entityType === 'cashSession') {
                 await localDb.cashSessions.put(
@@ -1385,6 +1437,28 @@ class SyncService {
       });
     }
     throw new Error('Unknown ignored plate operation');
+  }
+
+  private async applyClientOp(op: PendingOp): Promise<LocalClient> {
+    const credentials = { tenantId: this.tenantId, bearer: this.accessToken };
+    if (op.operation === 'create')
+      return createClient({
+        ...credentials,
+        body: op.payload as Parameters<typeof createClient>[0]['body'],
+      });
+    const payload = op.payload as {
+      expectedVersion: number;
+      body: Parameters<typeof updateClient>[0]['body'];
+    };
+    if (op.operation === 'update')
+      return updateClient({ ...credentials, id: op.entityId, ...payload });
+    if (op.operation === 'delete')
+      return deleteClient({
+        ...credentials,
+        id: op.entityId,
+        expectedVersion: payload.expectedVersion,
+      });
+    throw new Error('Unknown client operation');
   }
 
   private async applyRateOp(op: PendingOp): Promise<LocalRate | undefined> {
@@ -1622,6 +1696,7 @@ class SyncService {
     await this.pullRates();
     await this.pullEntries();
     await this.pullLprIgnoredPlates();
+    await this.pullClients();
   }
 
   /**
@@ -1715,6 +1790,23 @@ class SyncService {
     if (!bearer || !tenantId) return;
 
     const entities: [string, () => Promise<void>][] = [
+      [
+        'clientes',
+        () =>
+          this.reconcileEntity({
+            entity: 'client',
+            entityType: 'client',
+            table: localDb.clients,
+            intervalMs: RECONCILE_INTERVAL_MS.small,
+            force,
+            fetchServerIds: async () => ({
+              ids: (await listClients({ tenantId, bearer })).map(
+                (row) => row.id,
+              ),
+              complete: true,
+            }),
+          }),
+      ],
       [
         'lista blanca',
         () =>
@@ -1816,6 +1908,7 @@ class SyncService {
     const stages: [string, () => Promise<void>][] = [
       ['cambios pendientes', () => this.pushPendingOps(ignoreBackoff)],
       ['lista blanca', () => this.pullLprIgnoredPlates()],
+      ['clientes', () => this.pullClients()],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
       //
       // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así

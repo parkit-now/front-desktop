@@ -15,6 +15,10 @@ const mock = vi.hoisted(() => ({
   issue: vi.fn(),
   preview: vi.fn(),
   pull: vi.fn(),
+  document: vi.fn(),
+  qr: vi.fn(),
+  savePdf: vi.fn(),
+  reveal: vi.fn(),
   toast: vi.fn(),
   online: true,
 }));
@@ -58,6 +62,7 @@ vi.mock('../../lib/db/localDb', () => {
   return {
     localDb: {
       entries: table('entries'),
+      clients: table('clients'),
       invoices: table('invoices'),
       cashSessions: table('cashSessions'),
       paymentMethods: table('paymentMethods'),
@@ -113,9 +118,18 @@ vi.mock('../../lib/api/entries', () => ({
 vi.mock('../../lib/api/arca', () => ({
   issueInvoice: mock.issue,
   getInvoicePreview: mock.preview,
+  getInvoiceDocument: mock.document,
 }));
+vi.mock('qrcode', () => ({ default: { toDataURL: mock.qr } }));
+vi.mock('./invoiceDocument', () => ({
+  renderInvoiceHtml: () => '<html>Factura</html>',
+}));
+vi.mock('./saveInvoicePdf', () => ({ saveInvoicePdf: mock.savePdf }));
 vi.mock('../../lib/sync/SyncService', () => ({
-  syncService: { pullInvoices: mock.pull },
+  syncService: {
+    pullInvoices: mock.pull,
+    pullClients: vi.fn(() => Promise.resolve()),
+  },
 }));
 vi.mock('./useArcaEmitter', () => ({
   useArcaEmitter: () => ({ condicionIva: 'monotributo', certExpired: false }),
@@ -168,6 +182,7 @@ const invoice: LocalInvoice = {
 };
 let root: Root;
 let container: HTMLDivElement;
+let previousDesktop: PropertyDescriptor | undefined;
 async function click(text: string, host: Element = container) {
   const button = [...host.querySelectorAll<HTMLButtonElement>('button')].find(
     (button) => button.textContent?.trim() === text,
@@ -233,6 +248,15 @@ beforeEach(() => {
     invoiceMode: 'auto',
   });
   mock.preview.mockResolvedValue({ amount: 10 });
+  mock.document.mockResolvedValue({ qrUrl: 'https://example.test/qr' });
+  mock.qr.mockResolvedValue('data:image/png;base64,qr');
+  mock.savePdf.mockResolvedValue('/tmp/factura.pdf');
+  mock.reveal.mockResolvedValue({ ok: true });
+  previousDesktop = Object.getOwnPropertyDescriptor(window, 'parkitDesktop');
+  Object.defineProperty(window, 'parkitDesktop', {
+    configurable: true,
+    value: { showSavedFileInFolder: mock.reveal },
+  });
   mock.issue.mockResolvedValue(invoice);
   mock.pull.mockImplementation(() => localDb.invoices.bulkPut([invoice]));
   mock.close.mockResolvedValue({
@@ -251,6 +275,9 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => Promise.resolve(root.unmount()));
   container.remove();
+  if (previousDesktop)
+    Object.defineProperty(window, 'parkitDesktop', previousDesktop);
+  else Reflect.deleteProperty(window, 'parkitDesktop');
   localStorage.clear();
   vi.useRealTimers();
 });
@@ -268,6 +295,25 @@ describe('historial reactivo al facturar desde cualquier panel', () => {
     expect(historyRow().textContent).toContain('Facturada');
     expect(historyRow().textContent).toContain('0007-00000009');
     expect(container.querySelector('.exit-receipt')).toBeTruthy();
+  });
+  it('ofrece mostrar la carpeta solo despues de guardar el PDF del comprobante', async () => {
+    await render(true);
+    await click('Confirmar cobro', container.querySelector('.exit-modal')!);
+    const receipt = container.querySelector('.exit-receipt')!;
+    expect(
+      receipt.querySelector('[aria-label="Mostrar PDF en carpeta"]'),
+    ).toBeNull();
+    await click('Descargar PDF', receipt);
+    expect(mock.savePdf).toHaveBeenCalledWith(
+      '00000009-0007_123456789_IAG574.pdf',
+      '<html>Factura</html>',
+    );
+    const folder = receipt.querySelector<HTMLButtonElement>(
+      '[aria-label="Mostrar PDF en carpeta"]',
+    );
+    expect(folder).not.toBeNull();
+    await act(() => Promise.resolve(folder!.click()));
+    expect(mock.reveal).toHaveBeenCalledWith('/tmp/factura.pdf');
   });
   it('la emision posterior al cobro actualiza la misma tabla sin volver a montarla', async () => {
     mock.tables.get('paymentMethods')!.get('method')!.invoiceMode = 'manual';

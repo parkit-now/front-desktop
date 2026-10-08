@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/api/client';
 import type { InvoiceSummaryDto } from '../../lib/api/entries';
 import { translateApiError } from '../../lib/api/translate';
 import { useToast } from '../../lib/notifications/ToastProvider';
+import { syncService } from '../../lib/sync/SyncService';
 import type { InvoiceLetter } from './invoiceUtils';
 import {
   INVOICE_HISTORY_REFRESH_WARNING,
@@ -102,6 +103,7 @@ export function useInvoiceConfirmation(input: {
         }
       }
     } finally {
+      if (issued) void syncService.pullClients().catch(() => undefined);
       const refreshed = await refreshInvoiceHistory({
         tenantId: input.tenantId,
         bearer: input.bearer,

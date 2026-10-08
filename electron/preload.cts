@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld('parkitDesktop', {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('shell:openExternal', url),
 
+  copyText: (value: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('clipboard:writeText', value),
+
   /**
    * Subscribe to the `parkit://auth/callback` deep link that carries the OAuth
    * tokens back from the browser. Returns an unsubscribe function.
