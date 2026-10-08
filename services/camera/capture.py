@@ -31,6 +31,10 @@ _READ_TIMEOUT_MS = 5000
 # o peor, la lee mal.
 _FFMPEG_CAPTURE_OPTIONS = "rtsp_transport;tcp"
 
+# Backoff para cuando el stream está abierto pero no entrega frames. Ver `run()`.
+_STALL_SLEEP_MIN = 0.01
+_STALL_SLEEP_MAX = 0.5
+
 # La contraseña es todo lo que hay entre el primer ':' y el ÚLTIMO '@' de la
 # autoridad (`[^/]*` es greedy y retrocede hasta el último '@'). Con `[^@]*` se
 # cortaba en el primer '@' y una contraseña que lo contenga sin escapar —
@@ -101,9 +105,21 @@ class CameraCapture(threading.Thread):
 
         if is_network:
             # La cámara IP manda su propia resolución y FPS: pedírselos por
-            # CAP_PROP es un no-op silencioso. Lo único que sirve es achicar el
-            # buffer, porque FFmpeg encola frames y el LPR terminaría analizando
-            # una imagen de hace varios segundos.
+            # CAP_PROP es un no-op silencioso.
+            #
+            # OJO: este `set` TAMBIÉN es un no-op. `CAP_PROP_BUFFERSIZE` no está
+            # implementado en el backend FFMPEG —es de DSHOW/V4L2/GStreamer— y
+            # la llamada devuelve False. Se deja porque no molesta y porque
+            # documenta la intención, pero NO es lo que mantiene el stream al
+            # día.
+            #
+            # Lo que de verdad evita que el LPR analice una imagen vieja es el
+            # loop caliente de `read()` de `run()`, que consume los frames al
+            # ritmo que los manda la cámara. Si alguna vez se piensa en "dormir
+            # entre lecturas" para ahorrar CPU, no hay red de contención: el
+            # buffer de FFmpeg se llena y las patentes que se analizan pasan a
+            # ser de hace varios segundos. Para ahorrar CPU, bajarle los FPS a
+            # la cámara; no dormir acá.
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         else:
             cap.set(cv2.CAP_PROP_FPS, self._fps)
@@ -121,6 +137,7 @@ class CameraCapture(threading.Thread):
 
     def run(self) -> None:
         self._open()
+        stall_sleep = _STALL_SLEEP_MIN
 
         while not self._stop_event.is_set():
             if self._reconnect_requested:
@@ -147,9 +164,20 @@ class CameraCapture(threading.Thread):
             if ok and generation == self._generation:
                 self._frames.append(frame)
                 self._last_frame_time = time.monotonic()
+                stall_sleep = _STALL_SLEEP_MIN
             elif not ok:
-                # Stream stalled; yield briefly before retrying.
-                time.sleep(0.01)
+                # El stream está ABIERTO pero no entrega. Antes esto dormía
+                # 10 ms fijos, o sea hasta 100 `read()` por segundo —cada uno
+                # entrando al demuxer de FFmpeg— durante los hasta 30 s que
+                # tarda el watchdog en forzar la reconexión. En una PC de dos
+                # núcleos eso se nota, y se nota justo cuando la cámara ya está
+                # fallando.
+                #
+                # El backoff sube hasta medio segundo y se resetea en cuanto
+                # vuelve un frame, así que la recuperación sigue siendo
+                # inmediata: lo único que se pierde es la insistencia inútil.
+                time.sleep(stall_sleep)
+                stall_sleep = min(stall_sleep * 2, _STALL_SLEEP_MAX)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -243,4 +271,23 @@ def _open_params() -> list[int]:
         params += [int(open_timeout), _OPEN_TIMEOUT_MS]
     if read_timeout is not None:
         params += [int(read_timeout), _READ_TIMEOUT_MS]
+
+    # Decodificación por hardware (D3D11VA/DXVA2 en Windows, VA-API en Linux).
+    #
+    # Decodificar 2560×1440 por software es el gasto más grande del servicio, y
+    # la PC de la playa tiene dos núcleos. Si la GPU puede hacerlo, el ahorro es
+    # enorme.
+    #
+    # `VIDEO_ACCELERATION_ANY` pide "usá lo que haya" y **cae en silencio a
+    # software** si el build de OpenCV no lo trae o el equipo no tiene GPU
+    # capaz: nunca falla, como mucho no hace nada. Por eso hay que MEDIR el CPU
+    # antes y después en vez de asumir que sirvió.
+    #
+    # Importa el códec: H.264 lo acelera prácticamente cualquier GPU; H.265 es
+    # mucho más desparejo. Ver la guía del dueño.
+    hw_accel = getattr(cv2, "CAP_PROP_HW_ACCELERATION", None)
+    accel_any = getattr(cv2, "VIDEO_ACCELERATION_ANY", None)
+    if hw_accel is not None and accel_any is not None:
+        params += [int(hw_accel), int(accel_any)]
+
     return params
