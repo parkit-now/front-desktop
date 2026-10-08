@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeChange,
+  exitPaymentAmount,
   isCashCovered,
   isCashMethod,
   isMercadoPagoMethod,
@@ -8,6 +9,11 @@ import {
 } from './entryUtils';
 
 describe('entryUtils', () => {
+  it('usa el importe ya acreditado por QR aunque la tarifa siga aumentando', () => {
+    expect(exitPaymentAmount('5600.00', 4800)).toBe(4800);
+    expect(exitPaymentAmount('5600.00')).toBe(5600);
+    expect(exitPaymentAmount('', 4800)).toBe(4800);
+  });
   describe('isCashCovered', () => {
     it('sin monto recibido no se puede confirmar', () => {
       expect(isCashCovered(5200, 0)).toBe(false);

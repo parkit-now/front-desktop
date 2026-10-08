@@ -1,0 +1,41 @@
+.dt-stay-cell {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.dt-stay-cell__date,
+.dt-stay-cell__time {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dt-stay-cell__duration {
+  color: var(--color-muted);
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.dt-stay-cell__empty {
+  color: var(--color-muted);
+}
+
+.dt-stay-cell__duration--live {
+  color: #146b55;
+  font-weight: 600;
+}
+
+.dt-stay-cell__duration--live::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #23a47b;
+  vertical-align: 1px;
+}

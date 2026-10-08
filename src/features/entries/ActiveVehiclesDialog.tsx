@@ -4,6 +4,8 @@ import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
 import { VehicleCell } from '../data-table/components/VehicleCell';
+import { PlateCell } from '../data-table/components/PlateCell';
+import { StayDateCell } from '../data-table/components/StayDateCell';
 import { dateTimeSorting } from '../data-table/utils';
 import {
   localDb,
@@ -12,10 +14,9 @@ import {
   type LocalLprDetectionEvent,
   type LocalPaymentTransaction,
 } from '../../lib/db/localDb';
-import { formatArgentinaDateTime } from '../../lib/format/argentina';
-import { formatDuration } from './entryUtils';
 import { EntryEditDialog } from './EntryEditDialog';
 import { DetectionImageDialog } from '../camera/DetectionImageDialog';
+import { hasDetectionImage } from '../camera/detectionImage';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { EntryDeleteAction } from './EntryDeleteAction';
 import { EntryDeleteDialog } from './EntryDeleteDialog';
@@ -156,10 +157,7 @@ export function ActiveVehiclesDialog({
 
     const detectionByEntryId = new Map<string, LocalLprDetectionEvent>();
     (allLprDetections ?? [])
-      .filter(
-        (event) =>
-          event.entryId && event.bestCaptureId && !event.imageDeletedAt,
-      )
+      .filter((event) => event.entryId && hasDetectionImage(event))
       .sort(
         (a, b) =>
           new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
@@ -198,7 +196,7 @@ export function ActiveVehiclesDialog({
         enableHiding: false,
         cell: ({ row }) => {
           const detection = row.original.lprDetection;
-          const disabled = !detection?.bestCaptureId;
+          const disabled = !hasDetectionImage(detection);
           return (
             <button
               type="button"
@@ -216,7 +214,8 @@ export function ActiveVehiclesDialog({
               }
               onClick={(event) => {
                 event.stopPropagation();
-                if (detection?.bestCaptureId) setPhotoDetection(detection);
+                if (detection && hasDetectionImage(detection))
+                  setPhotoDetection(detection);
               }}
             >
               <Eye size={16} aria-hidden="true" />
@@ -241,8 +240,8 @@ export function ActiveVehiclesDialog({
       {
         accessorKey: 'plate',
         header: 'Patente',
-        size: 110,
-        cell: ({ row }) => <strong>{row.original.plate}</strong>,
+        size: 120,
+        cell: ({ row }) => <PlateCell plate={row.original.plate} />,
       },
       {
         id: 'vehicle',
@@ -276,17 +275,10 @@ export function ActiveVehiclesDialog({
         id: 'enteredAt',
         header: 'Ingreso',
         accessorKey: 'enteredAtLocalDate',
-        size: 160,
+        size: 180,
         filterFn: 'dateRange',
         sortingFn: dateTimeSorting((row) => row.enteredAt),
-        cell: ({ row }) => formatArgentinaDateTime(row.original.enteredAt),
-      },
-      {
-        id: 'duration',
-        header: 'Duración',
-        accessorFn: (r) => r.enteredMs,
-        size: 110,
-        cell: ({ row }) => formatDuration(row.original.enteredAt),
+        cell: ({ row }) => <StayDateCell enteredAt={row.original.enteredAt} />,
       },
       {
         accessorKey: 'rate',
@@ -485,7 +477,10 @@ export function ActiveVehiclesDialog({
       ) : null}
       {photoDetection ? (
         <DetectionImageDialog
+          key={photoDetection.id}
           detection={photoDetection}
+          tenantId={tenantId}
+          accessToken={accessToken}
           onClose={() => setPhotoDetection(null)}
         />
       ) : null}

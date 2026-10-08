@@ -14,7 +14,7 @@ interface Props {
   children?: ReactNode;
   onCancel: () => void;
   onRetry: () => void;
-  /** Volver al formulario para cobrar por otro medio (siempre disponible). */
+  /** Volver al formulario cuando ya no hay una orden cobrable. */
   onUseAnotherMethod: () => void;
   /** Cerrar la estadía con el pago ya acreditado. */
   onConfirm: () => void;
@@ -35,11 +35,8 @@ interface Props {
  * cliente ve en el celular. Y la instrucción está escrita para el operario, no
  * para el cliente, porque el que lee la pantalla es él.
  *
- * SIEMPRE HAY SALIDA POR EFECTIVO
- *
- * "Cobrar por otro medio" se renderiza en TODOS los estados, incluso mientras
- * se espera. Un cliente que se cansa de intentar y saca la plata del bolsillo
- * no puede quedar trabado detrás de una cuenta regresiva.
+ * Mientras la orden sigue viva, primero hay que cancelarla. Si el pago ya se
+ * acredito, cambiar de medio podria cobrarle dos veces al cliente.
  */
 export function MercadoPagoQrPanel({
   amount,
@@ -86,14 +83,16 @@ export function MercadoPagoQrPanel({
 
       {children}
       <div className="rate-dialog-actions">
-        <button
-          type="button"
-          className="ghost-button"
-          onClick={onUseAnotherMethod}
-          disabled={isCanceling || isConfirming}
-        >
-          Cobrar por otro medio
-        </button>
+        {view.canRetry ? (
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={onUseAnotherMethod}
+            disabled={isCanceling || isConfirming}
+          >
+            Cobrar por otro medio
+          </button>
+        ) : null}
 
         {view.canCancel ? (
           <button
