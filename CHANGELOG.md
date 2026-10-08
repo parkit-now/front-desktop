@@ -1,3 +1,17 @@
+# [1.19.0](https://github.com/parkit-now/front-desktop/compare/v1.18.0...v1.19.0) (2026-10-08)
+
+
+### Bug Fixes
+
+* **desktop:** evitar facturar a consumidor final por omisión al recuperar pagos QR ([cf62167](https://github.com/parkit-now/front-desktop/commit/cf62167d48b8dba2a996197d37fbf2342230075c))
+
+
+### Features
+
+* **camara:** bajar el CPU a la mitad y cortar el ruido de detecciones ([2d7a0a9](https://github.com/parkit-now/front-desktop/commit/2d7a0a9ea88801a93cca6329d75576a6288e9696))
+* **DateRangeFilter:** enhance positioning logic and useLayoutEffect for better performance ([a654446](https://github.com/parkit-now/front-desktop/commit/a654446854855f1a190ff368c405222805788c82))
+* **reportes:** panel de estadísticas y auditoría en el desktop ([30438a5](https://github.com/parkit-now/front-desktop/commit/30438a50f1415ee5d31f903a7fb96e163e31db82))
+
 # [1.18.0](https://github.com/parkit-now/front-desktop/compare/v1.17.0...v1.18.0) (2026-10-08)
 
 
