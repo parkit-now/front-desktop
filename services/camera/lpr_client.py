@@ -16,6 +16,26 @@ import numpy as np
 
 LPR_URL = os.environ.get("LPR_URL", "http://127.0.0.1:8765")
 
+# Cuánto se espera una respuesta del LPR antes de darla por perdida.
+#
+# TIENE QUE SER MENOR QUE `CAMERA_WATCHDOG_TIMEOUT` (5 s por defecto), y antes
+# eran iguales. El problema no es teórico:
+#
+# El loop de detección espera esta llamada de forma bloqueante, así que
+# mientras dura NO le pide frames a la cámara. Si el LPR se cuelga —no caído:
+# colgado, aceptando la conexión y sin responder— el loop quedaba parado
+# exactamente los mismos 5 segundos que el watchdog necesita para declarar la
+# cámara muerta. El watchdog entonces reiniciaba la conexión RTSP, el pipeline
+# se saltea el LPR entero mientras tanto, al volver impone 10 cuadros de
+# warmup, y el backoff escala 1→2→4→8→30 s.
+#
+# O sea: un LPR lento se disfrazaba de cámara rota, y "reintento 46" en la
+# pantalla del operador no tenía nada que ver con la cámara.
+#
+# 3 segundos dejan margen suficiente: una inferencia normal tarda bastante
+# menos, y si tarda más de 3 s el auto ya pasó igual.
+TIMEOUT_S = float(os.environ.get("LPR_TIMEOUT_S", "3.0"))
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +48,7 @@ def recognize(frame_bgr: np.ndarray) -> dict | None:
     _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
     b64 = base64.b64encode(buf).decode()
     try:
-        r = httpx.post(f"{LPR_URL}/process", json={"image": b64}, timeout=5.0)
+        r = httpx.post(f"{LPR_URL}/process", json={"image": b64}, timeout=TIMEOUT_S)
         if r.status_code == 200:
             return r.json()
         if r.status_code == 404:

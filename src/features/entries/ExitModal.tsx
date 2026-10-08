@@ -38,7 +38,7 @@ import {
   type InvoiceNotice,
 } from './invoiceUtils';
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
-import { useArcaEmitter } from './useArcaEmitter';
+import { useArcaEmitterState } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import { ClientContact } from '../clients/ClientContact';
@@ -182,7 +182,11 @@ export function ExitModal({
   );
   // El receptor: consumidor final o el CUIT que dicta el cliente (la letra la
   // decide el padrón). Lo mismo sirve para el cobro y para «Emitir factura».
-  const emitter = useArcaEmitter(tenantId, accessToken, isOnline);
+  const { emitter, status: emitterStatus } = useArcaEmitterState(
+    tenantId,
+    accessToken,
+    isOnline,
+  );
   // Certificado vencido: el cobro sigue igual, pero no se factura (la
   // factura queda pendiente hasta que el dueño lo renueve).
   const invoicingPaused = emitter?.certExpired ?? false;
@@ -305,7 +309,11 @@ export function ExitModal({
   const invoicesOnCharge =
     selectedModes.length > 0 && selectedModes.every((mode) => mode === 'auto');
   const showInvoiceChooser =
-    offersReceiver && invoicesOnCharge && (qrApproved || !closesWithoutCharge);
+    (offersReceiver || (qrApproved && emitterStatus === 'error')) &&
+    invoicesOnCharge &&
+    (qrApproved || !closesWithoutCharge);
+  const qrConfigurationPending =
+    qrApproved && (enabledPms === undefined || emitterStatus === 'loading');
   const showPausedNotice =
     invoicingPaused && selectedModes.some((mode) => mode !== 'none');
 
@@ -345,6 +353,9 @@ export function ExitModal({
   });
   const canConfirm =
     (!isCash || cashCovered) && !(showInvoiceChooser && !receiver.ready);
+  const qrReceiverReady =
+    receiver.ready &&
+    (receiver.choice !== 'cuit' || receiver.cuitToSend !== undefined);
   const invoiceReceiverCuit = showInvoiceChooser
     ? receiver.cuitToSend
     : undefined;
@@ -412,7 +423,13 @@ export function ExitModal({
    *   que el intento respalda es UNA línea del cobro y no el egreso entero.
    */
   async function handleConfirm(paymentIntentId?: string): Promise<void> {
-    if (savingRef.current || (showInvoiceChooser && !receiver.ready)) return;
+    if (
+      savingRef.current ||
+      (paymentIntentId && qrConfigurationPending) ||
+      (showInvoiceChooser &&
+        !(paymentIntentId ? qrReceiverReady : receiver.ready))
+    )
+      return;
     const qrIntent =
       paymentIntentId &&
       mpIntent.intent?.id === paymentIntentId &&
@@ -957,7 +974,16 @@ export function ExitModal({
             isCanceling={mpIntent.isCanceling}
             isConfirming={saving}
             confirmDisabled={
-              !isOnline || (showInvoiceChooser && !receiver.ready)
+              !isOnline ||
+              qrConfigurationPending ||
+              (showInvoiceChooser && !qrReceiverReady)
+            }
+            confirmLabel={
+              qrApproved &&
+              showInvoiceChooser &&
+              receiver.cuitToSend === undefined
+                ? 'Confirmar como consumidor final'
+                : undefined
             }
             onCancel={() => void mpIntent.cancel()}
             onRetry={handleStartQr}

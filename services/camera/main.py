@@ -149,7 +149,14 @@ CAMERA_HEIGHT    = int(os.environ.get("CAMERA_HEIGHT", "720"))
 CAMERA_ID        = os.environ.get("CAMERA_ID", "cam-01")
 CAMERA_TENANT_ID = os.environ.get("CAMERA_TENANT_ID", "default")
 CAMERA_LOCATION  = os.environ.get("CAMERA_LOCATION", "entrada")
-MIN_CONFIDENCE   = float(os.environ.get("CAMERA_MIN_CONFIDENCE", "0.60"))
+# Umbral de "esto hay que verificarlo a ojo": enciende el aviso ⚠ del panel y
+# baja el candidato en el ranking del grupo (`_quality_score`).
+#
+# Estaba en 0,60, que es el piso del rango útil, así que el aviso casi nunca
+# aparecía cuando tenía que aparecer. Los datos de producción muestran que la
+# relación descarte/acierto se da vuelta exactamente en 0,85: por debajo hay 11
+# descartes por cada registro, por encima la mayoría son buenas.
+MIN_CONFIDENCE   = float(os.environ.get("CAMERA_MIN_CONFIDENCE", "0.85"))
 # Cuánto espera antes de volver a guardar la MISMA patente, en memoria.
 #
 # Es la red que cubre el viaje de ida y vuelta al renderer: entre que este
@@ -186,7 +193,31 @@ MOTION_THRESHOLD  = float(os.environ.get("CAMERA_MOTION_THRESHOLD", "1.5"))
 MOTION_COOLDOWN   = float(os.environ.get("CAMERA_MOTION_COOLDOWN", "1.5"))
 FALLBACK_INTERVAL = float(os.environ.get("CAMERA_FALLBACK_INTERVAL", "300.0"))
 
+# Piso duro de confianza: por debajo de esto el grupo ni se guarda ni se le
+# muestra al operador.
+#
+# POR QUÉ EXISTE
+#
+# Hasta ahora NO había ningún piso. `MIN_CONFIDENCE` sólo escribía la etiqueta
+# `low_confidence` y la detección se publicaba igual, así que al operador le
+# llegaba TODA lectura que devolviera el LPR, incluso con 17% de confianza. En
+# producción eso dio 285 descartes contra 89 registros.
+#
+# Los datos dicen dónde cortar: de 158 lecturas por debajo de 0,60, **147
+# terminaron descartadas a mano** (93%). Las 11 que sí sirvieron son el precio,
+# y es barato comparado con 147 tarjetas de ruido que alguien tiene que cerrar
+# una por una.
+#
+# Se aplica al MEJOR candidato del grupo, no a cada lectura: el agrupamiento ya
+# se queda con la mejor de varias miradas al mismo auto, así que lo que importa
+# es si el mejor intento sirvió para algo.
+DISCARD_BELOW  = float(os.environ.get("CAMERA_DISCARD_BELOW", "0.60"))
+
 STREAM_FPS     = max(1, min(CAMERA_FPS, int(os.environ.get("CAMERA_STREAM_FPS", "12"))))
+# Ancho máximo del preview. El MJPEG codificaba el cuadro ENTERO —2560×1440 en
+# una cámara de 4 MP— diez veces por segundo. A 960 px cuesta ~7 veces menos y
+# en un panel de escritorio no se nota la diferencia. 0 = no achicar.
+STREAM_MAX_WIDTH = int(os.environ.get("CAMERA_STREAM_MAX_WIDTH", "960"))
 # Variable propia y no un literal dentro de _STREAM_JPEG: el panel la ajusta en
 # caliente, y para eso tiene que poder leerse y escribirse por nombre.
 STREAM_QUALITY = int(os.environ.get("CAMERA_STREAM_QUALITY", "70"))
@@ -732,6 +763,26 @@ def _persist_cluster(cluster: dict) -> dict | None:
     if bbox is None:
         return None
 
+    # ── Piso de confianza ─────────────────────────────────────────────────────
+    #
+    # Si ni el mejor candidato del grupo llega al piso, no se guarda la imagen
+    # ni se publica el evento: el auto no se detectó, y el operador tipea la
+    # patente como lo haría sin cámara.
+    #
+    # Va acá y no en el loop de detección a propósito. El grupo junta varias
+    # miradas al mismo auto mientras se acerca, y las primeras son malas casi
+    # siempre (lejos, en diagonal, con la patente chica). Descartar lectura por
+    # lectura tiraría el auto antes de llegar a la mirada buena; descartar el
+    # grupo entero pregunta lo correcto: "de todo lo que vimos de este auto,
+    # ¿algo sirvió?".
+    confidence = float(result.get("confidence") or 0)
+    if confidence < DISCARD_BELOW:
+        logger.debug(
+            "cluster_below_floor",
+            extra={"confidence": confidence, "floor": DISCARD_BELOW},
+        )
+        return None
+
     now = time.monotonic()
 
     # ── Un auto que ya conocemos no genera otra imagen ────────────────────────
@@ -875,6 +926,29 @@ async def _purge_loop() -> None:
         await asyncio.sleep(24 * 60 * 60)
 
 
+_STATUS_PRINT_EVERY = 5.0
+_last_status_print: tuple[str, float] = ("", 0.0)
+
+
+def _throttled_status(message: str) -> None:
+    """Imprime un estado repetitivo como mucho cada `_STATUS_PRINT_EVERY` segundos.
+
+    Estos mensajes salían en cada vuelta del loop, o sea diez veces por segundo
+    mientras la cámara estuviera caída — y puede estarlo horas. Cada `print`
+    con `flush=True` es una escritura a un pipe que lee Electron MÁS una línea
+    en el archivo de log, así que el disco y el CPU se iban en repetir la misma
+    frase. El mensaje sigue apareciendo y sigue actualizando la hora: lo único
+    que cambia es que no se repite cien veces por minuto.
+    """
+    global _last_status_print
+    last_message, last_at = _last_status_print
+    now = time.monotonic()
+    if message == last_message and (now - last_at) < _STATUS_PRINT_EVERY:
+        return
+    _last_status_print = (message, now)
+    print(f"\r[{_ts()}]  {message:<46}", end="", flush=True)
+
+
 async def _process_loop() -> None:
     """Motion-triggered LPR pipeline.
 
@@ -923,7 +997,7 @@ async def _process_loop() -> None:
             camera_down = _watchdog is not None and _watchdog.status()["camera"] == "down"
             if camera_down:
                 camera_was_down = True
-                print(f"\r[{_ts()}]  camera down — pausing LPR...                  ", end="", flush=True)
+                _throttled_status("camera down — pausing LPR...")
                 continue
             if camera_was_down:
                 _motion.reset()
@@ -931,7 +1005,7 @@ async def _process_loop() -> None:
 
             frame = _capture.latest_frame()
             if frame is None:
-                print(f"\r[{_ts()}]  waiting for camera...                         ", end="", flush=True)
+                _throttled_status("waiting for camera...")
                 continue
 
             triggered, snapshot = _motion.check(frame)
@@ -1139,6 +1213,33 @@ def stream_status():
     return {**_watchdog.status(), "source": source}
 
 
+def _downscale_for_stream(frame):
+    """Achica el cuadro al ancho del preview antes de codificarlo a JPEG.
+
+    Codificar 2560×1440 diez veces por segundo cuesta ~15-28 ms por cuadro; a
+    960 px de ancho cuesta unas siete veces menos. En un panel de escritorio la
+    diferencia no se ve, y este costo sólo existe mientras alguien tiene la
+    pestaña Cámara abierta.
+
+    No afecta ni a la detección ni a la imagen que se guarda como evidencia:
+    las dos salen del cuadro original. Esto es sólo lo que se dibuja en
+    pantalla.
+    """
+    if STREAM_MAX_WIDTH <= 0:
+        return frame
+
+    height, width = frame.shape[:2]
+    if width <= STREAM_MAX_WIDTH:
+        return frame
+
+    scale = STREAM_MAX_WIDTH / width
+    return cv2.resize(
+        frame,
+        (STREAM_MAX_WIDTH, max(1, int(round(height * scale)))),
+        interpolation=cv2.INTER_AREA,
+    )
+
+
 def _mjpeg_frames():
     """Yield the latest camera frame as an endless multipart JPEG stream.
 
@@ -1155,7 +1256,7 @@ def _mjpeg_frames():
         if frame is None:
             time.sleep(0.1)  # camera not ready yet — wait without busy-looping
             continue
-        ok, buf = cv2.imencode(".jpg", frame, _STREAM_JPEG)
+        ok, buf = cv2.imencode(".jpg", _downscale_for_stream(frame), _STREAM_JPEG)
         if not ok:
             time.sleep(interval)
             continue
@@ -1214,6 +1315,7 @@ _TUNABLES: dict[str, tuple[type, float, float]] = {
     "motionThreshold": (float, 0.1, 50.0),
     "motionCooldown": (float, 0.1, 60.0),
     "minConfidence": (float, 0.0, 1.0),
+    "discardBelow": (float, 0.0, 1.0),
     "plateCooldown": (float, 0.0, 300.0),
     "fallbackInterval": (float, 10.0, 3600.0),
     # Agrupamiento de lecturas de un mismo auto.
@@ -1233,12 +1335,15 @@ _TUNABLES: dict[str, tuple[type, float, float]] = {
     # Preview
     "streamFps": (int, 1, 30),
     "streamQuality": (int, 10, 100),
+    # 0 = mandar el cuadro sin achicar.
+    "streamMaxWidth": (int, 0, 7680),
 }
 
 _GLOBAL_BY_KEY = {
     "motionThreshold": "MOTION_THRESHOLD",
     "motionCooldown": "MOTION_COOLDOWN",
     "minConfidence": "MIN_CONFIDENCE",
+    "discardBelow": "DISCARD_BELOW",
     "plateCooldown": "COOLDOWN",
     "fallbackInterval": "FALLBACK_INTERVAL",
     "clusterWindow": "CLUSTER_WINDOW",
@@ -1258,6 +1363,7 @@ _GLOBAL_BY_KEY = {
     "watchdogTimeout": "WATCHDOG_TIMEOUT",
     "streamFps": "STREAM_FPS",
     "streamQuality": "STREAM_QUALITY",
+    "streamMaxWidth": "STREAM_MAX_WIDTH",
 }
 
 
@@ -1739,6 +1845,25 @@ def detection_latest_clear():
     """Clear the in-memory last detection (call after the operator confirms the entry)."""
     global _last_detection
     _last_detection = None
+
+
+# ── Hilos de OpenCV ───────────────────────────────────────────────────────────
+#
+# OpenCV reparte por defecto cada operación entre TODOS los núcleos. Suena
+# bien, pero las operaciones de este servicio son chicas —un `cvtColor` de un
+# ROI reducido, un `imencode` del preview— y para esos tamaños el costo de
+# sincronizar los hilos se come la ganancia.
+#
+# El problema real es otro: la PC de una playa tiene dos núcleos. Los que
+# OpenCV toma para paralelizar una operación de milisegundos son los mismos que
+# necesita el decodificador de FFmpeg, que sí escala bien con hilos y es el
+# gasto grande del servicio. Dejarle los núcleos al decodificador baja el CPU
+# total aunque cada operación individual tarde un poquito más.
+#
+# Va acá arriba, antes de crear nada: `setNumThreads` afecta sólo a las
+# operaciones de OpenCV, no al decodificador de video, que maneja sus hilos por
+# su cuenta.
+cv2.setNumThreads(1)
 
 
 if __name__ == "__main__":

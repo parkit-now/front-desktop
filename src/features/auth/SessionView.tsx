@@ -15,7 +15,14 @@ import {
   Settings,
   ListChecks,
   UsersRound,
+  ChartNoAxesCombined,
+  ShieldCheck,
 } from 'lucide-react';
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CameraPanel } from '../camera/CameraPanel';
@@ -78,6 +85,13 @@ import {
 import { signOut } from '../../lib/supabase/session';
 import { ConfigNavGroup, type ConfigNavItem } from './ConfigNavGroup';
 import { getErrorMessage } from './errors';
+import { StatisticsPanel } from '../reports/StatisticsPanel';
+import { AuditPanel } from '../reports/AuditPanel';
+import { ApiError } from '../../lib/api/client';
+import {
+  hasVerifiedReportAccess,
+  type VerifiedReportMembership,
+} from '../reports/reportAccess';
 
 type Props = {
   session: Session;
@@ -91,6 +105,8 @@ type WorkspaceSection =
   | 'operativo'
   | 'camara'
   | 'historial'
+  | 'estadisticas'
+  | 'auditoria'
   | 'payment-methods'
   | 'vehicles'
   | 'vehicle-types'
@@ -338,6 +354,25 @@ export function SessionView({ session, sessionStale = false }: Props) {
   const [pendingSignOut, setPendingSignOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [section, setSection] = useState<WorkspaceSection>('operativo');
+  const [reportsClient] = useState(
+    () =>
+      new QueryClient({
+        queryCache: new QueryCache({
+          onError: (error, query) => {
+            if (
+              error instanceof ApiError &&
+              error.status === 403 &&
+              query.queryKey[0] === 'reports'
+            ) {
+              setVerifiedOwner(null);
+            }
+          },
+        }),
+        defaultOptions: { queries: { retry: 1, gcTime: 60_000 } },
+      }),
+  );
+  const [verifiedOwner, setVerifiedOwner] =
+    useState<VerifiedReportMembership | null>(null);
   const [cameraSettingsOpen, setCameraSettingsOpen] = useState(false);
   const [profile, setProfile] = useState<MeResponseDto | null>(() =>
     readCachedProfile(session.user.id),
@@ -420,6 +455,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
     activeMembership?.tenantAddress ?? activeAdminParking?.address ?? null;
   const activeTenantCuit = activeAdminParking?.cuit ?? null;
   const activeRole = entityRoleForRates(profile, activeMembership);
+  const ownerReportsAllowed = hasVerifiedReportAccess(
+    verifiedOwner,
+    session.access_token,
+    session.user.id,
+    activeTenantId,
+  );
   const ratesAllowed = canAccessRates(
     profile,
     activeMembership,
@@ -520,12 +561,29 @@ export function SessionView({ session, sessionStale = false }: Props) {
   }, [canShowReservasNav, section]);
 
   useEffect(() => {
+    if (
+      isOnline &&
+      !ownerReportsAllowed &&
+      (section === 'estadisticas' || section === 'auditoria')
+    )
+      setSection('operativo');
+  }, [isOnline, ownerReportsAllowed, section]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadProfile(): Promise<void> {
+      if (!isOnline) return;
       try {
         const nextProfile = await fetchMe(session.access_token);
         if (isMounted) {
+          setVerifiedOwner({
+            token: session.access_token,
+            userId: session.user.id,
+            tenantIds: nextProfile.memberships
+              .filter((item) => item.role === 'owner')
+              .map((item) => item.tenantId),
+          });
           setProfile((current) => {
             if (
               current?.id === nextProfile.id &&
@@ -541,6 +599,7 @@ export function SessionView({ session, sessionStale = false }: Props) {
         }
       } catch (error) {
         if (isMounted) {
+          setVerifiedOwner(null);
           const cachedProfile = readCachedProfile(session.user.id);
           if (cachedProfile) {
             setProfile(cachedProfile);
@@ -560,11 +619,18 @@ export function SessionView({ session, sessionStale = false }: Props) {
     }
 
     void loadProfile();
+    const checkingReports =
+      section === 'estadisticas' || section === 'auditoria';
+    const timer =
+      isOnline && checkingReports
+        ? window.setInterval(() => void loadProfile(), 30_000)
+        : undefined;
 
     return () => {
       isMounted = false;
+      if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [session.access_token, session.user.id, showToast]);
+  }, [session.access_token, session.user.id, showToast, isOnline, section]);
 
   /**
    * El estacionamiento activo fue dado de baja desde el panel.
@@ -751,6 +817,8 @@ export function SessionView({ session, sessionStale = false }: Props) {
     operativo: 'Panel Operativo',
     camara: 'Cámara',
     historial: 'Historial',
+    estadisticas: 'Estadísticas',
+    auditoria: 'Auditoría',
     rates: 'Gestión de Tarifas',
     'payment-methods': 'Métodos de Pago',
     vehicles: 'Catálogo de Vehículos',
@@ -766,6 +834,9 @@ export function SessionView({ session, sessionStale = false }: Props) {
     if (s === 'rates') return <DollarSign size={20} aria-hidden />;
     if (s === 'camara') return <Cctv size={20} aria-hidden />;
     if (s === 'historial') return <Car size={20} aria-hidden />;
+    if (s === 'estadisticas')
+      return <ChartNoAxesCombined size={20} aria-hidden />;
+    if (s === 'auditoria') return <ShieldCheck size={20} aria-hidden />;
     if (s === 'payment-methods') return <CreditCard size={20} aria-hidden />;
     if (s === 'vehicles') return <Truck size={20} aria-hidden />;
     if (s === 'vehicle-types') return <Layers size={20} aria-hidden />;
@@ -913,6 +984,27 @@ export function SessionView({ session, sessionStale = false }: Props) {
                 <Archive size={18} aria-hidden="true" />
                 {!sidebarCollapsed ? <span>Caja</span> : null}
               </button>
+            ) : null}
+
+            {ownerReportsAllowed ? (
+              <>
+                <button
+                  type="button"
+                  className={`nav-item ${section === 'estadisticas' ? 'active' : ''}`}
+                  onClick={() => setSection('estadisticas')}
+                >
+                  <ChartNoAxesCombined size={18} aria-hidden="true" />
+                  {!sidebarCollapsed ? <span>Estadísticas</span> : null}
+                </button>
+                <button
+                  type="button"
+                  className={`nav-item ${section === 'auditoria' ? 'active' : ''}`}
+                  onClick={() => setSection('auditoria')}
+                >
+                  <ShieldCheck size={18} aria-hidden="true" />
+                  {!sidebarCollapsed ? <span>Auditoría</span> : null}
+                </button>
+              </>
             ) : null}
 
             {canShowReservasNav ? (
@@ -1123,6 +1215,28 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   </p>
                 </section>
               )
+            ) : section === 'estadisticas' ? (
+              activeTenantId && ownerReportsAllowed ? (
+                <QueryClientProvider client={reportsClient}>
+                  <StatisticsPanel
+                    key={activeTenantId}
+                    tenantId={activeTenantId}
+                    bearer={session.access_token}
+                  />
+                </QueryClientProvider>
+              ) : null
+            ) : section === 'auditoria' ? (
+              activeTenantId && ownerReportsAllowed ? (
+                <QueryClientProvider client={reportsClient}>
+                  <AuditPanel
+                    key={activeTenantId}
+                    tenantId={activeTenantId}
+                    bearer={session.access_token}
+                    userId={session.user.id}
+                    parkingName={activeTenantName}
+                  />
+                </QueryClientProvider>
+              ) : null
             ) : section === 'payment-methods' ? (
               activeTenantId ? (
                 <PaymentMethodsPanel

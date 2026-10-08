@@ -74,6 +74,8 @@ declare global {
     motionThreshold: number;
     motionCooldown: number;
     minConfidence: number;
+    /** Piso duro: por debajo de esto la detección no se guarda ni se muestra. */
+    discardBelow: number;
     plateCooldown: number;
     fallbackInterval: number;
     clusterWindow: number;
@@ -88,6 +90,8 @@ declare global {
     watchdogTimeout: number;
     streamFps: number;
     streamQuality: number;
+    /** Ancho máximo del preview en píxeles. 0 = mandar el cuadro sin achicar. */
+    streamMaxWidth: number;
     /** `[x1, y1, x2, y2]` en píxeles del frame, o null = cuadro completo. */
     roi: [number, number, number, number] | null;
   }

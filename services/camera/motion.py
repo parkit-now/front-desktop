@@ -39,6 +39,14 @@ def roi_crop(frame: np.ndarray, roi: _ROI_T | None) -> np.ndarray:
     return frame[y1:y2, x1:x2]
 
 
+# Cuánto se achica el ROI antes de buscar movimiento. Ver `_to_gray_roi`.
+_DOWNSCALE_FACTOR = 4
+
+# Por debajo de este lado no se achica: en un ROI ya chico el resize cuesta más
+# de lo que ahorra, y quedarse con 20×20 píxeles empieza a perder sensibilidad.
+_DOWNSCALE_MIN_SIDE = 160
+
+
 class MotionDetector:
 
     def __init__(
@@ -156,4 +164,41 @@ class MotionDetector:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _to_gray_roi(self, frame: np.ndarray) -> np.ndarray:
-        return cv2.cvtColor(roi_crop(frame, self._roi), cv2.COLOR_BGR2GRAY)
+        """Recorta el ROI, lo achica y lo pasa a gris.
+
+        POR QUÉ SE ACHICA
+
+        Esta función responde una pregunta binaria —"¿se movió algo?"— y se
+        ejecuta diez veces por segundo. Hacerlo a resolución completa costaba
+        `cvtColor` + `absdiff` + `mean` sobre ~1,3 Mpx por tick (un ROI típico
+        de 1489×890), o sea unos 40 Mpx/s de trabajo para decidir un sí o un no.
+        En una PC de dos núcleos eso se paga caro.
+
+        A escala 1/4 es ~16 veces más barato y **la decisión no cambia**: el
+        veredicto es `diff.mean() < threshold`, un promedio sobre toda la
+        región. Promediar sobre una versión reducida con `INTER_AREA` —que es
+        exactamente un promedio de bloques— da prácticamente el mismo número.
+        Lo verifica `tests/test_motion.py`.
+
+        El recorte que se le manda al LPR NO pasa por acá: sale del frame
+        original a resolución completa en `main.py`. Acá sólo se decide cuándo
+        mirar, no qué se mira.
+
+        POR QUÉ `cv2.resize` Y NO UN SLICE
+
+        `frame[y1:y2:4, x1:x2:4]` sería gratis pero devuelve un array no
+        contiguo, y `cv2.cvtColor` falla con "Layout of the output array is
+        incompatible". Además un slice toma un píxel de cada 16 y descarta el
+        resto, lo que es mucho más ruidoso: `INTER_AREA` los promedia.
+        """
+        roi = roi_crop(frame, self._roi)
+
+        height, width = roi.shape[:2]
+        if width >= _DOWNSCALE_MIN_SIDE and height >= _DOWNSCALE_MIN_SIDE:
+            roi = cv2.resize(
+                roi,
+                (width // _DOWNSCALE_FACTOR, height // _DOWNSCALE_FACTOR),
+                interpolation=cv2.INTER_AREA,
+            )
+
+        return cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)

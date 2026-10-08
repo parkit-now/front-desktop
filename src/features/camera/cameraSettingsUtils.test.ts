@@ -16,6 +16,7 @@ const tuning: DesktopCameraTuning = {
   motionThreshold: 1.5,
   motionCooldown: 3,
   minConfidence: 0.6,
+  discardBelow: 0.6,
   plateCooldown: 5,
   fallbackInterval: 300,
   clusterWindow: 5,
@@ -28,6 +29,7 @@ const tuning: DesktopCameraTuning = {
   watchdogTimeout: 5,
   streamFps: 12,
   streamQuality: 70,
+  streamMaxWidth: 960,
   roi: [1, 2, 3, 4],
 };
 

@@ -64,7 +64,13 @@ const CAMPOS_BASICOS: {
     key: 'minConfidence',
     label: 'Confianza mínima',
     step: 0.05,
-    hint: 'Debajo de esto la lectura se marca como dudosa.',
+    hint: 'Debajo de esto la lectura se marca como dudosa y aparece el aviso de verificar.',
+  },
+  {
+    key: 'discardBelow',
+    label: 'Descartar por debajo de',
+    step: 0.05,
+    hint: 'Si ni la mejor lectura de un auto llega a este valor, no se muestra la tarjeta. Subilo si te llegan muchas detecciones para descartar; bajalo si se te escapan autos.',
   },
   {
     key: 'plateCooldown',
@@ -143,6 +149,12 @@ const CAMPOS_AVANZADOS: CameraAdvancedField[] = [
     label: 'Calidad del preview',
     step: 5,
     hint: 'Calidad JPEG del video de vista previa. Más alto se ve mejor y pesa más.',
+  },
+  {
+    key: 'streamMaxWidth',
+    label: 'Ancho del preview (px)',
+    step: 160,
+    hint: 'El video de vista previa se achica a este ancho antes de enviarse. Bajarlo descarga la CPU; no afecta ni la detección ni las fotos que se guardan. 0 = enviar sin achicar.',
   },
 ];
 
