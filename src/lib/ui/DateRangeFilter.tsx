@@ -10,7 +10,7 @@ import {
 import {
   type CSSProperties,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -48,33 +48,59 @@ export function DateRangeFilter({
 }: DateRangeFilterProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [panelStyle, setPanelStyle] = useState<CSSProperties>();
 
   const close = useCallback(() => setOpen(false), []);
   useCloseOnOutsideClick(triggerRef, open, close);
 
+  // El panel es `fixed`: si se sale de la ventana, scrollear no lo trae de
+  // vuelta. Con el trigger cerca del borde inferior (p. ej. el filtro "Cierre"
+  // del historial de caja) los días quedaban fuera de pantalla e inclickeables,
+  // así que se abre hacia arriba si abajo no entra, y si tampoco entra arriba se
+  // ajusta para quedar dentro de la ventana.
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
     const gutter = 12;
+    const offset = 6;
     const rect = trigger.getBoundingClientRect();
     const maxLeft = Math.max(gutter, window.innerWidth - PANEL_WIDTH - gutter);
+    const height = panelRef.current?.offsetHeight ?? 0;
+    const below = rect.bottom + offset;
+    const above = rect.top - offset - height;
+    let top = below;
+    if (below + height > window.innerHeight - gutter) {
+      top =
+        above >= gutter
+          ? above
+          : Math.max(gutter, window.innerHeight - height - gutter);
+    }
     setPanelStyle({
       position: 'fixed',
-      top: rect.bottom + 6,
+      top,
       left: Math.min(rect.left, maxLeft),
       zIndex: 200,
     });
   }, []);
 
-  useEffect(() => {
+  // Layout effect: se posiciona antes del primer paint, sin un frame en el
+  // lugar equivocado. El ResizeObserver cubre el cambio de alto entre meses de
+  // 5 y 6 semanas.
+  useLayoutEffect(() => {
     if (!open) return;
     updatePosition();
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(updatePosition);
+    if (panelRef.current) observer?.observe(panelRef.current);
     return () => {
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
+      observer?.disconnect();
     };
   }, [open, updatePosition]);
 
@@ -111,6 +137,7 @@ export function DateRangeFilter({
       {open &&
         createPortal(
           <div
+            ref={panelRef}
             className="date-range-filter-panel"
             style={panelStyle}
             {...{ [POPOVER_PANEL_ATTRIBUTE]: true }}
