@@ -654,6 +654,18 @@ h2 {
   margin: 0;
 }
 
+.sidebar-brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-brand-version {
+  color: #a9bfdc;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
 .icon-button {
   width: 34px;
   height: 34px;

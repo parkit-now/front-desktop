@@ -6,6 +6,7 @@ import {
   ipcMain,
   shell,
 } from 'electron';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -206,7 +207,13 @@ if (!gotTheLock) {
 
     // Runtime-dependent env, layered on top of whatever the resolver decided.
     const runtimeEnv: Partial<Record<ServiceName, Record<string, string>>> = {
+      'lpr-service': {
+        // La informa por `/health`, para que un arranque posterior distinga un
+        // servicio de ESTA versión de uno que sobrevivió a una actualización.
+        PARKIT_BUILD_VERSION: app.getVersion(),
+      },
       'camera-service': {
+        PARKIT_BUILD_VERSION: app.getVersion(),
         // Writable data dir so the service works when the bundle is read-only.
         CAMERA_DB_PATH: path.join(userData, 'camera.db'),
         CAMERA_IMAGES_DIR: path.join(userData, 'images'),
@@ -248,7 +255,11 @@ if (!gotTheLock) {
       );
     }
 
-    const services = new ServiceManager(serviceConfigs);
+    const services = new ServiceManager(
+      serviceConfigs,
+      readOrCreateShutdownToken(userData),
+      app.getVersion(),
+    );
     await services.spawnAll();
 
     let failed: string[] = [];
@@ -543,6 +554,41 @@ if (!gotTheLock) {
       void services.stopAll().finally(() => app.quit());
     });
   });
+}
+
+/**
+ * El token que autoriza `POST /shutdown` de los servicios, estable por equipo.
+ *
+ * ANTES ERA ALEATORIO POR EJECUCIÓN, Y ESO IMPEDÍA LIMPIAR
+ *
+ * Si un servicio sobrevivía al cierre de la app, el arranque siguiente no
+ * tenía forma de pedirle que se fuera: su token era el de la ejecución
+ * anterior y rechazaba el nuevo. Quedaba reteniendo el puerto —y la conexión
+ * con la cámara— hasta que alguien lo mataba a mano.
+ *
+ * Guardarlo no lo debilita. Lo que protege de verdad contra una página web
+ * local es que el token viaja en un header propio, y un header propio obliga
+ * a un preflight CORS que el servicio no concede. El valor en sí nunca se
+ * expone al renderer.
+ */
+function readOrCreateShutdownToken(userData: string): string {
+  const file = path.join(userData, 'service-shutdown-token');
+  try {
+    const stored = fs.readFileSync(file, 'utf8').trim();
+    if (stored.length >= 32) return stored;
+  } catch {
+    // No existe todavía, o no se puede leer: se crea abajo.
+  }
+
+  const token = randomBytes(32).toString('hex');
+  try {
+    fs.writeFileSync(file, token, { mode: 0o600 });
+  } catch (error) {
+    // Sin disco el token igual sirve para ESTA ejecución; lo único que se
+    // pierde es poder retirar un servicio viejo en el próximo arranque.
+    console.warn('[main] no se pudo guardar el token de cierre', error);
+  }
+  return token;
 }
 
 app.on('window-all-closed', () => {

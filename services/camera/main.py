@@ -156,6 +156,20 @@ CAMERA_LOCATION  = os.environ.get("CAMERA_LOCATION", "entrada")
 # aparecía cuando tenía que aparecer. Los datos de producción muestran que la
 # relación descarte/acierto se da vuelta exactamente en 0,85: por debajo hay 11
 # descartes por cada registro, por encima la mayoría son buenas.
+# Versión del build. Electron la pasa por entorno y la compara al arrancar
+# para distinguir un servicio suyo de uno que sobrevivió a una actualización.
+#
+# EL BUG QUE ESTO ARREGLA
+#
+# Al arrancar, Electron pregunta por `/health` y si algo responde lo ADOPTA en
+# vez de lanzar uno nuevo — pensado para desarrollo, donde uno corre el
+# servicio a mano. Pero si un servicio viejo sobrevivía al cierre (pasaba en
+# Windows: ver `forceKillTree` en electron/services.ts), la versión NUEVA de la
+# app adoptaba al proceso VIEJO y seguía corriendo código viejo sin avisar.
+# Encima lo marcaba como adoptado —"no lo cierres al salir"— así que se quedaba
+# para siempre reteniendo el puerto y la conexión con la cámara.
+BUILD_VERSION = os.environ.get("PARKIT_BUILD_VERSION", "dev")
+
 MIN_CONFIDENCE   = float(os.environ.get("CAMERA_MIN_CONFIDENCE", "0.85"))
 # Cuánto espera antes de volver a guardar la MISMA patente, en memoria.
 #
@@ -1186,7 +1200,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": BUILD_VERSION}
 
 
 @app.post("/shutdown", status_code=202)

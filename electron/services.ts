@@ -112,27 +112,46 @@ export class ServiceManager {
   private readonly adopted = new Set<string>();
   private readonly shutdownToken: string;
 
+  private readonly buildVersion: string;
+
   constructor(
     private readonly services: ServiceConfig[],
     shutdownToken = randomBytes(32).toString('hex'),
+    buildVersion = 'dev',
   ) {
     this.shutdownToken = shutdownToken;
+    this.buildVersion = buildVersion;
   }
 
   /**
-   * Starts every service, or adopts one that is already healthy on its port.
+   * Arranca cada servicio, o adopta el que ya esté sano en su puerto.
    *
-   * Idempotent supervision (crash-only): a port answering `/health` is a
-   * healthy service no matter who started it — a leftover from a `kill -9`ed
-   * run, a manual `make *-dev`, a debugger. Spawning over it would just hit
-   * EADDRINUSE and get marked failed. We adopt it instead (and leave it be on
-   * shutdown, since its lifecycle isn't ours). Same idea as a kubelet picking
-   * up already-running containers after a restart.
+   * Supervisión idempotente (crash-only): un puerto que contesta `/health` es
+   * un servicio sano lo haya arrancado quien lo haya arrancado — un `kill -9`
+   * anterior, un `make *-dev` a mano, un debugger. Lanzar otro encima sólo
+   * daría EADDRINUSE. Se adopta, y no se cierra al salir porque su ciclo de
+   * vida no es nuestro. Misma idea que un kubelet levantando contenedores que
+   * ya estaban corriendo.
+   *
+   * PERO SÓLO SI ES DE ESTA MISMA VERSIÓN.
+   *
+   * Adoptar a ciegas tenía un modo de falla feo: si un servicio sobrevivía al
+   * cierre —pasaba en Windows, ver `forceKillTree`— la app NUEVA adoptaba al
+   * proceso VIEJO y seguía corriendo código viejo sin que nada lo avisara. El
+   * usuario instalaba una actualización y no cambiaba nada. Encima quedaba
+   * marcado como adoptado, o sea que tampoco se cerraba nunca, reteniendo el
+   * puerto y —en el servicio de cámara— la conexión RTSP, que es un recurso
+   * escaso: una Hikvision acepta seis clientes y después rechaza.
+   *
+   * Con versión distinta se le pide que se cierre y se lanza uno nuevo. Se usa
+   * el camino cooperativo y no un kill para que alcance a soltar la cámara.
    */
   async spawnAll(): Promise<void> {
     await Promise.all(
       this.services.map(async (svc) => {
-        if (await this.pingHealth(svc.port)) {
+        const running = await this.pingHealth(svc.port);
+
+        if (running !== null && running === this.buildVersion) {
           this.adopted.add(svc.name);
           this.healthy.add(svc.name);
           console.warn(
@@ -141,6 +160,16 @@ export class ServiceManager {
           );
           return;
         }
+
+        if (running !== null) {
+          console.warn(
+            `[${svc.name}] hay un servicio versión "${running}" en :${svc.port} ` +
+              `y esta app es "${this.buildVersion}": se le pide que se cierre ` +
+              `para arrancar el nuevo`,
+          );
+          await this.retireStaleService(svc);
+        }
+
         this.spawnOne(svc);
       }),
     );
@@ -220,11 +249,14 @@ export class ServiceManager {
     }
 
     this.clearRuntimeState(name);
-    if (await this.pingHealth(svc.port)) {
+    const running = await this.pingHealth(svc.port);
+    if (running !== null && running === this.buildVersion) {
       this.adopted.add(name);
       this.healthy.add(name);
       return this.getServiceStatus(name);
     }
+    // Versión distinta: lo mismo que en `spawnAll`, ver el comentario de allá.
+    if (running !== null) await this.retireStaleService(svc);
 
     this.spawnOne(svc);
     await this.awaitHealthy(svc, { allowRespawn: false });
@@ -259,7 +291,53 @@ export class ServiceManager {
     this.lastErrors.delete(name);
   }
 
-  private async pingHealth(port: number): Promise<boolean> {
+  /**
+   * Le pide a un servicio de otra versión que se cierre, y espera a que suelte
+   * el puerto.
+   *
+   * Se usa el camino cooperativo y no un kill a propósito: el `lifespan` del
+   * servicio es el que cierra la captura y **suelta la conexión con la
+   * cámara**. Una Hikvision acepta seis clientes simultáneos; una sesión que
+   * queda colgada es un recurso que no vuelve hasta que alguien desenchufa el
+   * aparato.
+   *
+   * Si no se cierra, no se insiste con violencia: `spawnOne` va a fallar con
+   * EADDRINUSE y eso ya tiene camino propio —`services:failed` y el aviso en
+   * el header—. Un error visible es mejor que matar a ciegas un proceso que
+   * podría no ser nuestro.
+   */
+  private async retireStaleService(svc: ServiceConfig): Promise<void> {
+    try {
+      await fetch(`http://127.0.0.1:${svc.port}/shutdown`, {
+        method: 'POST',
+        headers: { [SHUTDOWN_TOKEN_HEADER]: this.shutdownToken },
+      });
+    } catch {
+      // Ya se estaba cerrando, o no habla nuestro protocolo. El sondeo de
+      // abajo decide igual.
+    }
+
+    const deadline = Date.now() + SHUTDOWN_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));
+      if ((await this.pingHealth(svc.port)) === null) return;
+    }
+
+    console.warn(
+      `[${svc.name}] el servicio viejo no soltó :${svc.port}. Si acaba de ` +
+        `actualizarse la app, puede venir de una versión anterior a este ` +
+        `mecanismo: hay que cerrarlo a mano una única vez.`,
+    );
+  }
+
+  /**
+   * Pregunta quién está en el puerto.
+   *
+   * Devuelve `null` si no contesta nadie, o la versión que informa el servicio
+   * —`'desconocida'` si contesta pero no la trae, que es como responden las
+   * versiones anteriores a este cambio—.
+   */
+  private async pingHealth(port: number): Promise<string | null> {
     try {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 1_500);
@@ -267,9 +345,11 @@ export class ServiceManager {
         signal: ac.signal,
       });
       clearTimeout(timer);
-      return res.ok;
+      if (!res.ok) return null;
+      const body = (await res.json()) as { version?: unknown };
+      return typeof body.version === 'string' ? body.version : 'desconocida';
     } catch {
-      return false;
+      return null;
     }
   }
 
