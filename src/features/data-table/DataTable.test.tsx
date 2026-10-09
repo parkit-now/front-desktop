@@ -79,6 +79,55 @@ afterEach(async () => {
   localStorage.clear();
 });
 
+it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async () => {
+  const sizedColumns: ColumnDef<(typeof data)[number], unknown>[] = [
+    { accessorKey: 'plate', header: 'Patente', size: 180 },
+    { accessorKey: 'cashSessionId', header: 'Caja', size: 120 },
+    { accessorKey: 'notes', header: 'Notas', size: 220 },
+  ];
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable data={data} columns={sizedColumns} templateScope={scope} />,
+      ),
+    ),
+  );
+  await act(() =>
+    Promise.resolve(
+      container
+        .querySelector<HTMLButtonElement>('.dt-column-menu > button')
+        ?.click(),
+    ),
+  );
+
+  for (const label of ['Patente', 'Caja']) {
+    const row = [...container.querySelectorAll('.dt-column-row')].find(
+      (element) => element.querySelector('label')?.textContent === label,
+    );
+    await act(() =>
+      Promise.resolve(
+        row?.querySelector<HTMLButtonElement>('.dt-pin-button')?.click(),
+      ),
+    );
+  }
+
+  expect(
+    container.querySelector<HTMLTableElement>('.dt-table')?.style.minWidth,
+  ).toBe('520px');
+  const columnPercents = [...container.querySelectorAll('col')].map((col) =>
+    parseFloat(col.style.width),
+  );
+  expect(columnPercents).toEqual([
+    (180 / 520) * 100,
+    (120 / 520) * 100,
+    (220 / 520) * 100,
+  ]);
+  expect(container.querySelectorAll('thead .pinned-left')).toHaveLength(2);
+  expect(
+    container.querySelectorAll('tbody tr:first-child .pinned-left'),
+  ).toHaveLength(2);
+});
+
 describe('filtro inicial de caja', () => {
   it('se conserva al montar sin plantilla ni orden explicita de limpiar filtros', async () => {
     await render();

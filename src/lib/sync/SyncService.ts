@@ -1281,9 +1281,11 @@ class SyncService {
                   serverEntity as LocalCashSession,
                 );
               } else if (op.entityType === 'lprDetectionEvent') {
-                await localDb.lprDetectionEvents.put(
-                  serverEntity as LocalLprDetectionEvent,
-                );
+                const row = serverEntity as LocalLprDetectionEvent;
+                const stillDirty = await this.dirtyIds('lprDetectionEvent');
+                if (!stillDirty.has(row.id)) {
+                  await localDb.lprDetectionEvents.put(row);
+                }
               }
             }
           },

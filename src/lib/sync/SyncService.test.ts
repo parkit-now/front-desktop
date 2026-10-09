@@ -52,6 +52,9 @@ const h = vi.hoisted(() => {
       bulkGet(ids: string[]): Promise<(T | undefined)[]> {
         return Promise.resolve(ids.map((id) => rows.get(id)));
       },
+      get(id: string): Promise<T | undefined> {
+        return Promise.resolve(rows.get(id));
+      },
       put(row: T): Promise<void> {
         rows.set(row.id, row);
         return Promise.resolve();
@@ -148,9 +151,35 @@ const h = vi.hoisted(() => {
                   ),
                 );
               },
+              sortBy(): Promise<PendingOp[]> {
+                return this.toArray().then((rows) =>
+                  rows.sort((a, b) => (a.localId ?? 0) - (b.localId ?? 0)),
+                );
+              },
+            };
+          },
+          equals([tenantId, status]: string[]) {
+            return {
+              modify(changes: (op: PendingOp) => void): Promise<number> {
+                const rows = pendingOps.filter(
+                  (op) => op.tenantId === tenantId && op.status === status,
+                );
+                rows.forEach(changes);
+                return Promise.resolve(rows.length);
+              },
             };
           },
         };
+      },
+      update(localId: number, changes: Partial<PendingOp>): Promise<number> {
+        const op = pendingOps.find((item) => item.localId === localId);
+        if (op) Object.assign(op, changes);
+        return Promise.resolve(op ? 1 : 0);
+      },
+      delete(localId: number): Promise<void> {
+        const index = pendingOps.findIndex((op) => op.localId === localId);
+        if (index >= 0) pendingOps.splice(index, 1);
+        return Promise.resolve();
       },
     },
     // El scope de tablas no importa acá: se ejecuta el cuerpo y listo.
@@ -230,6 +259,8 @@ const h = vi.hoisted(() => {
         import('../api/payment-transactions').PaymentTransactionDto
       >(),
     pullLprDetectionEventChanges: changesMock<LprDetectionEventDto>(),
+    upsertLprDetectionEvent: vi.fn(),
+    updateLprDetectionEvent: vi.fn(),
     uploadLprDetectionEventImage: vi.fn(),
   };
 });
@@ -289,6 +320,8 @@ vi.mock('../api/arca', async (importOriginal) => ({
 vi.mock('../api/lpr-events', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/lpr-events')>()),
   pullLprDetectionEventChanges: h.pullLprDetectionEventChanges,
+  upsertLprDetectionEvent: h.upsertLprDetectionEvent,
+  updateLprDetectionEvent: h.updateLprDetectionEvent,
   uploadLprDetectionEventImage: h.uploadLprDetectionEventImage,
 }));
 
@@ -384,6 +417,8 @@ beforeEach(() => {
   h.listVehicleCategories.mockReset();
   h.paymentMethods.rows.clear();
   h.lprDetectionEvents.rows.clear();
+  h.upsertLprDetectionEvent.mockReset();
+  h.updateLprDetectionEvent.mockReset();
   // `mockReset` devuelve la implementación original (la página vacía), no la
   // borra: es el cambio de comportamiento de Vitest 2.
   h.pullEntryChanges.mockReset();
@@ -1082,6 +1117,65 @@ function localLprEvent(
     ...overrides,
   };
 }
+
+describe('push de detecciones durante el registro de un ingreso', () => {
+  it('no pisa el registro nuevo con la respuesta de un create anterior', async () => {
+    h.lprDetectionEvents.rows.set('lpr-1', localLprEvent('lpr-1'));
+    h.pendingOps.push({
+      localId: 1,
+      entityType: 'lprDetectionEvent',
+      operation: 'create',
+      tenantId: TENANT,
+      entityId: 'lpr-1',
+      payload: { id: 'lpr-1', status: 'pending' },
+      status: 'unreviewed',
+      createdAt: Date.now(),
+      retryCount: 0,
+    });
+    h.upsertLprDetectionEvent.mockImplementation(() => {
+      h.lprDetectionEvents.rows.set(
+        'lpr-1',
+        localLprEvent('lpr-1', {
+          status: 'registered',
+          entryId: 'entry-1',
+          imageStoragePath: 'tenant/photo.jpg',
+        }),
+      );
+      h.pendingOps.push({
+        localId: 2,
+        entityType: 'lprDetectionEvent',
+        operation: 'update',
+        tenantId: TENANT,
+        entityId: 'lpr-1',
+        payload: { status: 'registered', entryId: 'entry-1' },
+        status: 'pending',
+        createdAt: Date.now(),
+        retryCount: 0,
+      });
+      return Promise.resolve(serverLprEvent('lpr-1'));
+    });
+
+    await syncService.pushPendingOps();
+
+    expect(h.upsertLprDetectionEvent).toHaveBeenCalledTimes(1);
+    expect(
+      h.pendingOps.map((op) => ({
+        operation: op.operation,
+        status: op.status,
+        error: op.error,
+      })),
+    ).toEqual([{ operation: 'update', status: 'pending', error: undefined }]);
+    expect(h.pendingOps[0]).toMatchObject({
+      operation: 'update',
+      status: 'pending',
+    });
+    expect(h.lprDetectionEvents.rows.get('lpr-1')).toMatchObject({
+      status: 'registered',
+      entryId: 'entry-1',
+      imageStoragePath: 'tenant/photo.jpg',
+    });
+  });
+});
 
 describe('pullLprDetectionEvents y los cambios locales sin sincronizar', () => {
   it('recupera varias paginas al instalar en otro equipo', async () => {

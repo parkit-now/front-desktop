@@ -241,7 +241,7 @@ function toLocalEvent(
   const now = new Date().toISOString();
   const status = isLprStatus(payload.status) ? payload.status : 'pending';
   const nextStatus =
-    existing && isResolved(existing.status) && status === 'pending'
+    existing && isResolved(existing.status) && status !== 'registered'
       ? existing.status
       : status;
   const normalizedText =
@@ -395,16 +395,8 @@ async function queueStatusUpdate(
   event: LocalLprDetectionEvent,
   status: LprDetectionStatus,
   entryId?: string,
-): Promise<void> {
+): Promise<boolean> {
   const reviewedAt = new Date().toISOString();
-  const next: LocalLprDetectionEvent = {
-    ...event,
-    status,
-    entryId: entryId ?? event.entryId,
-    reviewedAt,
-    updatedAt: reviewedAt,
-    version: event.version + 1,
-  };
 
   // Only an actual operator decision (registered/dismissed) should surface
   // as a pending change — automatic suppression (duplicate plate, already
@@ -414,11 +406,25 @@ async function queueStatusUpdate(
       ? 'pending'
       : 'unreviewed';
 
-  await localDb.transaction(
+  return localDb.transaction(
     'rw',
     localDb.lprDetectionEvents,
     localDb.pendingOps,
     async () => {
+      const current = await localDb.lprDetectionEvents.get(event.id);
+      if (!current || current.tenantId !== tenantId) return false;
+      // Un efecto con una detección `pending` vieja no puede borrar el vínculo
+      // que acaba de crear el registro explícito del ingreso.
+      if (status !== 'registered' && current.status !== 'pending') return false;
+
+      const next: LocalLprDetectionEvent = {
+        ...current,
+        status,
+        entryId: entryId ?? current.entryId,
+        reviewedAt,
+        updatedAt: reviewedAt,
+        version: current.version + 1,
+      };
       await localDb.lprDetectionEvents.put(next);
 
       const createOp = await localDb.pendingOps
@@ -428,7 +434,8 @@ async function queueStatusUpdate(
           (op) =>
             op.tenantId === tenantId &&
             op.entityId === event.id &&
-            op.operation === 'create',
+            op.operation === 'create' &&
+            op.status !== 'in-flight',
         )
         .first();
 
@@ -440,7 +447,7 @@ async function queueStatusUpdate(
           nextAttemptAt: undefined,
           retryCount: 0,
         });
-        return;
+        return true;
       }
 
       const updateOp = await localDb.pendingOps
@@ -450,7 +457,8 @@ async function queueStatusUpdate(
           (op) =>
             op.tenantId === tenantId &&
             op.entityId === event.id &&
-            op.operation === 'update',
+            op.operation === 'update' &&
+            op.status !== 'in-flight',
         )
         .first();
 
@@ -463,7 +471,7 @@ async function queueStatusUpdate(
           nextAttemptAt: undefined,
           retryCount: 0,
         });
-        return;
+        return true;
       }
 
       await enqueuePendingOp({
@@ -474,6 +482,7 @@ async function queueStatusUpdate(
         payload,
         status: opStatus,
       });
+      return true;
     },
   );
 }
@@ -485,9 +494,9 @@ async function dismissPendingDetection(
   const event = await localDb.lprDetectionEvents.get(eventId);
   if (!event || event.tenantId !== tenantId || event.status !== 'pending')
     return false;
-  await queueStatusUpdate(tenantId, event, 'dismissed');
-  void patchCameraEvent(eventId, 'dismissed');
-  return true;
+  const changed = await queueStatusUpdate(tenantId, event, 'dismissed');
+  if (changed) void patchCameraEvent(eventId, 'dismissed');
+  return changed;
 }
 
 async function patchCameraEvent(
@@ -515,27 +524,6 @@ async function storeCameraEvent(
 ): Promise<void> {
   const id = asString(payload.eventId) ?? asString(payload.id);
   if (!id) return;
-  const existing = await localDb.lprDetectionEvents.get(id);
-  const event = toLocalEvent(tenantId, payload, existing);
-  if (!event) return;
-
-  // El servicio sigue creyendo que esta detección está pendiente, pero acá ya
-  // se resolvió. Reenviarle el aviso que se perdió.
-  //
-  // POR QUÉ HACE FALTA RECONCILIAR Y NO ALCANZA CON AVISAR UNA VEZ
-  //
-  // `patchCameraEvent` es best-effort: si el servicio está reiniciándose
-  // cuando el operador descarta una tarjeta, el aviso se pierde y NADA lo
-  // reintenta. Esa fila se queda `pending` para siempre en su base.
-  //
-  // Eso derivó en 69 filas zombi, algunas de un mes atrás, y mientras el
-  // servicio usó su propia base para decidir si ya tenía una tarjeta de esa
-  // patente, una sola de esas filas dejaba al auto sin poder detectarse nunca
-  // más. Ya no la usa para eso, pero la deriva se arregla igual acá: cada
-  // poll es una oportunidad de volver a intentarlo, así que se cura sola.
-  if (shouldResendResolution(existing, payload.status)) {
-    void patchCameraEvent(id, existing!.status, existing!.entryId);
-  }
 
   await localDb.transaction(
     'rw',
@@ -543,6 +531,17 @@ async function storeCameraEvent(
     localDb.pendingOps,
     localDb.lprIgnoredPlates,
     async () => {
+      const existing = await localDb.lprDetectionEvents.get(id);
+      const event = toLocalEvent(tenantId, payload, existing);
+      if (!event) return;
+
+      // La cámara puede responder con una copia `pending` después de que el
+      // operador registró el ingreso. Además de conservar la fila local,
+      // reenviamos la resolución que el servicio pudo haberse perdido.
+      if (shouldResendResolution(existing, payload.status)) {
+        void patchCameraEvent(id, existing!.status, existing!.entryId);
+      }
+
       if (!existing && !readCameraTestingMode()) {
         const rules = await localDb.lprIgnoredPlates
           .where('tenantId')
@@ -725,6 +724,7 @@ export const cameraDetectionTestUtils = {
   samePendingVehicleCluster,
   shouldResendResolution,
   storeCameraEvent,
+  queueStatusUpdate,
   suppressionReason,
 };
 
@@ -866,8 +866,9 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
         testingMode,
       );
       if (!reason) continue;
-      void queueStatusUpdate(tenantId, event, reason);
-      void patchCameraEvent(event.id, reason);
+      void queueStatusUpdate(tenantId, event, reason).then((changed) => {
+        if (changed) void patchCameraEvent(event.id, reason);
+      });
     }
   }, [
     tenantId,
@@ -948,9 +949,16 @@ export function useCameraDetections(tenantId: string | null): CameraDetections {
       if (!tenantId) return;
       void localDb.lprDetectionEvents.get(eventId).then(async (event) => {
         if (!event) return;
-        await queueStatusUpdate(tenantId, event, 'registered', entryId);
-        void patchCameraEvent(eventId, 'registered', entryId);
-        if (isOnline) void triggerSync();
+        const changed = await queueStatusUpdate(
+          tenantId,
+          event,
+          'registered',
+          entryId,
+        );
+        if (changed) {
+          void patchCameraEvent(eventId, 'registered', entryId);
+          if (isOnline) void triggerSync();
+        }
       });
     },
     [tenantId, isOnline, triggerSync],

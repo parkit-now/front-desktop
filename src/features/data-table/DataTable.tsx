@@ -658,6 +658,9 @@ export function DataTable<TData>({
   );
   const rows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleLeafColumns();
+  const totalColumnWidth = Math.max(table.getTotalSize(), 1);
+  const pinnedLeft = (start: number) =>
+    `max(${start}px, ${(start / totalColumnWidth) * 100}%)`;
   const hasActiveFilters =
     columnFilters.length > 0 ||
     globalFilter.trim().length > 0 ||
@@ -785,7 +788,17 @@ export function DataTable<TData>({
       </div>
 
       <div className="dt-scroll-shell">
-        <table className="dt-table">
+        <table className="dt-table" style={{ minWidth: totalColumnWidth }}>
+          <colgroup>
+            {visibleColumns.map((column) => (
+              <col
+                key={column.id}
+                style={{
+                  width: `${(column.getSize() / totalColumnWidth) * 100}%`,
+                }}
+              />
+            ))}
+          </colgroup>
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -798,11 +811,8 @@ export function DataTable<TData>({
                       className={pinned === 'left' ? 'pinned-left' : undefined}
                       style={
                         pinned === 'left'
-                          ? {
-                              left: column.getStart('left'),
-                              width: column.getSize(),
-                            }
-                          : { width: column.getSize() }
+                          ? { left: pinnedLeft(column.getStart('left')) }
+                          : undefined
                       }
                     >
                       {header.isPlaceholder ? null : column.getCanSort() ? (
@@ -861,11 +871,8 @@ export function DataTable<TData>({
                         }
                         style={
                           pinned === 'left'
-                            ? {
-                                left: cell.column.getStart('left'),
-                                width: cell.column.getSize(),
-                              }
-                            : { width: cell.column.getSize() }
+                            ? { left: pinnedLeft(cell.column.getStart('left')) }
+                            : undefined
                         }
                       >
                         {flexRender(
