@@ -1,3 +1,18 @@
+# [1.20.0](https://github.com/parkit-now/front-desktop/compare/v1.19.0...v1.20.0) (2026-10-09)
+
+
+### Bug Fixes
+
+* **camara:** el editor de ROI vuelve a recibir el cuadro sin achicar ([cde8da8](https://github.com/parkit-now/front-desktop/commit/cde8da8aa093b7561a52ac67c38840b774d7ad3a))
+* **camara:** poder apagar la decodificación por hardware para poder medirla ([6c703d6](https://github.com/parkit-now/front-desktop/commit/6c703d6391a7d41ea27a792a4b1b636b52357951))
+* **servicios:** cerrar la app mata de verdad a los dos servicios en Windows ([1fb377f](https://github.com/parkit-now/front-desktop/commit/1fb377fffe48def3d7dea9755ce8ffa6f06db4ac))
+* **servicios:** no adoptar un servicio de otra versión tras actualizar ([f96578f](https://github.com/parkit-now/front-desktop/commit/f96578f1dbd6befbb95cd4f785f431115932d131))
+
+
+### Features
+
+* **facturacion:** agregar factura externa y modo manual con pendiente ([11040c0](https://github.com/parkit-now/front-desktop/commit/11040c0057eb3960951cb90fa7563457595a4675))
+
 # [1.19.0](https://github.com/parkit-now/front-desktop/compare/v1.18.0...v1.19.0) (2026-10-08)
 
 
