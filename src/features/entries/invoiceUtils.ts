@@ -20,6 +20,18 @@ export function formatVoucherNumber(ptoVta: number, cbteNro: number): string {
   return `${String(ptoVta).padStart(4, '0')}-${String(cbteNro).padStart(8, '0')}`;
 }
 
+export function formatExternalInvoice(input: {
+  manualInvoiceType?: string | null;
+  manualInvoicePointOfSale?: string | null;
+  manualInvoiceNumber?: string | null;
+}): string | null {
+  if (!input.manualInvoiceNumber) return null;
+  if (!input.manualInvoiceType || !input.manualInvoicePointOfSale) {
+    return input.manualInvoiceNumber;
+  }
+  return `Factura ${input.manualInvoiceType} ${input.manualInvoicePointOfSale.padStart(5, '0')}-${input.manualInvoiceNumber.padStart(8, '0')}`;
+}
+
 export function invoiceLetter(cbteTipo: number | null | undefined): string {
   return (cbteTipo != null && LETTER_BY_CBTE_TIPO[cbteTipo]) || '';
 }
@@ -58,8 +70,11 @@ export function describeInvoiceResult(input: {
     const auto =
       input.lineModes.length > 0 &&
       input.lineModes.every((mode) => mode === 'auto');
-    return auto
-      ? { tone: 'info', text: 'La factura se emite al sincronizar.' }
+    if (auto)
+      return { tone: 'info', text: 'La factura se emite al sincronizar.' };
+    return input.lineModes.includes('manual_pending') &&
+      input.lineModes.every((mode) => mode !== 'none' && mode !== undefined)
+      ? { tone: 'info', text: 'La factura quedará pendiente al sincronizar.' }
       : null;
   }
 
@@ -88,13 +103,14 @@ export function describeInvoiceResult(input: {
         text: translateErrorCode(invoice.errorCode) ?? FALLBACK_MESSAGE,
       };
     case 'pending':
-      // Pendiente CON motivo (certificado vencido, falta el receptor): se
-      // quiso emitir y no se pudo. Las facturas Manuales nuevas no quedan pendientes.
-      return invoice.errorCode
-        ? {
-            tone: 'warning',
-            text: translateErrorCode(invoice.errorCode) ?? FALLBACK_MESSAGE,
-          }
+      if (invoice.errorCode) {
+        return {
+          tone: 'warning',
+          text: translateErrorCode(invoice.errorCode) ?? FALLBACK_MESSAGE,
+        };
+      }
+      return input.lineModes.includes('manual_pending')
+        ? { tone: 'info', text: 'La factura quedó pendiente de emitir.' }
         : null;
     default:
       // `not_required`: nada que mostrar en el cobro.
@@ -341,6 +357,11 @@ export function canIssueAfterCharge(
   invoice: InvoiceSummaryDto | null | undefined,
   lineModes: readonly (PaymentMethodInvoiceMode | undefined)[],
 ): boolean {
+  if (
+    lineModes.length === 0 ||
+    lineModes.some((mode) => mode === 'none' || mode === undefined)
+  )
+    return false;
   return (
     invoice?.status === 'pending' ||
     invoice?.status === 'error' ||
@@ -403,7 +424,7 @@ export const INVOICE_STATE_LABEL: Record<InvoiceState, string> = {
   issuing: 'Emitiendo',
   error: 'Con error',
   pending: 'Pendiente',
-  manual: 'Facturada a mano',
+  manual: 'Facturada',
   none: 'No facturado',
   na: 'No aplica',
 };
@@ -438,9 +459,11 @@ export function resolveInvoiceState(
   },
   invoice: { status: string } | undefined,
 ): InvoiceState {
+  if (invoice?.status === 'issued' || invoice?.status === 'issuing') {
+    return invoice.status;
+  }
+  if (entry.manuallyInvoiced) return 'manual';
   switch (invoice?.status) {
-    case 'issued':
-    case 'issuing':
     case 'error':
     case 'pending':
       return invoice.status;

@@ -121,6 +121,23 @@ describe('invoiceUtils', () => {
     ).toBe('La factura se emite al sincronizar.');
   });
 
+  it('Manual con pendiente avisa que quedará pendiente, sin prometer emisión automática', () => {
+    expect(
+      describeInvoiceResult({
+        invoice: undefined,
+        offline: true,
+        lineModes: ['manual_pending'],
+      })?.text,
+    ).toBe('La factura quedará pendiente al sincronizar.');
+    expect(
+      describeInvoiceResult({
+        invoice: { ...base, status: 'pending' },
+        offline: false,
+        lineModes: ['manual_pending'],
+      })?.text,
+    ).toBe('La factura quedó pendiente de emitir.');
+  });
+
   it('offline con un medio que no es Automática → no se promete nada', () => {
     expect(
       describeInvoiceResult({
@@ -171,6 +188,12 @@ describe('invoiceUtils', () => {
     ).toBe(true);
     expect(
       canIssueAfterCharge({ ...base, status: 'not_required' }, ['none']),
+    ).toBe(false);
+    expect(
+      canIssueAfterCharge({ ...base, status: 'pending' }, ['manual_pending']),
+    ).toBe(true);
+    expect(
+      canIssueAfterCharge({ ...base, status: 'pending' }, ['auto', 'none']),
     ).toBe(false);
     expect(canIssueAfterCharge(base, ['manual'])).toBe(false);
     expect(canIssueAfterCharge(null, ['manual'])).toBe(false);

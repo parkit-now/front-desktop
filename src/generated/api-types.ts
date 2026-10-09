@@ -3097,7 +3097,10 @@ export interface components {
             /** Format: date-time */
             leftAt?: string;
             manualInvoiceNumber?: string | null;
-            /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
+            manualInvoicePointOfSale?: string | null;
+            /** @enum {string|null} */
+            manualInvoiceType?: "A" | "B" | "C" | null;
+            /** @description Factura emitida fuera de Parkit. */
             manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
             notes?: string;
@@ -3168,7 +3171,14 @@ export interface components {
             leftAt?: string;
             /** @description Número de la factura emitida fuera de Parkit. */
             manualInvoiceNumber?: string;
-            /** @description Marca la estadía como facturada por fuera de Parkit (playas sin ARCA). Sólo en estadías cerradas; se permite aunque la caja esté cerrada. */
+            /** @description Punto de venta de una factura emitida fuera de Parkit. */
+            manualInvoicePointOfSale?: string | null;
+            /**
+             * @description Letra de una factura emitida fuera de Parkit.
+             * @enum {string|null}
+             */
+            manualInvoiceType?: "A" | "B" | "C" | null;
+            /** @description Marca la estadía como facturada por fuera de Parkit. Con ARCA vinculada requiere dueño, tipo, punto de venta y número; se permite aunque la caja esté cerrada. */
             manuallyInvoiced?: boolean;
             /** @example Cliente frecuente */
             notes?: string;
@@ -4160,7 +4170,10 @@ export interface components {
             /** Format: date-time */
             leftAt?: string;
             manualInvoiceNumber?: string | null;
-            /** @description Facturada por fuera de Parkit: el checkbox «Facturada» de las playas sin ARCA. */
+            manualInvoicePointOfSale?: string | null;
+            /** @enum {string|null} */
+            manualInvoiceType?: "A" | "B" | "C" | null;
+            /** @description Factura emitida fuera de Parkit. */
             manuallyInvoiced: boolean;
             /** @example Cliente frecuente */
             notes?: string;
@@ -5399,10 +5412,10 @@ export interface components {
             maxSeq: number;
         };
         /**
-         * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después.
+         * @description Qué pasa al cobrar: none = no permite facturar, manual = emisión opcional, manual_pending = queda pendiente para emitir después, auto = se emite automáticamente.
          * @enum {string}
          */
-        PaymentMethodInvoiceMode: "none" | "auto" | "manual";
+        PaymentMethodInvoiceMode: "none" | "auto" | "manual" | "manual_pending";
         PaymentMethodSliceDto: {
             /**
              * @description Total collected, in ARS.
@@ -5455,7 +5468,7 @@ export interface components {
              */
             id: string;
             /**
-             * @description Facturación al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después.
+             * @description Qué pasa al cobrar: none = no permite facturar, manual = emisión opcional, manual_pending = queda pendiente para emitir después, auto = se emite automáticamente.
              * @example none
              */
             invoiceMode: components["schemas"]["PaymentMethodInvoiceMode"];
@@ -6250,7 +6263,7 @@ export interface components {
              * @example true
              */
             enabled?: boolean;
-            /** @description Qué pasa con la factura al cobrar con este medio: none = no se factura, auto = se emite al cobrar, manual = no se factura al cobrar; se puede emitir después. */
+            /** @description Qué pasa al cobrar: none = no permite facturar, manual = emisión opcional, manual_pending = queda pendiente para emitir después, auto = se emite automáticamente. */
             invoiceMode?: components["schemas"]["PaymentMethodInvoiceMode"];
             /**
              * @description Whether this method becomes the default for the entity.

@@ -43,6 +43,7 @@ import {
   INVOICE_STATE_BADGE,
   INVOICE_STATE_LABEL,
   INVOICE_STATE_ORDER,
+  formatExternalInvoice,
   invoiceLetter,
   receiverDescription,
   resolveInvoiceState,
@@ -109,7 +110,7 @@ function invoiceExportValue(row: EntryHistoryRow): string {
   return [
     INVOICE_STATE_LABEL[row.invoiceState],
     row.invoiceState === 'manual' && row.manualInvoiceNumber
-      ? `Número ${row.manualInvoiceNumber}`
+      ? formatExternalInvoice(row)
       : null,
     letter ? `Factura ${letter}` : invoice ? voucherLabel(invoice) : null,
     number,
@@ -146,7 +147,7 @@ function InvoiceCell({ row }: { row: EntryHistoryRow }) {
       ) : null}
       {row.invoiceState === 'manual' && row.manualInvoiceNumber ? (
         <span className="entry-invoice-number">
-          N° {row.manualInvoiceNumber}
+          {formatExternalInvoice(row)}
         </span>
       ) : null}
     </div>

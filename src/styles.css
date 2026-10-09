@@ -4811,6 +4811,47 @@ h2 {
   color: #1d2939;
 }
 
+.entry-external-invoice {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #f7faff;
+}
+
+.entry-external-invoice-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.entry-external-invoice-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.entry-external-invoice-fields input,
+.entry-external-invoice-fields .app-select-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #cbd9ed;
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: #1d2939;
+}
+
+@media (max-width: 540px) {
+  .entry-external-invoice-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .dt-inline-field-trigger {
   display: flex;
   align-items: center;
@@ -7088,6 +7129,13 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.entry-invoice-state {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .entry-invoice-error {
   display: grid;
   gap: 6px;
@@ -7117,6 +7165,26 @@ h2 {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.entry-invoice-actions--choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  align-items: stretch;
+}
+
+.entry-invoice-actions--choices > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  text-align: center;
+}
+
+.entry-invoice-actions--choices > .muted {
+  grid-column: 1 / -1;
 }
 
 /* ── Visor de la imagen completa de una detección ───────────────────────── */
