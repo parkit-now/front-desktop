@@ -2665,6 +2665,11 @@ export interface components {
              */
             createdAt: string;
             /**
+             * Format: date-time
+             * @description Cuándo se dio de baja el estacionamiento, o `null` si está vivo. La membresía se devuelve IGUAL cuando el estacionamiento está dado de baja: esconderla mentiría sobre quién tiene acceso, y si después se restaura su personal aparecería de la nada. El panel la muestra marcada.
+             */
+            parkingDeletedAt: string | null;
+            /**
              * Format: uuid
              * @description Parking lot id (uuid).
              */
