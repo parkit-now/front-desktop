@@ -65,6 +65,8 @@ export interface LocalEntry {
    */
   manuallyInvoiced?: boolean;
   manualInvoiceNumber?: string;
+  manualInvoiceType?: 'A' | 'B' | 'C';
+  manualInvoicePointOfSale?: string;
   /**
    * Tipo y categoría del vehículo, congelados al ingresar. Opcionales: los
    * ingresos anteriores a la v17 y los que mandó una caja vieja no los tienen,

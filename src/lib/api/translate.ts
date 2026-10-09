@@ -210,6 +210,8 @@ const CODE_MESSAGES: Record<string, string> = {
     'Por el monto, la factura necesita identificar al cliente (CUIT o DNI).',
   INVOICE_NOT_INVOICEABLE:
     'Esta estadía no se puede facturar: sigue abierta o se cobró $0.',
+  INVOICE_MODE_DISABLED:
+    'La facturación está desactivada para el medio de pago de esta estadía.',
   INVOICE_RECEIVER_NOT_FOUND:
     'ARCA no tiene datos de ese CUIT. Revisalo o emití la factura a consumidor final.',
   // Ya no lo emite el backend (desde la Etapa 5 un CUIT sin A sale B

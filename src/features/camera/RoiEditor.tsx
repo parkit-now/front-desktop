@@ -26,6 +26,14 @@ interface Props {
  * está llegando (el navegador lo sabe incluso en un MJPEG), y con eso se
  * convierte. Sin esa conversión, el ROI quedaría corrido y recortando la zona
  * equivocada — un error que después es muy difícil de atribuir.
+ *
+ * POR ESO ESTE STREAM VA SIN ACHICAR (`maxWidth=0`)
+ *
+ * El servicio aplica el ROI sobre el cuadro ORIGINAL. Si acá llegara el
+ * preview reducido, `naturalWidth` sería el del preview y el ROI quedaría en
+ * una escala distinta a la que se usa para recortar. Ya pasó: cuando se achicó
+ * el preview a 960 px para ahorrar CPU, la zona marcada pasó a cubrir un
+ * tercio de lo dibujado y el ROI guardado se pintaba fuera de pantalla.
  */
 export function RoiEditor({ value, onChange }: Props) {
   const imgRef = useRef<HTMLImageElement>(null);
@@ -131,7 +139,12 @@ export function RoiEditor({ value, onChange }: Props) {
             ref={imgRef}
             key={streamKey}
             className="roi-editor__video"
-            src={`${CAMERA_BASE_URL}/stream/mjpeg?roi=${streamKey}`}
+            // `maxWidth=0` = el cuadro SIN achicar. No es un capricho: abajo
+            // se convierte lo arrastrado a píxeles con `naturalWidth`, y el
+            // servicio aplica ese ROI sobre el cuadro original. Si acá llegara
+            // el preview reducido, la zona marcada cubriría una fracción de lo
+            // que el usuario dibujó.
+            src={`${CAMERA_BASE_URL}/stream/mjpeg?maxWidth=0&roi=${streamKey}`}
             alt="Video en vivo para delimitar la zona de detección"
             draggable={false}
             onError={() => setErrored(true)}

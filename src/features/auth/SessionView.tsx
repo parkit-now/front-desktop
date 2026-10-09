@@ -72,6 +72,7 @@ import { translateApiError, translateRole } from '../../lib/api/translate';
 import { useNetwork } from '../../lib/network/NetworkContext';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { PARKIT_LOGO_URL } from '../../lib/brand';
+import { version as appVersion } from '../../../package.json';
 import {
   normalizeTicketTemplateSettings,
   writeTicketTemplateSettings,
@@ -915,7 +916,12 @@ export function SessionView({ session, sessionStale = false }: Props) {
               <div className="brand-badge" aria-hidden="true">
                 <img src={PARKIT_LOGO_URL} alt="" />
               </div>
-              {!sidebarCollapsed ? <h2>Parkit</h2> : null}
+              {!sidebarCollapsed ? (
+                <div className="sidebar-brand-copy">
+                  <h2>Parkit</h2>
+                  <span className="sidebar-brand-version">v{appVersion}</span>
+                </div>
+              ) : null}
             </div>
 
             <button

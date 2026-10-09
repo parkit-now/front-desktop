@@ -156,6 +156,20 @@ CAMERA_LOCATION  = os.environ.get("CAMERA_LOCATION", "entrada")
 # aparecía cuando tenía que aparecer. Los datos de producción muestran que la
 # relación descarte/acierto se da vuelta exactamente en 0,85: por debajo hay 11
 # descartes por cada registro, por encima la mayoría son buenas.
+# Versión del build. Electron la pasa por entorno y la compara al arrancar
+# para distinguir un servicio suyo de uno que sobrevivió a una actualización.
+#
+# EL BUG QUE ESTO ARREGLA
+#
+# Al arrancar, Electron pregunta por `/health` y si algo responde lo ADOPTA en
+# vez de lanzar uno nuevo — pensado para desarrollo, donde uno corre el
+# servicio a mano. Pero si un servicio viejo sobrevivía al cierre (pasaba en
+# Windows: ver `forceKillTree` en electron/services.ts), la versión NUEVA de la
+# app adoptaba al proceso VIEJO y seguía corriendo código viejo sin avisar.
+# Encima lo marcaba como adoptado —"no lo cierres al salir"— así que se quedaba
+# para siempre reteniendo el puerto y la conexión con la cámara.
+BUILD_VERSION = os.environ.get("PARKIT_BUILD_VERSION", "dev")
+
 MIN_CONFIDENCE   = float(os.environ.get("CAMERA_MIN_CONFIDENCE", "0.85"))
 # Cuánto espera antes de volver a guardar la MISMA patente, en memoria.
 #
@@ -266,7 +280,16 @@ def _print_banner() -> None:
     print(f"  storage  : {IMAGES_DIR}  |  {DB_PATH}")
     print(f"  motion   : threshold={MOTION_THRESHOLD}  cooldown={MOTION_COOLDOWN}s  roi={roi_label}")
     print(f"  fallback : every {FALLBACK_INTERVAL:.0f}s")
-    print(f"  filter   : min_conf={MIN_CONFIDENCE:.0%}  plate_cooldown={COOLDOWN}s")
+    print(
+        f"  filter   : min_conf={MIN_CONFIDENCE:.0%}  discard_below={DISCARD_BELOW:.0%}"
+        f"  plate_cooldown={COOLDOWN}s"
+    )
+    # Que el banner diga si la aceleración por hardware está pedida. No dice si
+    # la GPU la concedió —OpenCV cae a software en silencio y no lo reporta—,
+    # pero al menos separa "no la pedí" de "la pedí y no sirvió", que sin esto
+    # son indistinguibles desde afuera.
+    hw = "off" if os.environ.get("CAMERA_HW_ACCEL", "1") == "0" else "requested"
+    print(f"  decode   : hw_accel={hw}  (CAMERA_HW_ACCEL=0 para apagarla)")
     # Los valores EFECTIVOS, ya clampeados: si el banner mostrara lo pedido y
     # el servicio corriera con otra cosa, no habría forma de darse cuenta.
     print(
@@ -1177,7 +1200,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": BUILD_VERSION}
 
 
 @app.post("/shutdown", status_code=202)
@@ -1213,7 +1236,7 @@ def stream_status():
     return {**_watchdog.status(), "source": source}
 
 
-def _downscale_for_stream(frame):
+def _downscale_for_stream(frame, max_width: int):
     """Achica el cuadro al ancho del preview antes de codificarlo a JPEG.
 
     Codificar 2560×1440 diez veces por segundo cuesta ~15-28 ms por cuadro; a
@@ -1225,22 +1248,22 @@ def _downscale_for_stream(frame):
     las dos salen del cuadro original. Esto es sólo lo que se dibuja en
     pantalla.
     """
-    if STREAM_MAX_WIDTH <= 0:
+    if max_width <= 0:
         return frame
 
     height, width = frame.shape[:2]
-    if width <= STREAM_MAX_WIDTH:
+    if width <= max_width:
         return frame
 
-    scale = STREAM_MAX_WIDTH / width
+    scale = max_width / width
     return cv2.resize(
         frame,
-        (STREAM_MAX_WIDTH, max(1, int(round(height * scale)))),
+        (max_width, max(1, int(round(height * scale)))),
         interpolation=cv2.INTER_AREA,
     )
 
 
-def _mjpeg_frames():
+def _mjpeg_frames(max_width: int):
     """Yield the latest camera frame as an endless multipart JPEG stream.
 
     Consumed directly by an <img> tag in the renderer (browsers render
@@ -1256,7 +1279,9 @@ def _mjpeg_frames():
         if frame is None:
             time.sleep(0.1)  # camera not ready yet — wait without busy-looping
             continue
-        ok, buf = cv2.imencode(".jpg", _downscale_for_stream(frame), _STREAM_JPEG)
+        ok, buf = cv2.imencode(
+            ".jpg", _downscale_for_stream(frame, max_width), _STREAM_JPEG
+        )
         if not ok:
             time.sleep(interval)
             continue
@@ -1265,8 +1290,28 @@ def _mjpeg_frames():
 
 
 @app.get("/stream/mjpeg")
-def stream_mjpeg():
+def stream_mjpeg(maxWidth: int | None = None):  # noqa: N803 (query param)
     """Live MJPEG preview for the desktop UI.
+
+    `maxWidth` pisa `CAMERA_STREAM_MAX_WIDTH` para esta conexión; `0` manda el
+    cuadro SIN achicar.
+
+    POR QUÉ HACE FALTA EL OVERRIDE, Y ES IMPORTANTE
+
+    El editor de ROI convierte lo que el usuario arrastra a píxeles usando el
+    `naturalWidth` del `<img>`, o sea **el tamaño del cuadro que le llega por
+    este endpoint** (`RoiEditor.tsx`). El servicio después aplica ese ROI sobre
+    el cuadro ORIGINAL a resolución completa.
+
+    O sea que las dos resoluciones tienen que ser la misma o el ROI queda mal:
+    achicar el preview a 960 y seguir aplicando el recorte sobre 2560 hace que
+    la zona marcada cubra apenas un tercio de lo que el usuario dibujó, y que
+    un ROI ya guardado se dibuje fuera de pantalla. Pasó: lo introdujo el
+    cambio que achicó el preview para ahorrar CPU.
+
+    Por eso el editor pide `maxWidth=0` y el preview normal no. Si algún día el
+    ROI pasa a guardarse en coordenadas relativas (0-1), esto deja de hacer
+    falta.
 
     Devuelve 503 cuando no hay nada que mostrar, en vez de abrir un stream que
     se queda esperando frames para siempre. Sin esto, con la cámara caída el
@@ -1277,8 +1322,9 @@ def stream_mjpeg():
     """
     if _capture is None or _capture.latest_frame() is None:
         raise HTTPException(status_code=503, detail="camera has no frames yet")
+    width = STREAM_MAX_WIDTH if maxWidth is None else max(0, maxWidth)
     return StreamingResponse(
-        _mjpeg_frames(),
+        _mjpeg_frames(width),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 
@@ -1868,7 +1914,21 @@ cv2.setNumThreads(1)
 
 if __name__ == "__main__":
     _config = uvicorn.Config(
-        app, host="127.0.0.1", port=PORT, log_level="info", access_log=False
+        app,
+        host="127.0.0.1",
+        port=PORT,
+        log_level="info",
+        access_log=False,
+        # `timeout_graceful_shutdown`: sin esto, el cierre elegante espera a
+        # que TODAS las conexiones abiertas terminen, y el preview MJPEG y el SSE de detecciones no
+        # terminan nunca por su cuenta. Resultado: el servicio se quedaba
+        # colgado al cerrar la app, Electron se cansaba a los 12 segundos y
+        # mandaba un kill que en Windows no alcanzaba (ver `forceKillTree` en
+        # electron/services.ts).
+        #
+        # 5 segundos alcanzan de sobra para cualquier request real; lo que se
+        # corta es la espera por las que nunca iban a cerrarse.
+        timeout_graceful_shutdown=5,
     )
     _server = uvicorn.Server(_config)
     _server.run()

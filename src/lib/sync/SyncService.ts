@@ -170,6 +170,8 @@ export function entryToLocal(e: EntryDto): LocalEntry {
     ticketNumber: e.ticketNumber ?? undefined,
     manuallyInvoiced: e.manuallyInvoiced,
     manualInvoiceNumber: e.manualInvoiceNumber ?? undefined,
+    manualInvoiceType: e.manualInvoiceType ?? undefined,
+    manualInvoicePointOfSale: e.manualInvoicePointOfSale ?? undefined,
     vehicleTypeId: e.vehicleTypeId ?? undefined,
     vehicleCategory: e.vehicleCategory ?? undefined,
     vehicleType: e.vehicleType ?? undefined,

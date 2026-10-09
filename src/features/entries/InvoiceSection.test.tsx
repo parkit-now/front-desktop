@@ -21,6 +21,13 @@ const mock = vi.hoisted(() => ({
   reveal: vi.fn(),
   toast: vi.fn(),
   qr: vi.fn(),
+  correct: vi.fn(),
+  entryUpdate: vi.fn(),
+  invoiceUpdate: vi.fn(),
+  transaction: vi.fn(async (...args: unknown[]) => {
+    const callback = args[args.length - 1] as () => Promise<void>;
+    await callback();
+  }),
 }));
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: (query: () => unknown) => query(),
@@ -29,13 +36,15 @@ vi.mock('../../lib/db/localDb', () => ({
   localDb: {
     invoices: {
       where: () => ({ equals: () => ({ first: () => mock.invoice }) }),
+      update: mock.invoiceUpdate,
     },
-    entries: { get: () => undefined },
+    entries: { get: () => undefined, update: mock.entryUpdate },
+    transaction: mock.transaction,
     clients: { where: () => ({ equals: () => ({ toArray: () => [] }) }) },
   },
 }));
 vi.mock('../../lib/api/arca', () => ({ getInvoiceDocument: mock.document }));
-vi.mock('../../lib/api/entries', () => ({ correctEntry: vi.fn() }));
+vi.mock('../../lib/api/entries', () => ({ correctEntry: mock.correct }));
 vi.mock('../../lib/sync/SyncService', () => ({
   syncService: {
     pullInvoices: vi.fn(),
@@ -79,7 +88,13 @@ async function update(callback: () => void | Promise<void>) {
     await callback();
   });
 }
-async function render(online = true, current = entry) {
+async function render(
+  online = true,
+  current = entry,
+  emitter: { condicionIva: 'monotributo'; certExpired: boolean } | null = null,
+  actorRole: 'owner' | 'operator' = 'owner',
+  invoiceModeAllowed = true,
+) {
   await update(() =>
     root.render(
       <InvoiceSection
@@ -88,7 +103,9 @@ async function render(online = true, current = entry) {
         tenantId="tenant"
         accessToken="token"
         isOnline={online}
-        emitter={null}
+        emitter={emitter}
+        actorRole={actorRole}
+        invoiceModeAllowed={invoiceModeAllowed}
       />,
     ),
   );
@@ -117,6 +134,8 @@ beforeEach(() => {
   mock.render.mockResolvedValue({ ok: true, data: new Uint8Array([1, 2]) });
   mock.save.mockResolvedValue({ ok: true, path: '/tmp/factura.pdf' });
   mock.reveal.mockResolvedValue({ ok: true });
+  mock.entryUpdate.mockResolvedValue(1);
+  mock.invoiceUpdate.mockResolvedValue(1);
   previousDesktop = Object.getOwnPropertyDescriptor(window, 'parkitDesktop');
   Object.defineProperty(window, 'parkitDesktop', {
     configurable: true,
@@ -244,7 +263,7 @@ describe('factura manual', () => {
       manualInvoiceNumber: '0001-00000042',
     });
 
-    expect(container.textContent).toContain('Facturada a mano');
+    expect(container.textContent).toContain('Facturada');
     const number = container.querySelector<HTMLInputElement>(
       'input[id^="manual-invoice-number-"]',
     );
@@ -252,5 +271,106 @@ describe('factura manual', () => {
     expect(
       container.querySelector('[aria-label="Guardar número de factura"]'),
     ).not.toBeNull();
+  });
+});
+
+describe('factura externa con ARCA', () => {
+  const emitter = { condicionIva: 'monotributo', certExpired: false } as const;
+
+  it('no ofrece emitir si el medio tiene la facturación desactivada', async () => {
+    mock.invoice.status = 'not_required';
+    await render(true, entry, emitter, 'owner', false);
+    expect(container.textContent).not.toContain('Emitir factura');
+  });
+
+  it('sólo el dueño online puede abrir el registro de una pendiente', async () => {
+    mock.invoice.status = 'pending';
+    await render(true, entry, emitter, 'operator');
+    expect(container.textContent).not.toContain('Registrar factura externa');
+
+    await render(false, entry, emitter);
+    const offlineButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Registrar factura externa',
+    );
+    expect(offlineButton?.disabled).toBe(true);
+
+    await render(true, entry, emitter);
+    expect(
+      Array.from(
+        container.querySelectorAll('.entry-invoice-actions--choices > button'),
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Registrar factura externa', 'Emitir factura']);
+    const button = Array.from(container.querySelectorAll('button')).find(
+      (item) => item.textContent === 'Registrar factura externa',
+    );
+    expect(button?.disabled).toBe(false);
+    await update(() => button!.click());
+    expect(container.textContent).toContain('Punto de venta');
+    expect(container.textContent).toContain('Número');
+    expect(container.textContent).not.toContain('Emitir factura');
+  });
+
+  it('una externa registrada se ve facturada y ya no ofrece emitir', async () => {
+    mock.invoice.status = 'pending';
+    const externalEntry = {
+      ...entry,
+      manuallyInvoiced: true,
+      manualInvoiceType: 'C' as const,
+      manualInvoicePointOfSale: '12',
+      manualInvoiceNumber: '123',
+    };
+    await render(true, externalEntry, emitter);
+    expect(container.textContent).toContain('Facturada');
+    expect(container.textContent).toContain('Factura C 00012-00000123');
+    expect(container.textContent).not.toContain('Emitir factura');
+
+    await render(true, externalEntry, emitter, 'operator');
+    expect(container.textContent).toContain('Factura C 00012-00000123');
+    expect(container.textContent).not.toContain('Editar factura externa');
+    expect(container.textContent).not.toContain('Quitar registro');
+  });
+
+  it('guarda los tres datos juntos y cierra el pendiente local confirmado', async () => {
+    mock.invoice.status = 'pending';
+    mock.correct.mockResolvedValue({
+      ...entry,
+      manuallyInvoiced: true,
+      manualInvoiceType: 'C',
+      manualInvoicePointOfSale: '12',
+      manualInvoiceNumber: '123',
+    });
+    await render(
+      true,
+      {
+        ...entry,
+        manualInvoiceType: 'C',
+        manualInvoicePointOfSale: '12',
+        manualInvoiceNumber: '123',
+      },
+      emitter,
+    );
+    const button = (label: string) =>
+      Array.from(container.querySelectorAll('button')).find(
+        (item) => item.textContent === label,
+      );
+    await update(() => button('Registrar factura externa')!.click());
+    await update(() => button('Guardar factura externa')!.click());
+
+    expect(mock.correct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          manuallyInvoiced: true,
+          manualInvoiceType: 'C',
+          manualInvoicePointOfSale: '12',
+          manualInvoiceNumber: '123',
+        },
+      }),
+    );
+    expect(mock.invoiceUpdate).toHaveBeenCalledWith('invoice-1', {
+      status: 'not_required',
+      errorCode: null,
+      errorMessage: null,
+    });
   });
 });

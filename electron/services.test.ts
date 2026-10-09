@@ -30,14 +30,21 @@ function config(overrides: Partial<ServiceConfig> = {}): ServiceConfig {
 function stubFetch(
   opts: {
     health?: 'ok' | 'down';
+    /** La que informa el servicio que ya está en el puerto. */
+    version?: string;
     onShutdown?: () => void;
   } = {},
 ) {
   const health = opts.health ?? 'down';
+  // `'dev'` es el default de `ServiceManager`, así que coincide y se adopta.
+  const version = opts.version ?? 'dev';
   const fn = vi.fn((url: string) => {
     if (url.endsWith('/health')) {
       return health === 'ok'
-        ? Promise.resolve({ ok: true } as Response)
+        ? Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ status: 'ok', version }),
+          } as Response)
         : Promise.reject(new Error('down'));
     }
     opts.onShutdown?.(); // /shutdown
@@ -123,6 +130,81 @@ describe('ServiceManager — spawn', () => {
 
     expect(mockSpawn).not.toHaveBeenCalled();
     expect(failed).toEqual([]);
+  });
+});
+
+describe('ServiceManager — adopción por versión', () => {
+  it('NO adopta un servicio de otra versión: le pide que se cierre y arranca uno nuevo', async () => {
+    // El bug que esto evita: si un servicio sobrevivía al cierre, la app NUEVA
+    // lo adoptaba y seguía corriendo CÓDIGO VIEJO sin avisar. El usuario
+    // instalaba una actualización y no cambiaba nada. Encima quedaba marcado
+    // como adoptado, o sea que tampoco se cerraba nunca — reteniendo el puerto
+    // y la conexión con la cámara, que es un recurso escaso.
+    let vivo = true;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/health')) {
+        if (!vivo) return Promise.reject(new Error('down'));
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ status: 'ok', version: '1.0.0' }),
+        } as Response);
+      }
+      vivo = false; // el viejo acepta el /shutdown y suelta el puerto
+      return Promise.resolve({ ok: true } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockSpawn.mockReturnValue(new FakeProcess());
+
+    const manager = new ServiceManager([config()], 'token', '2.0.0');
+    const done = manager.spawnAll();
+    await vi.runAllTimersAsync();
+    await done;
+
+    // Se le pidió el cierre al viejo...
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8765/shutdown',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    // ...y se lanzó uno nuevo en vez de adoptarlo.
+    expect(mockSpawn).toHaveBeenCalled();
+  });
+
+  it('sí adopta cuando la versión coincide', async () => {
+    // Es el caso de desarrollo: `make camera-dev` a mano y después la app.
+    stubFetch({ health: 'ok', version: '2.0.0' });
+
+    const manager = new ServiceManager([config()], 'token', '2.0.0');
+    await manager.spawnAll();
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('una versión que no informa versión cuenta como distinta', async () => {
+    // Así responden los servicios anteriores a este mecanismo. Tratarlos como
+    // propios sería volver al bug.
+    let vivo = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith('/health')) {
+          if (!vivo) return Promise.reject(new Error('down'));
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ status: 'ok' }),
+          } as Response);
+        }
+        vivo = false;
+        return Promise.resolve({ ok: true } as Response);
+      }),
+    );
+    mockSpawn.mockReturnValue(new FakeProcess());
+
+    const manager = new ServiceManager([config()], 'token', '2.0.0');
+    const done = manager.spawnAll();
+    await vi.runAllTimersAsync();
+    await done;
+
+    expect(mockSpawn).toHaveBeenCalled();
   });
 });
 
@@ -434,5 +516,63 @@ describe('ServiceManager — shutdown', () => {
     await done;
 
     expect(proc.killed).toBe(true);
+  });
+
+  it('en Windows mata el ÁRBOL, no sólo el proceso que lanzamos', async () => {
+    // Los servicios son binarios de PyInstaller onefile: el proceso que
+    // lanzamos es un bootloader y el Python real es su HIJO. En Windows,
+    // `kill()` hace TerminateProcess sobre un solo PID y no arrastra hijos, así
+    // que mataba al bootloader y dejaba al Python huérfano: se cerraba Parkit
+    // y `camera-service` seguía corriendo con la cámara abierta.
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+
+    try {
+      const proc = new FakeProcess();
+      mockSpawn.mockReturnValue(proc);
+      stubFetch();
+
+      const manager = new ServiceManager([config()], 'test-token');
+      await manager.spawnAll();
+      mockSpawn.mockClear();
+
+      const done = manager.stopAll();
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'taskkill',
+        ['/PID', '1234', '/T', '/F'],
+        expect.objectContaining({ windowsHide: true }),
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original });
+    }
+  });
+
+  it('fuera de Windows sigue usando SIGKILL', async () => {
+    // El bootloader de Unix sí propaga la señal, así que no hace falta
+    // recorrer el árbol — y `taskkill` ni siquiera existe.
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+
+    try {
+      const proc = new FakeProcess();
+      mockSpawn.mockReturnValue(proc);
+      stubFetch();
+
+      const manager = new ServiceManager([config()], 'test-token');
+      await manager.spawnAll();
+      mockSpawn.mockClear();
+
+      const done = manager.stopAll();
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(proc.killed).toBe(true);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original });
+    }
   });
 });

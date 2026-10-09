@@ -10,12 +10,14 @@ import { formatArs } from '../../lib/format/argentina';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { ConfirmDialog } from '../../lib/ui/ConfirmDialog';
+import { AppSelect } from '../../lib/ui/AppSelect';
 import { Switch } from '../../lib/ui/Switch';
 import { renderInvoiceHtml } from './invoiceDocument';
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import {
   describeIssueConfirmation,
   expectedLetter,
+  formatExternalInvoice,
   formatIsoDay,
   INVOICE_STATE_BADGE,
   INVOICE_STATE_LABEL,
@@ -31,6 +33,7 @@ import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import { saveEntryInlineField } from './entryInlineFields';
 import { ClientContact } from '../clients/ClientContact';
 import { saveInvoicePdf } from './saveInvoicePdf';
+import { refreshInvoiceHistory } from './invoiceHistory';
 
 /**
  * Bloque «Factura» del diálogo de un movimiento del historial: el comprobante
@@ -48,6 +51,8 @@ export function InvoiceSection({
   accessToken,
   isOnline,
   emitter,
+  actorRole,
+  invoiceModeAllowed,
 }: {
   entry: LocalEntry;
   paidTotal: number | null;
@@ -56,12 +61,25 @@ export function InvoiceSection({
   isOnline: boolean;
   /** `null` = la playa no factura con ARCA. */
   emitter: ArcaEmitter | null;
+  actorRole: 'admin' | 'owner' | 'operator' | null;
+  invoiceModeAllowed: boolean;
 }) {
   const { showToast } = useToast();
   const [busy, setBusy] = useState<
-    'pdf' | 'manual' | 'number' | 'folder' | null
+    'pdf' | 'manual' | 'number' | 'folder' | 'external' | null
   >(null);
   const [manualNumberDraft, setManualNumberDraft] = useState(
+    entry.manualInvoiceNumber ?? '',
+  );
+  const [externalOpen, setExternalOpen] = useState(false);
+  const [removeExternalOpen, setRemoveExternalOpen] = useState(false);
+  const [externalType, setExternalType] = useState<'A' | 'B' | 'C'>(
+    entry.manualInvoiceType ?? 'C',
+  );
+  const [externalPoint, setExternalPoint] = useState(
+    entry.manualInvoicePointOfSale ?? '',
+  );
+  const [externalNumber, setExternalNumber] = useState(
     entry.manualInvoiceNumber ?? '',
   );
   const [savedPdf, setSavedPdf] = useState<{
@@ -99,7 +117,15 @@ export function InvoiceSection({
 
   useEffect(() => {
     setManualNumberDraft(current.manualInvoiceNumber ?? '');
-  }, [entry.id, current.manualInvoiceNumber]);
+    setExternalType(current.manualInvoiceType ?? 'C');
+    setExternalPoint(current.manualInvoicePointOfSale ?? '');
+    setExternalNumber(current.manualInvoiceNumber ?? '');
+  }, [
+    entry.id,
+    current.manualInvoiceNumber,
+    current.manualInvoiceType,
+    current.manualInvoicePointOfSale,
+  ]);
 
   const state = resolveInvoiceState(
     {
@@ -118,7 +144,21 @@ export function InvoiceSection({
       ? (translateErrorCode(invoice.errorCode) ??
         (state === 'error' ? 'No se pudo emitir.' : null))
       : null;
-  const canIssue = emitter !== null && isUnbilled(state);
+  const showExternal =
+    emitter !== null &&
+    actorRole === 'owner' &&
+    (state === 'none' ||
+      state === 'pending' ||
+      state === 'error' ||
+      state === 'manual');
+  const externalSaved =
+    emitter !== null && state === 'manual' && current.manuallyInvoiced;
+  const canIssue =
+    emitter !== null &&
+    invoiceModeAllowed &&
+    isUnbilled(state) &&
+    !current.manuallyInvoiced &&
+    !externalOpen;
   const showManual =
     emitter === null && (state === 'none' || state === 'manual');
   const letter = expectedLetter({
@@ -291,16 +331,79 @@ export function InvoiceSection({
     }
   }
 
+  async function saveExternalInvoice(details: {
+    manuallyInvoiced: boolean;
+    manualInvoiceType?: 'A' | 'B' | 'C';
+    manualInvoicePointOfSale?: string;
+    manualInvoiceNumber?: string;
+  }) {
+    if (!isOnline || actionBusy) return;
+    setBusy('external');
+    try {
+      const result = await correctEntry({
+        tenantId,
+        entryId: entry.id,
+        expectedVersion: current.version,
+        bearer: accessToken,
+        body: details,
+      });
+      await localDb.transaction(
+        'rw',
+        localDb.entries,
+        localDb.invoices,
+        async () => {
+          await localDb.entries.update(entry.id, {
+            manuallyInvoiced: result.manuallyInvoiced,
+            manualInvoiceType: result.manualInvoiceType ?? undefined,
+            manualInvoicePointOfSale:
+              result.manualInvoicePointOfSale ?? undefined,
+            manualInvoiceNumber: result.manualInvoiceNumber ?? undefined,
+            version: result.version,
+            syncSeq: result.syncSeq,
+            updatedAt: result.updatedAt,
+          });
+          if (
+            invoice &&
+            (invoice.status === 'pending' ||
+              invoice.status === 'error' ||
+              invoice.status === 'not_required')
+          ) {
+            await localDb.invoices.update(invoice.id, {
+              status: 'not_required',
+              errorCode: null,
+              errorMessage: null,
+            });
+          }
+        },
+      );
+      await refreshInvoiceHistory({ tenantId, bearer: accessToken });
+      setExternalOpen(false);
+      setRemoveExternalOpen(false);
+      showToast({
+        message: details.manuallyInvoiced
+          ? 'Factura externa registrada.'
+          : 'Registro de factura externa quitado.',
+        kind: 'success',
+      });
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="entry-invoice-section" aria-label="Factura">
       <h4>Factura</h4>
       <dl className="entry-invoice-rows">
-        <dt>Estado</dt>
-        <dd>
-          <span className={`status-badge ${INVOICE_STATE_BADGE[state]}`}>
-            {INVOICE_STATE_LABEL[state]}
-          </span>
-        </dd>
+        <div className="entry-invoice-state">
+          <dt>Estado</dt>
+          <dd>
+            <span className={`status-badge ${INVOICE_STATE_BADGE[state]}`}>
+              {INVOICE_STATE_LABEL[state]}
+            </span>
+          </dd>
+        </div>
         {hasVoucher && voucher ? (
           <>
             <dt>Comprobante</dt>
@@ -323,6 +426,14 @@ export function InvoiceSection({
           <>
             <dt>Receptor</dt>
             <dd>{receiverDescription(invoice)}</dd>
+          </>
+        ) : null}
+        {externalSaved ? (
+          <>
+            <dt>Comprobante externo</dt>
+            <dd>
+              {formatExternalInvoice(current) ?? 'Registrado fuera de Parkit'}
+            </dd>
           </>
         ) : null}
       </dl>
@@ -385,7 +496,9 @@ export function InvoiceSection({
         </div>
       ) : null}
 
-      <div className="entry-invoice-actions">
+      <div
+        className={`entry-invoice-actions${canIssue && !issueOpen && showExternal && !externalOpen ? ' entry-invoice-actions--choices' : ''}`}
+      >
         {state === 'issued' ? (
           <button
             type="button"
@@ -412,6 +525,29 @@ export function InvoiceSection({
             <FolderOpen size={18} />
           </button>
         ) : null}
+        {showManual ? (
+          <Switch
+            checked={state === 'manual'}
+            disabled={actionBusy}
+            onChange={(next) => void toggleManual(next)}
+            label="Facturada"
+          />
+        ) : null}
+        {showExternal && !externalOpen ? (
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={actionBusy || !isOnline}
+            onClick={() => {
+              setIssueOpen(false);
+              setExternalOpen(true);
+            }}
+          >
+            {externalSaved
+              ? 'Editar factura externa'
+              : 'Registrar factura externa'}
+          </button>
+        ) : null}
         {canIssue && !issueOpen ? (
           <button
             type="button"
@@ -422,13 +558,15 @@ export function InvoiceSection({
             {state === 'error' ? 'Reintentar' : 'Emitir factura'}
           </button>
         ) : null}
-        {showManual ? (
-          <Switch
-            checked={state === 'manual'}
-            disabled={actionBusy}
-            onChange={(next) => void toggleManual(next)}
-            label="Facturada"
-          />
+        {showExternal && externalSaved && !externalOpen ? (
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={actionBusy || !isOnline}
+            onClick={() => setRemoveExternalOpen(true)}
+          >
+            Quitar registro
+          </button>
         ) : null}
         {!isOnline && (canIssue || state === 'issued') ? (
           <span className="muted">
@@ -438,6 +576,80 @@ export function InvoiceSection({
           </span>
         ) : null}
       </div>
+
+      {showExternal && externalOpen ? (
+        <div className="entry-external-invoice">
+          <div className="entry-external-invoice-fields">
+            <label>
+              Tipo
+              <AppSelect
+                value={externalType}
+                onChange={(value) => setExternalType(value as 'A' | 'B' | 'C')}
+                options={[
+                  { value: 'A', label: 'Factura A' },
+                  { value: 'B', label: 'Factura B' },
+                  { value: 'C', label: 'Factura C' },
+                ]}
+                disabled={actionBusy}
+              />
+            </label>
+            <label>
+              Punto de venta
+              <input
+                inputMode="numeric"
+                maxLength={5}
+                value={externalPoint}
+                disabled={actionBusy}
+                onChange={(event) =>
+                  setExternalPoint(event.target.value.replace(/\D/g, ''))
+                }
+              />
+            </label>
+            <label>
+              Número
+              <input
+                inputMode="numeric"
+                maxLength={8}
+                value={externalNumber}
+                disabled={actionBusy}
+                onChange={(event) =>
+                  setExternalNumber(event.target.value.replace(/\D/g, ''))
+                }
+              />
+            </label>
+          </div>
+          <div className="entry-invoice-actions">
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={actionBusy}
+              onClick={() => setExternalOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                actionBusy ||
+                !isOnline ||
+                !/^\d{1,5}$/.test(externalPoint) ||
+                !/^\d{1,8}$/.test(externalNumber)
+              }
+              onClick={() =>
+                void saveExternalInvoice({
+                  manuallyInvoiced: true,
+                  manualInvoiceType: externalType,
+                  manualInvoicePointOfSale: externalPoint,
+                  manualInvoiceNumber: externalNumber,
+                })
+              }
+            >
+              Guardar factura externa
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {showManual && state === 'manual' ? (
         <div className="entry-manual-invoice-number">
@@ -486,6 +698,20 @@ export function InvoiceSection({
           isPending={confirmation.busy}
           onCancel={confirmation.close}
           onConfirm={issue}
+        />
+      ) : null}
+      {removeExternalOpen ? (
+        <ConfirmDialog
+          open
+          title="Quitar factura externa"
+          message="Parkit volverá a mostrar esta estadía como no facturada. Esto no modifica la factura emitida en ARCA."
+          confirmLabel="Quitar registro"
+          variant="warning"
+          isPending={busy === 'external'}
+          onCancel={() => setRemoveExternalOpen(false)}
+          onConfirm={() =>
+            void saveExternalInvoice({ manuallyInvoiced: false })
+          }
         />
       ) : null}
     </section>

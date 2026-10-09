@@ -456,6 +456,14 @@ describe('historial reactivo al facturar desde cualquier panel', () => {
     mock.tables
       .get('entries')!
       .set(entry.id, { ...entry, leftAt, amountPaid: '10' });
+    mock.tables.get('paymentTransactions')!.set('payment', {
+      id: 'payment',
+      tenantId: 'tenant',
+      entryId: entry.id,
+      paymentMethodId: 'method',
+      paymentMethodName: 'Transferencia',
+      amount: 10,
+    });
     await render();
     const row = historyRow();
     expect(row.textContent).toContain('No facturado');

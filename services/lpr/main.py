@@ -114,9 +114,23 @@ class ProcessResponse(BaseModel):
     bbox: list[int]             # [x1, y1, x2, y2] of the plate in the source image
 
 
+# Versión del build. Electron la pasa por entorno y la compara al arrancar
+# para distinguir un servicio suyo de uno que sobrevivió a una actualización.
+#
+# EL BUG QUE ESTO ARREGLA
+#
+# Al arrancar, Electron pregunta por `/health` y si algo responde lo ADOPTA en
+# vez de lanzar uno nuevo — pensado para desarrollo, donde uno corre el
+# servicio a mano. Pero si un servicio viejo sobrevivía al cierre (pasaba en
+# Windows: ver `forceKillTree` en electron/services.ts), la versión NUEVA de la
+# app adoptaba al proceso VIEJO y seguía corriendo código viejo sin avisar.
+# Encima lo marcaba como adoptado —"no lo cierres al salir"— así que se quedaba
+# para siempre reteniendo el puerto y la conexión con la cámara.
+BUILD_VERSION = os.environ.get("PARKIT_BUILD_VERSION", "dev")
+
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": BUILD_VERSION}
 
 
 @app.post("/shutdown", status_code=202)
@@ -162,7 +176,21 @@ def process_image(req: ProcessRequest):
 
 if __name__ == "__main__":
     _config = uvicorn.Config(
-        app, host="127.0.0.1", port=PORT, log_level="info", access_log=False
+        app,
+        host="127.0.0.1",
+        port=PORT,
+        log_level="info",
+        access_log=False,
+        # `timeout_graceful_shutdown`: sin esto, el cierre elegante espera a
+        # que TODAS las conexiones abiertas terminen, y una inferencia larga no
+        # terminan nunca por su cuenta. Resultado: el servicio se quedaba
+        # colgado al cerrar la app, Electron se cansaba a los 12 segundos y
+        # mandaba un kill que en Windows no alcanzaba (ver `forceKillTree` en
+        # electron/services.ts).
+        #
+        # 5 segundos alcanzan de sobra para cualquier request real; lo que se
+        # corta es la espera por las que nunca iban a cerrarse.
+        timeout_graceful_shutdown=5,
     )
     _server = uvicorn.Server(_config)
     _server.run()

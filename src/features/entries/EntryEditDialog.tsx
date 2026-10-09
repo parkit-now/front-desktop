@@ -322,16 +322,24 @@ export function EntryEditDialog({
       localDb.paymentMethods
         .where('tenantId')
         .equals(tenantId)
-        .filter((pm) => pm.enabled)
         .toArray()
         .then(sortByName),
     [tenantId],
   );
 
   const pms = useMemo(
-    () => dedupePaymentMethods(paymentMethods ?? []),
+    () =>
+      dedupePaymentMethods((paymentMethods ?? []).filter((pm) => pm.enabled)),
     [paymentMethods],
   );
+  const invoiceModeAllowed =
+    entry.paymentLines.length > 0 &&
+    entry.paymentLines.every((line) => {
+      const mode = paymentMethods?.find(
+        (method) => method.id === line.paymentMethodId,
+      )?.invoiceMode;
+      return mode !== undefined && mode !== 'none';
+    });
   const [paymentLines, setPaymentLines] = useState<PaymentFormLine[]>(() =>
     toPaymentLines(entry, pms),
   );
@@ -1041,6 +1049,8 @@ export function EntryEditDialog({
             accessToken={accessToken}
             isOnline={isOnline}
             emitter={emitter}
+            actorRole={actorRole}
+            invoiceModeAllowed={invoiceModeAllowed}
           />
         </div>
 

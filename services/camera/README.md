@@ -179,6 +179,7 @@ Fallback (cada FALLBACK_INTERVAL = 300 s)
 | `CAMERA_IMAGE_RETENTION_DAYS` | `14`                    | Días que se conservan las capturas en disco. Nunca borra una que no se haya subido.                   |
 | `CAMERA_STREAM_MAX_WIDTH`     | `960`                   | Ancho máximo del preview antes de codificar a JPEG. `0` = sin achicar.                                |
 | `LPR_URL`                     | `http://127.0.0.1:8765` | URL base del LPR service.                                                                             |
+| `CAMERA_HW_ACCEL`             | `1`                     | `0` desactiva la decodificación por hardware. Apagable porque no siempre conviene: ver abajo.         |
 | `LPR_TIMEOUT_S`               | `3.0`                   | Timeout del POST al LPR. **Tiene que ser menor que `CAMERA_WATCHDOG_TIMEOUT`** (ver `lpr_client.py`). |
 
 ### Cámaras IP (RTSP)
@@ -211,13 +212,33 @@ Lo que sí hace el servicio para ayudar:
   decodificador en vez de repartir operaciones chicas entre todos.
 - Pide decodificación por hardware con `CAP_PROP_HW_ACCELERATION`
   (`capture.py`), que cae en silencio a software si no está disponible.
+
+  **No siempre conviene, y hay que medirlo.** El cuadro se decodifica en la GPU
+  pero después hay que bajarlo a memoria del sistema y convertirlo de NV12 a
+  BGR, y eso se paga en CPU. En una gráfica integrada que comparte memoria
+  puede costar más de lo que ahorró. En la instalación de referencia quedó en
+  24,0% de CPU + 11,3% de GPU, contra 25,0% de CPU + 0% de GPU sin ella: un
+  punto de CPU a cambio de once de GPU.
+
+  Se apaga con `CAMERA_HW_ACCEL=0`, **sin recompilar** — `electron/services.ts`
+  hereda `process.env`, así que alcanza con definirla en el sistema y reiniciar
+  la app. El banner de arranque imprime `decode: hw_accel=...` para confirmar
+  qué modo está activo.
+
 - Busca movimiento sobre el ROI **reducido a 1/4** (`motion.py`), 16 veces más
   barato y con el mismo veredicto.
 - Achica el preview a `CAMERA_STREAM_MAX_WIDTH` antes de codificarlo.
 
-Si el CPU sigue alto, lo que más mueve la aguja es bajarle los FPS a la cámara
-y usar H.264 en vez de H.265. Ver `docs/GUIA-CAMARA-Y-AJUSTES.md` en la raíz
-del repo.
+Si el CPU sigue alto:
+
+- Los ajustes de la cámara están en `docs/GUIA-CAMARA-Y-AJUSTES.md`. Ojo con el
+  códec: NO hay una respuesta fija, hay que medir los dos. En la instalación de
+  referencia ganó H.265+.
+- El cambio estructural pendiente —detectar el movimiento sobre el sub-stream y
+  pedir la foto grande sólo al disparar— está planificado en
+  `docs/PLAN-SUBSTREAM-DETECCION.md`. Cortaría el decodificado un 90%, pero hay
+  condiciones que pueden volverlo innecesario: leer la sección final antes de
+  empezar.
 
 ### Endpoints
 
