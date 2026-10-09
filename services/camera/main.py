@@ -1900,7 +1900,21 @@ cv2.setNumThreads(1)
 
 if __name__ == "__main__":
     _config = uvicorn.Config(
-        app, host="127.0.0.1", port=PORT, log_level="info", access_log=False
+        app,
+        host="127.0.0.1",
+        port=PORT,
+        log_level="info",
+        access_log=False,
+        # `timeout_graceful_shutdown`: sin esto, el cierre elegante espera a
+        # que TODAS las conexiones abiertas terminen, y el preview MJPEG y el SSE de detecciones no
+        # terminan nunca por su cuenta. Resultado: el servicio se quedaba
+        # colgado al cerrar la app, Electron se cansaba a los 12 segundos y
+        # mandaba un kill que en Windows no alcanzaba (ver `forceKillTree` en
+        # electron/services.ts).
+        #
+        # 5 segundos alcanzan de sobra para cualquier request real; lo que se
+        # corta es la espera por las que nunca iban a cerrarse.
+        timeout_graceful_shutdown=5,
     )
     _server = uvicorn.Server(_config)
     _server.run()

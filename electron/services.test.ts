@@ -435,4 +435,62 @@ describe('ServiceManager — shutdown', () => {
 
     expect(proc.killed).toBe(true);
   });
+
+  it('en Windows mata el ÁRBOL, no sólo el proceso que lanzamos', async () => {
+    // Los servicios son binarios de PyInstaller onefile: el proceso que
+    // lanzamos es un bootloader y el Python real es su HIJO. En Windows,
+    // `kill()` hace TerminateProcess sobre un solo PID y no arrastra hijos, así
+    // que mataba al bootloader y dejaba al Python huérfano: se cerraba Parkit
+    // y `camera-service` seguía corriendo con la cámara abierta.
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+
+    try {
+      const proc = new FakeProcess();
+      mockSpawn.mockReturnValue(proc);
+      stubFetch();
+
+      const manager = new ServiceManager([config()], 'test-token');
+      await manager.spawnAll();
+      mockSpawn.mockClear();
+
+      const done = manager.stopAll();
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'taskkill',
+        ['/PID', '1234', '/T', '/F'],
+        expect.objectContaining({ windowsHide: true }),
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original });
+    }
+  });
+
+  it('fuera de Windows sigue usando SIGKILL', async () => {
+    // El bootloader de Unix sí propaga la señal, así que no hace falta
+    // recorrer el árbol — y `taskkill` ni siquiera existe.
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+
+    try {
+      const proc = new FakeProcess();
+      mockSpawn.mockReturnValue(proc);
+      stubFetch();
+
+      const manager = new ServiceManager([config()], 'test-token');
+      await manager.spawnAll();
+      mockSpawn.mockClear();
+
+      const done = manager.stopAll();
+      await vi.runAllTimersAsync();
+      await done;
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(proc.killed).toBe(true);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original });
+    }
+  });
 });

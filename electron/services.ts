@@ -59,6 +59,48 @@ const SHUTDOWN_TOKEN_HEADER = 'X-Parkit-Shutdown-Token';
  * Whether supervision happens at all is decided by the caller (an empty
  * service list = nothing to manage).
  */
+/**
+ * Mata el proceso Y TODA SU DESCENDENCIA.
+ *
+ * EL BUG QUE ESTO ARREGLA
+ *
+ * Los servicios son binarios de PyInstaller en modo onefile, y eso significa
+ * que el proceso que lanzamos **no es el intérprete**: es un bootloader que
+ * descomprime el bundle a un temporal y arranca el Python real como HIJO. En
+ * el Administrador de tareas se ven los dos.
+ *
+ * En Windows, `ChildProcess.kill()` hace `TerminateProcess` sobre un único
+ * PID y, a diferencia de un `SIGKILL` de Unix, no arrastra a los hijos. O sea
+ * que mataba al bootloader y **el Python real quedaba huérfano corriendo**:
+ * cerrabas Parkit y `camera-service` seguía ahí, con la cámara abierta y
+ * consumiendo CPU, hasta que alguien lo mataba a mano.
+ *
+ * `taskkill /T` recorre el árbol. En Unix no hace falta porque el bootloader
+ * propaga la señal.
+ *
+ * Nunca lanza: si el proceso ya murió, `taskkill` falla y lo único que
+ * corresponde es seguir.
+ */
+function forceKillTree(proc: ChildProcess): void {
+  if (process.platform !== 'win32' || proc.pid === undefined) {
+    proc.kill('SIGKILL');
+    return;
+  }
+
+  try {
+    spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    }).on('error', () => {
+      // taskkill no está o el proceso ya no existe: el kill directo es lo
+      // único que queda, y si tampoco sirve, no hay nada más que hacer.
+      proc.kill('SIGKILL');
+    });
+  } catch {
+    proc.kill('SIGKILL');
+  }
+}
+
 export class ServiceManager {
   private readonly processes = new Map<string, ChildProcess>();
   private readonly failed = new Set<string>();
@@ -234,7 +276,10 @@ export class ServiceManager {
   private spawnOne(svc: ServiceConfig): void {
     // Kill any previous instance before respawning (used on retry).
     const existing = this.processes.get(svc.name);
-    if (existing && !existing.killed) existing.kill();
+    // Árbol completo: ver `forceKillTree`. Si quedó un bootloader viejo y se
+    // mata sólo a él, el Python que de verdad tiene el puerto sigue vivo y el
+    // servicio nuevo no puede levantar.
+    if (existing && !existing.killed) forceKillTree(existing);
 
     const { launcher } = svc;
     // The port is always the final argument (matches every launcher: the
@@ -430,7 +475,7 @@ export class ServiceManager {
       const timer = setTimeout(() => {
         if (!proc.killed && proc.exitCode === null) {
           console.warn(`[${svc.name}] graceful shutdown timed out; killing`);
-          proc.kill('SIGKILL');
+          forceKillTree(proc);
         }
         finish();
       }, SHUTDOWN_TIMEOUT_MS);
