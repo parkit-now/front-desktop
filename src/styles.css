@@ -2130,7 +2130,7 @@ h2 {
 
 .dt-table {
   width: 100%;
-  min-width: 900px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
