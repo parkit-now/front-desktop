@@ -1,3 +1,15 @@
+# [1.21.0](https://github.com/parkit-now/front-desktop/compare/v1.20.0...v1.21.0) (2026-10-09)
+
+
+### Bug Fixes
+
+* **camara:** evitar que la sincronización desvincule fotos de ingresos ([78bc5fc](https://github.com/parkit-now/front-desktop/commit/78bc5fc2ac00c30316362f3ff47b3e11b49e4987))
+
+
+### Features
+
+* **data-table:** implement proportional column widths and fixed layout for DataTable ([c71e0cc](https://github.com/parkit-now/front-desktop/commit/c71e0ccf3aca520f55e4b2a5417f9bb779dfce90))
+
 # [1.20.0](https://github.com/parkit-now/front-desktop/compare/v1.19.0...v1.20.0) (2026-10-09)
 
 
