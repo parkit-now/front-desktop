@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  getArcaAccount,
+  listArcaAccounts,
   type ArcaAccountDto,
   type ArcaTaxCondition,
 } from '../../lib/api/arca';
@@ -20,6 +20,36 @@ const CONDITIONS: readonly ArcaTaxCondition[] = [
 ];
 
 const cacheKey = (tenantId: string) => `parkit.desktop.arcaEmitter.${tenantId}`;
+const accountsCacheKey = (tenantId: string) =>
+  `parkit.desktop.arcaAccounts.${tenantId}`;
+
+function readAccountsCache(tenantId: string): ArcaAccountDto[] {
+  try {
+    const value: unknown = JSON.parse(
+      localStorage.getItem(accountsCacheKey(tenantId)) ?? '[]',
+    );
+    if (!Array.isArray(value)) return [];
+    return value.filter((item: unknown): item is ArcaAccountDto => {
+      if (!item || typeof item !== 'object') return false;
+      const account = item as Partial<ArcaAccountDto>;
+      return (
+        typeof account.id === 'string' &&
+        typeof account.cuit === 'string' &&
+        (account.role === 'primary' || account.role === 'secondary') &&
+        typeof account.status === 'string'
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+function cachedEmitter(tenantId: string): ArcaEmitter | null {
+  const primary = readAccountsCache(tenantId).find(
+    (item) => item.role === 'primary',
+  );
+  return primary ? toArcaEmitter(primary) : readCache(tenantId);
+}
 
 /**
  * La cuenta de ARCA vista desde el cobro, o `null` si la playa no factura.
@@ -113,20 +143,28 @@ export function useArcaEmitterState(
 ): {
   emitter: ArcaEmitter | null;
   status: 'loading' | 'ready' | 'error';
+  accounts: ArcaAccountDto[];
 } {
   const [state, setState] = useState<{
     tenantId: string;
     emitter: ArcaEmitter | null;
     status: 'loading' | 'ready' | 'error';
+    accounts: ArcaAccountDto[];
   }>(() => ({
     tenantId,
-    emitter: readCache(tenantId),
+    emitter: cachedEmitter(tenantId),
+    accounts: readAccountsCache(tenantId),
     status: 'loading' as const,
   }));
   const current =
     state.tenantId === tenantId
       ? state
-      : { tenantId, emitter: readCache(tenantId), status: 'loading' as const };
+      : {
+          tenantId,
+          emitter: cachedEmitter(tenantId),
+          accounts: readAccountsCache(tenantId),
+          status: 'loading' as const,
+        };
 
   useEffect(() => {
     if (!isOnline || !accessToken) return;
@@ -136,7 +174,8 @@ export function useArcaEmitterState(
       if (!cancelled)
         setState({
           tenantId,
-          emitter: readCache(tenantId),
+          emitter: cachedEmitter(tenantId),
+          accounts: readAccountsCache(tenantId),
           status: 'error',
         });
     };
@@ -144,16 +183,26 @@ export function useArcaEmitterState(
       controller.abort();
       useCachedEmitter();
     }, 5000);
-    getArcaAccount({
+    listArcaAccounts({
       tenantId,
       bearer: accessToken,
       signal: controller.signal,
     })
-      .then((account) => {
+      .then((accounts) => {
         if (cancelled || controller.signal.aborted) return;
-        const next = toArcaEmitter(account);
+        const next = toArcaEmitter(
+          accounts.find((item) => item.role === 'primary') ?? null,
+        );
+        try {
+          localStorage.setItem(
+            accountsCacheKey(tenantId),
+            JSON.stringify(accounts),
+          );
+        } catch {
+          /* La consulta sigue disponible sin storage. */
+        }
         writeCache(tenantId, next);
-        setState({ tenantId, emitter: next, status: 'ready' });
+        setState({ tenantId, emitter: next, accounts, status: 'ready' });
       })
       .catch(useCachedEmitter)
       .finally(() => window.clearTimeout(timer));
@@ -166,6 +215,7 @@ export function useArcaEmitterState(
 
   return {
     emitter: current.emitter,
+    accounts: current.accounts,
     status: isOnline && accessToken ? current.status : 'ready',
   };
 }

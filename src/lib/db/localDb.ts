@@ -69,6 +69,9 @@ export interface LocalEntry {
   manualInvoiceNumber?: string;
   manualInvoiceType?: 'A' | 'B' | 'C';
   manualInvoicePointOfSale?: string;
+  manualInvoiceArcaAccountId?: string;
+  manualInvoiceIssuerCuit?: string;
+  manualInvoiceIssuerName?: string;
   /**
    * Tipo y categoría del vehículo, congelados al ingresar. Opcionales: los
    * ingresos anteriores a la v17 y los que mandó una caja vieja no los tienen,

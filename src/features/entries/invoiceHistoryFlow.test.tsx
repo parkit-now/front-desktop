@@ -22,6 +22,8 @@ const mock = vi.hoisted(() => ({
   reveal: vi.fn(),
   toast: vi.fn(),
   online: true,
+  accounts: [] as Record<string, unknown>[],
+  enqueue: vi.fn(),
   qrIntent: null as null | {
     id: string;
     tenantId: string;
@@ -131,6 +133,7 @@ vi.mock('../../lib/api/entries', () => ({
   closeEntry: mock.close,
   correctEntry: mock.correct,
 }));
+vi.mock('../../lib/sync/enqueue', () => ({ enqueuePendingOp: mock.enqueue }));
 vi.mock('../../lib/api/arca', () => ({
   issueInvoice: mock.issue,
   getInvoicePreview: mock.preview,
@@ -147,11 +150,13 @@ vi.mock('../../lib/sync/SyncService', () => ({
     pullClients: vi.fn(() => Promise.resolve()),
   },
 }));
-vi.mock('./useArcaEmitter', () => ({
+vi.mock('./useArcaEmitter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./useArcaEmitter')>()),
   useArcaEmitter: () => ({ condicionIva: 'monotributo', certExpired: false }),
   useArcaEmitterState: () => ({
     emitter: { condicionIva: 'monotributo', certExpired: false },
     status: mock.emitterStatus,
+    accounts: mock.accounts,
   }),
 }));
 vi.mock('./useInvoiceReceiver', () => ({
@@ -255,6 +260,7 @@ async function render(withExit = false, exitEntry = entry) {
           />
           {withExit ? (
             <ExitModal
+              actorRole="owner"
               entry={exitEntry}
               tenantId="tenant"
               accessToken="token"
@@ -282,6 +288,8 @@ beforeEach(() => {
   localStorage.clear();
   mock.tables.forEach((rows) => rows.clear());
   mock.online = true;
+  mock.accounts = [];
+  mock.enqueue.mockResolvedValue(1);
   mock.qrIntent = null;
   mock.emitterStatus = 'ready';
   mock.receiverReady = true;
@@ -337,6 +345,116 @@ afterEach(async () => {
 });
 
 describe('historial reactivo al facturar desde cualquier panel', () => {
+  async function chooseSecondary() {
+    await click('Primaria · Emisor principal');
+    await act(() =>
+      Promise.resolve(
+        (
+          [...document.querySelectorAll('[role="option"]')].find((item) =>
+            item.textContent?.includes('Emisor secundario'),
+          ) as HTMLElement
+        ).dispatchEvent(
+          new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+        ),
+      ),
+    );
+  }
+
+  function configureAccounts() {
+    mock.accounts = [
+      {
+        id: 'primary',
+        role: 'primary',
+        status: 'linked',
+        condicionIva: 'responsable_inscripto',
+        cuit: '20123456786',
+        razonSocial: 'Emisor principal',
+        ptoVta: 1,
+      },
+      {
+        id: 'secondary',
+        role: 'secondary',
+        status: 'linked',
+        condicionIva: 'monotributo',
+        cuit: '20447275865',
+        razonSocial: 'Emisor secundario',
+        ptoVta: 2,
+      },
+    ];
+  }
+
+  it.each(['none', 'manual', 'manual_pending'])(
+    'no pide cuenta de facturación al cobrar con modo %s',
+    async (mode) => {
+      configureAccounts();
+      mock.tables.get('paymentMethods')!.get('method')!.invoiceMode = mode;
+
+      await render(true);
+
+      expect(
+        container.querySelector('.exit-modal .entry-invoice-account'),
+      ).toBeNull();
+      expect(
+        [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+          (button) => button.textContent?.trim() === 'Confirmar cobro',
+        )?.disabled,
+      ).toBe(false);
+    },
+  );
+
+  it('en modo manual ofrece elegir la cuenta recién al abrir emitir factura', async () => {
+    configureAccounts();
+    mock.tables.get('paymentMethods')!.get('method')!.invoiceMode = 'manual';
+    mock.close.mockResolvedValueOnce({
+      ...entry,
+      leftAt,
+      amountPaid: 10,
+      version: 2,
+      syncSeq: 2,
+      updatedAt: leftAt,
+      invoice: { ...invoice, status: 'not_required' },
+    });
+
+    await render(true);
+    await click('Confirmar cobro', container.querySelector('.exit-modal')!);
+    expect(
+      container.querySelector('.exit-modal .entry-invoice-account'),
+    ).toBeNull();
+
+    await click('Emitir factura', container.querySelector('.exit-modal')!);
+
+    expect(
+      container.querySelector('.exit-issue-panel .entry-invoice-account')
+        ?.textContent,
+    ).toContain('Emisor principal');
+  });
+
+  it('el dueño elige secundaria antes del cobro automático; un egreso nuevo vuelve a primaria', async () => {
+    configureAccounts();
+    await render(true);
+    await chooseSecondary();
+    await click('Confirmar cobro');
+    expect(
+      mock.close.mock.calls[0]?.[0] as { body: CloseEntryDto },
+    ).toMatchObject({ body: { arcaAccountId: 'secondary' } });
+    await act(() => Promise.resolve(root.render(null)));
+    await render(true);
+    expect(
+      container.querySelector('.entry-invoice-account')?.textContent,
+    ).toContain('Emisor principal');
+  });
+
+  it('el cobro sin conexión conserva secundaria en la operación encolada', async () => {
+    configureAccounts();
+    mock.online = false;
+    await render(true);
+    await chooseSecondary();
+    await click('Confirmar cobro');
+    expect(mock.close).not.toHaveBeenCalled();
+    expect(
+      mock.enqueue.mock.calls[0]?.[0] as { payload: { body: CloseEntryDto } },
+    ).toMatchObject({ payload: { body: { arcaAccountId: 'secondary' } } });
+  });
   it('muestra marca y modelo junto a los datos del egreso', async () => {
     await render(true, {
       ...entry,

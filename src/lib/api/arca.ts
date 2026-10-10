@@ -3,6 +3,18 @@ import { ApiError, apiRequest } from './client';
 import type { InvoiceSummaryDto } from './entries';
 
 export type ArcaAccountDto = components['schemas']['ArcaAccountDto'];
+export function listArcaAccounts(input: {
+  tenantId: string;
+  bearer: string;
+  signal?: AbortSignal;
+}): Promise<ArcaAccountDto[]> {
+  return apiRequest({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/arca/accounts`,
+    bearer: input.bearer,
+    signal: input.signal,
+  });
+}
 export type ArcaTaxCondition = components['schemas']['ArcaTaxCondition'];
 export type InvoiceDto = components['schemas']['InvoiceDto'];
 export type TaxpayerDto = components['schemas']['TaxpayerDto'];
@@ -59,8 +71,10 @@ export function getInvoicePreview(input: {
   entryId: string;
   bearer: string;
   invoicePaymentIds?: string[];
+  arcaAccountId?: string;
 }): Promise<InvoicePreviewDto> {
   const params = new URLSearchParams();
+  if (input.arcaAccountId) params.set('arcaAccountId', input.arcaAccountId);
   input.invoicePaymentIds?.forEach((id) =>
     params.append('invoicePaymentIds', id),
   );
@@ -86,6 +100,7 @@ export function issueInvoice(
       receiverCuit: input.receiverCuit,
       expectedAmount: input.expectedAmount,
       invoicePaymentIds: input.invoicePaymentIds,
+      arcaAccountId: input.arcaAccountId,
     } satisfies components['schemas']['IssueInvoiceDto'],
     bearer: input.bearer,
   });
@@ -133,10 +148,11 @@ export function lookupTaxpayer(input: {
   tenantId: string;
   cuit: string;
   bearer: string;
+  arcaAccountId?: string;
 }): Promise<TaxpayerDto> {
   return apiRequest<TaxpayerDto>({
     method: 'GET',
-    path: `/tenants/${encodeURIComponent(input.tenantId)}/arca/taxpayers/${encodeURIComponent(input.cuit)}`,
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/arca/taxpayers/${encodeURIComponent(input.cuit)}${input.arcaAccountId ? `?arcaAccountId=${encodeURIComponent(input.arcaAccountId)}` : ''}`,
     bearer: input.bearer,
   });
 }
