@@ -40,6 +40,30 @@ vi.mock('../../lib/db/localDb', () => ({
       update: mock.invoiceUpdate,
     },
     entries: { get: () => undefined, update: mock.entryUpdate },
+    paymentTransactions: {
+      where: () => ({
+        equals: () => ({
+          filter: () => ({
+            toArray: () => [
+              {
+                id: 'payment-1',
+                entryId: 'entry-1',
+                paymentMethodId: 'method-1',
+                paymentMethodName: 'Efectivo',
+                amount: 12000,
+              },
+            ],
+          }),
+        }),
+      }),
+    },
+    paymentMethods: {
+      where: () => ({
+        equals: () => ({
+          toArray: () => [{ id: 'method-1', invoiceMode: 'manual' }],
+        }),
+      }),
+    },
     transaction: mock.transaction,
     clients: { where: () => ({ equals: () => ({ toArray: () => [] }) }) },
   },
@@ -100,6 +124,19 @@ async function render(
     root.render(
       <InvoiceSection
         entry={current}
+        paymentLines={[
+          {
+            id: 'payment-1',
+            tenantId: 'tenant',
+            entryId: current.id,
+            paymentMethodId: 'method-1',
+            paymentMethodName: 'Efectivo',
+            amount: 12000,
+            version: 1,
+            syncSeq: 1,
+            updatedAt: entry.updatedAt,
+          },
+        ]}
         paidTotal={12000}
         tenantId="tenant"
         accessToken="token"

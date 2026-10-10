@@ -5,7 +5,11 @@ import QRCode from 'qrcode';
 import { getInvoiceDocument } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
 import { translateApiError, translateErrorCode } from '../../lib/api/translate';
-import { localDb, type LocalEntry } from '../../lib/db/localDb';
+import {
+  localDb,
+  type LocalEntry,
+  type LocalPaymentTransaction,
+} from '../../lib/db/localDb';
 import { formatArs } from '../../lib/format/argentina';
 import { useToast } from '../../lib/notifications/ToastProvider';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
@@ -15,6 +19,10 @@ import { Switch } from '../../lib/ui/Switch';
 import { renderInvoiceHtml } from './invoiceDocument';
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
 import {
+  eligibleInvoicePaymentIds,
+  InvoicePaymentSelector,
+} from './InvoicePaymentSelector';
+import {
   describeIssueConfirmation,
   expectedLetter,
   formatExternalInvoice,
@@ -22,6 +30,7 @@ import {
   INVOICE_STATE_BADGE,
   INVOICE_STATE_LABEL,
   invoicePdfFileName,
+  isPartialInvoice,
   isUnbilled,
   receiverDescription,
   resolveInvoiceState,
@@ -46,6 +55,7 @@ import { refreshInvoiceHistory } from './invoiceHistory';
  */
 export function InvoiceSection({
   entry,
+  paymentLines,
   paidTotal,
   tenantId,
   accessToken,
@@ -55,6 +65,7 @@ export function InvoiceSection({
   invoiceModeAllowed,
 }: {
   entry: LocalEntry;
+  paymentLines: LocalPaymentTransaction[];
   paidTotal: number | null;
   tenantId: string;
   accessToken: string;
@@ -94,6 +105,9 @@ export function InvoiceSection({
   const actionBusy = busy !== null || confirmation.busy;
   // «Emitir factura» abre primero el receptor (consumidor final o CUIT).
   const [issueOpen, setIssueOpen] = useState(false);
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<string[] | null>(
+    null,
+  );
   const receiver = useInvoiceReceiver({
     tenantId,
     accessToken,
@@ -107,6 +121,43 @@ export function InvoiceSection({
     () => localDb.invoices.where('entryId').equals(entry.id).first(),
     [entry.id],
   );
+  const currentPaymentLines =
+    useLiveQuery(
+      () =>
+        localDb.paymentTransactions
+          .where('entryId')
+          .equals(entry.id)
+          .filter((line) => !line.deletedAt)
+          .toArray(),
+      [entry.id],
+    ) ?? paymentLines;
+  const paymentMethods = useLiveQuery(
+    () => localDb.paymentMethods.where('tenantId').equals(tenantId).toArray(),
+    [tenantId],
+  );
+  const invoicePaymentOptions = currentPaymentLines
+    .filter((line) => line.amount > 0)
+    .map((line) => ({
+      id: line.id,
+      name: line.paymentMethodName,
+      amount: line.amount,
+      disabled: paymentMethods
+        ? !paymentMethods.some(
+            (method) =>
+              method.id === line.paymentMethodId &&
+              method.invoiceMode !== 'none',
+          )
+        : false,
+    }));
+  const eligiblePaymentIds = eligibleInvoicePaymentIds(invoicePaymentOptions);
+  const validPaymentIds = (
+    selectedPaymentIds ??
+    (invoice?.selectedPaymentIds?.length
+      ? invoice.selectedPaymentIds
+      : eligiblePaymentIds)
+  ).filter((id) => eligiblePaymentIds.includes(id));
+  const activePaymentIds =
+    validPaymentIds.length > 0 ? validPaymentIds : eligiblePaymentIds;
   // Se lee de Dexie y no del prop: el prop es la fila de cuando se abrió el
   // diálogo, y el checkbox la cambia.
   const liveEntry = useLiveQuery(
@@ -139,6 +190,7 @@ export function InvoiceSection({
   if (state === 'na' && !invoice) return null;
 
   const hasVoucher = state === 'issued' || state === 'issuing';
+  const partialInvoice = isPartialInvoice(state, invoice?.impTotal, paidTotal);
   const voucher = invoice ? voucherLabel(invoice) : null;
   const errorText =
     invoice && (state === 'error' || state === 'pending')
@@ -157,6 +209,7 @@ export function InvoiceSection({
   const canIssue =
     emitter !== null &&
     invoiceModeAllowed &&
+    eligiblePaymentIds.length > 0 &&
     isUnbilled(state) &&
     !current.manuallyInvoiced &&
     !externalOpen;
@@ -473,10 +526,18 @@ export function InvoiceSection({
           <dt>Estado</dt>
           <dd>
             <span className={`status-badge ${INVOICE_STATE_BADGE[state]}`}>
-              {INVOICE_STATE_LABEL[state]}
+              {partialInvoice ? 'Factura parcial' : INVOICE_STATE_LABEL[state]}
             </span>
           </dd>
         </div>
+        {partialInvoice ? (
+          <>
+            <dt>Facturado</dt>
+            <dd>{formatArs(invoice!.impTotal)}</dd>
+            <dt>Sin facturar</dt>
+            <dd>{formatArs(paidTotal! - invoice!.impTotal)}</dd>
+          </>
+        ) : null}
         {hasVoucher && voucher ? (
           <>
             <dt>Comprobante</dt>
@@ -560,6 +621,14 @@ export function InvoiceSection({
 
       {canIssue && issueOpen ? (
         <div className="entry-invoice-issue">
+          {invoicePaymentOptions.length > 1 ? (
+            <InvoicePaymentSelector
+              options={invoicePaymentOptions}
+              selectedIds={activePaymentIds}
+              onChange={setSelectedPaymentIds}
+              disabled={actionBusy}
+            />
+          ) : null}
           <InvoiceReceiverChooser
             receiver={receiver}
             emitter={emitter?.condicionIva}
@@ -592,6 +661,9 @@ export function InvoiceSection({
                   letter,
                   cuit: receiver.cuitToSend,
                   receiverName: receiver.receiverName,
+                  ...(invoicePaymentOptions.length > 1
+                    ? { invoicePaymentIds: activePaymentIds }
+                    : {}),
                 })
               }
             >

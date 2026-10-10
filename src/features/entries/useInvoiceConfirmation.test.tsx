@@ -59,6 +59,27 @@ afterEach(async () => {
 });
 
 describe('confirmacion del importe fiscal', () => {
+  it('conserva los pagos seleccionados entre vista previa y emisión', async () => {
+    const selected = {
+      ...receiver,
+      invoicePaymentIds: ['qr-payment', 'mp-payment'],
+    };
+    mock.preview.mockResolvedValueOnce({ amount: 4000 });
+    await act(async () => controller.open(selected));
+    expect(mock.preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoicePaymentIds: ['qr-payment', 'mp-payment'],
+      }),
+    );
+    await act(async () => controller.confirm(vi.fn()));
+    expect(mock.issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedAmount: 4000,
+        invoicePaymentIds: ['qr-payment', 'mp-payment'],
+      }),
+    );
+  });
+
   it('congela el importe y receptor consultados y envia exactamente lo confirmado', async () => {
     await act(async () => controller.open(receiver));
     expect(controller.snapshot).toEqual({ ...receiver, amount: 10 });

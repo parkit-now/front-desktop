@@ -3063,6 +3063,8 @@ export interface components {
             cashSessionId?: string;
             /** @example Cochera 3 */
             cochera?: string;
+            /** @description IDs de las líneas de payments[] incluidas en la única factura. Si se omite, se factura el total. */
+            invoicePaymentIds?: string[];
             /**
              * @description CUIT del cliente para identificarlo en la factura, con o sin guiones. La letra la decide el padrón (A sólo si el emisor es RI y el receptor RI o monotributista). Un CUIT inválido no hace fallar el cierre: la factura queda pendiente con ARCA_CUIT_INVALID.
              * @example 30-71234567-1
@@ -4445,6 +4447,8 @@ export interface components {
             receptorDocTipo?: number | null;
             /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
+            /** @description Pagos incluidos; vacío significa el total de la estadía. */
+            selectedPaymentIds: string[];
             status: components["schemas"]["InvoiceStatus"];
             syncSeq: number;
             /** Format: uuid */
@@ -4498,6 +4502,8 @@ export interface components {
             receptorDocTipo?: number | null;
             /** @description A quién se emitió: «Consumidor Final» o la razón social del receptor de la A. */
             receptorNombre?: string | null;
+            /** @description Pagos incluidos; vacío significa el total de la estadía. */
+            selectedPaymentIds: string[];
             status: components["schemas"]["InvoiceStatus"];
         };
         IssueInvoiceBatchDto: {
@@ -4507,6 +4513,8 @@ export interface components {
         IssueInvoiceDto: {
             /** @description Importe confirmado por el operador. Si cambio, no se emite. */
             expectedAmount?: number;
+            /** @description IDs de los pagos incluidos en esta factura. Se omite para conservar la selección previa o facturar el total. */
+            invoicePaymentIds?: string[];
             /**
              * @description CUIT del cliente, con o sin guiones. La letra la decide el padrón: A si el emisor es RI y el receptor RI o monotributista; si no, B o C identificada con el CUIT. Sin él se emite a consumidor final.
              * @example 30-71234567-1
@@ -10545,7 +10553,9 @@ export interface operations {
     };
     InvoicesController_preview: {
         parameters: {
-            query?: never;
+            query?: {
+                invoicePaymentIds?: string[];
+            };
             header?: never;
             path: {
                 entryId: string;

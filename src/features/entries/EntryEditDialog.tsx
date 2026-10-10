@@ -334,7 +334,7 @@ export function EntryEditDialog({
   );
   const invoiceModeAllowed =
     entry.paymentLines.length > 0 &&
-    entry.paymentLines.every((line) => {
+    entry.paymentLines.some((line) => {
       const mode = paymentMethods?.find(
         (method) => method.id === line.paymentMethodId,
       )?.invoiceMode;
@@ -1038,6 +1038,7 @@ export function EntryEditDialog({
               no toca la plata, y el backend lo permite con la caja cerrada. */}
           <InvoiceSection
             entry={entry}
+            paymentLines={entry.paymentLines}
             paidTotal={
               entry.paymentLines.length > 0
                 ? entry.paymentLines.reduce((sum, line) => sum + line.amount, 0)

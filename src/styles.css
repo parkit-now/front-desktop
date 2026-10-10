@@ -7234,6 +7234,79 @@ h2 {
   justify-content: flex-end;
 }
 
+.invoice-payment-selector {
+  min-width: 0;
+  margin: 12px 0;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.invoice-payment-selector legend {
+  padding: 0 4px;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.invoice-payment-selector__list {
+  display: grid;
+  gap: 2px;
+}
+
+.invoice-payment-selector__row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.invoice-payment-selector__row input {
+  margin: 0;
+  accent-color: var(--color-brand);
+}
+
+.invoice-payment-selector__row strong {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.invoice-payment-selector__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invoice-payment-selector__name small {
+  display: block;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.invoice-payment-selector__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+.invoice-payment-selector__total strong {
+  color: var(--color-brand);
+  font-size: 16px;
+}
+
+.invoice-payment-selector__total small {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
 .entry-invoice-actions {
   display: flex;
   flex-wrap: wrap;
