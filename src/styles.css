@@ -3550,6 +3550,7 @@ h2 {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
@@ -3561,10 +3562,37 @@ h2 {
   white-space: nowrap;
 }
 
+.printer-template-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px var(--space-2);
+}
+
+.printer-template-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.printer-template-heading .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  white-space: nowrap;
+}
+
+.printer-template-heading > .muted {
+  grid-column: 1 / -1;
+}
+
 .printer-template-tabs {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 4px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
@@ -5621,6 +5649,8 @@ h2 {
 .close-session-dialog {
   max-width: 440px;
   width: 100%;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .session-summary {
@@ -6530,6 +6560,13 @@ h2 {
 
 .exit-modal .rate-dialog-header h3 {
   font-size: 20px;
+}
+
+.exit-modal .exit-vehicle-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .exit-modal .exit-modal-info {

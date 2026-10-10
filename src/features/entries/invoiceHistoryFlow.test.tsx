@@ -242,7 +242,7 @@ async function changeInput(input: HTMLInputElement, value: string) {
 function historyRow() {
   return container.querySelector('tbody tr')!;
 }
-async function render(withExit = false) {
+async function render(withExit = false, exitEntry = entry) {
   await act(() =>
     Promise.resolve(
       root.render(
@@ -255,7 +255,7 @@ async function render(withExit = false) {
           />
           {withExit ? (
             <ExitModal
-              entry={entry}
+              entry={exitEntry}
               tenantId="tenant"
               accessToken="token"
               onClose={vi.fn()}
@@ -337,6 +337,22 @@ afterEach(async () => {
 });
 
 describe('historial reactivo al facturar desde cualquier panel', () => {
+  it('muestra marca y modelo junto a los datos del egreso', async () => {
+    await render(true, {
+      ...entry,
+      vehicleBrand: 'Ford',
+      vehicleModel: 'Ranger',
+      color: 'NARANJA',
+      ticketNumber: 23,
+    });
+
+    const header = container.querySelector('.exit-modal .rate-dialog-header')!;
+    expect(header.textContent).toContain('IAG574');
+    expect(header.textContent).toContain('Ford Ranger');
+    expect(header.textContent).toContain('NARANJA');
+    expect(header.textContent).toContain('Ticket #23');
+  });
+
   it('en un cobro dividido envía sólo el pago elegido para la factura automática', async () => {
     mock.tables.get('paymentMethods')!.get('method')!.name = 'Mercado Pago QR';
     mock.tables.get('paymentMethods')!.get('method')!.type = 'mercadopago_qr';

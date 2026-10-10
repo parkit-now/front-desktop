@@ -9,10 +9,15 @@ import { useToast } from '../../lib/notifications/ToastProvider';
 import { formatArs, formatArgentinaDateTime } from '../../lib/format/argentina';
 import { generateUuidV7 } from '../entries/entryUtils';
 import { computeSessionSummary } from './cashSessionUtils';
+import {
+  describeCashSummaryPrintFailure,
+  printCashSessionSummary,
+} from '../../lib/print/cashSessionSummary';
 
 interface Props {
   tenantId: string;
   accessToken: string;
+  parkingName?: string | null;
   session: LocalCashSession;
   onClose: () => void;
 }
@@ -20,6 +25,7 @@ interface Props {
 export function CloseCashSessionDialog({
   tenantId,
   accessToken,
+  parkingName,
   session,
   onClose,
 }: Props) {
@@ -28,6 +34,8 @@ export function CloseCashSessionDialog({
   const [leaveFund, setLeaveFund] = useState(false);
   const [leavingCash, setLeavingCash] = useState('');
   const [notes, setNotes] = useState('');
+  const [printSummary, setPrintSummary] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [saving, setSaving] = useState(false);
   useEscapeKey(onClose, !saving);
 
@@ -131,11 +139,49 @@ export function CloseCashSessionDialog({
           ? `Caja cerrada. ${result.carriedOverCount} vehículo${result.carriedOverCount > 1 ? 's' : ''} traspasado${result.carriedOverCount > 1 ? 's' : ''} al nuevo turno.`
           : 'Caja cerrada. Nueva caja abierta.'
         : 'Caja cerrada.';
-      showToast({ message: msg, kind: 'success' });
+      let printOutcome = null;
+      if (printSummary) {
+        setPrinting(true);
+        try {
+          const finalTransactions = await localDb.paymentTransactions
+            .where('cashSessionId')
+            .equals(session.id)
+            .toArray();
+          printOutcome = await printCashSessionSummary({
+            tenantId,
+            parkingName,
+            openedAt: result.closedSession.openedAt,
+            closedAt:
+              result.closedSession.closedAt ?? result.closedSession.updatedAt,
+            summary: computeSessionSummary(
+              finalTransactions,
+              result.closedSession.openingCash,
+            ),
+            leavingCash: result.newSession
+              ? result.closedSession.leavingCash
+              : null,
+            notes: result.closedSession.notes,
+          });
+        } catch {
+          printOutcome = {
+            ok: false as const,
+            reason: 'print-failed' as const,
+          };
+        }
+      }
+      showToast(
+        printOutcome && !printOutcome.ok
+          ? {
+              message: `${msg} ${describeCashSummaryPrintFailure(printOutcome)}`,
+              kind: 'error',
+            }
+          : { message: msg, kind: 'success' },
+      );
       onClose();
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
+      setPrinting(false);
       setSaving(false);
     }
   }
@@ -256,6 +302,15 @@ export function CloseCashSessionDialog({
             </>
           )}
 
+          <label className="session-leave-fund-label">
+            <input
+              type="checkbox"
+              checked={printSummary}
+              onChange={(e) => setPrintSummary(e.target.checked)}
+            />
+            <span>Imprimir resumen al cerrar</span>
+          </label>
+
           <div className="form-field">
             <label className="form-label">Notas (opcional)</label>
             <input
@@ -284,7 +339,11 @@ export function CloseCashSessionDialog({
             onClick={() => void handleClose()}
             disabled={saving}
           >
-            {saving ? 'Cerrando...' : 'Cerrar caja'}
+            {printing
+              ? 'Imprimiendo...'
+              : saving
+                ? 'Cerrando...'
+                : 'Cerrar caja'}
           </button>
         </div>
       </section>

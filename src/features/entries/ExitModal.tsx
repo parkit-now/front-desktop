@@ -837,6 +837,13 @@ export function ExitModal({
           <div>
             <p className="rate-dialog-kicker">Egreso</p>
             <h3 id="exit-modal-title">{entry.plate}</h3>
+            {entry.vehicleBrand || entry.vehicleModel ? (
+              <p className="exit-vehicle-name">
+                {[entry.vehicleBrand, entry.vehicleModel]
+                  .filter(Boolean)
+                  .join(' ')}
+              </p>
+            ) : null}
             {entry.color ? <p className="muted">{entry.color}</p> : null}
             {entry.ticketNumber != null ? (
               <p className="muted">Ticket #{entry.ticketNumber}</p>

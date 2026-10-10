@@ -12,12 +12,14 @@ import { NoCashSessionScreen } from './NoCashSessionScreen';
 interface Props {
   tenantId: string;
   accessToken: string;
+  parkingName?: string | null;
   onViewMovements?: (session: LocalCashSession) => void;
 }
 
 export function CashSessionPanel({
   tenantId,
   accessToken,
+  parkingName,
   onViewMovements,
 }: Props) {
   const [showCloseDialog, setShowCloseDialog] = useState(false);
@@ -100,6 +102,7 @@ export function CashSessionPanel({
         <CloseCashSessionDialog
           tenantId={tenantId}
           accessToken={accessToken}
+          parkingName={parkingName}
           session={activeSession}
           onClose={() => setShowCloseDialog(false)}
         />
