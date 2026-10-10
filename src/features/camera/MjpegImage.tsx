@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentProps } from 'react';
+import { useLayoutEffect, useRef, type ComponentProps } from 'react';
 
 /**
  * `<img>` para el stream MJPEG del servicio de cámara que corta la conexión al
@@ -16,19 +16,23 @@ import { useEffect, useRef, type ComponentProps } from 'react';
  * Sacar el atributo `src` aborta la descarga sin disparar `error` (sí lo
  * dispararía asignar `src = ''`).
  */
-export function MjpegImage({ ref, ...props }: ComponentProps<'img'>) {
+export function MjpegImage({ ref, src, ...props }: ComponentProps<'img'>) {
   const innerRef = useRef<HTMLImageElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const img = innerRef.current;
+    // StrictMode limpia y vuelve a montar el efecto sin recrear el <img>.
+    // La segunda pasada debe reabrir el stream que la limpieza acaba de cortar.
+    if (img && src) img.setAttribute('src', src);
     return () => {
       img?.removeAttribute('src');
     };
-  }, []);
+  }, [src]);
 
   return (
     <img
       {...props}
+      src={src}
       ref={(node) => {
         innerRef.current = node;
         if (typeof ref === 'function') return ref(node);

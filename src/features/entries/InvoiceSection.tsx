@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
-import { FolderOpen, Save } from 'lucide-react';
+import { Bell, BellOff, FolderOpen, Save } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getInvoiceDocument } from '../../lib/api/arca';
 import { correctEntry } from '../../lib/api/entries';
@@ -66,7 +66,7 @@ export function InvoiceSection({
 }) {
   const { showToast } = useToast();
   const [busy, setBusy] = useState<
-    'pdf' | 'manual' | 'number' | 'folder' | 'external' | null
+    'pdf' | 'manual' | 'number' | 'folder' | 'external' | 'reminder' | null
   >(null);
   const [manualNumberDraft, setManualNumberDraft] = useState(
     entry.manualInvoiceNumber ?? '',
@@ -132,6 +132,7 @@ export function InvoiceSection({
       leftAt: current.leftAt,
       paidTotal,
       manuallyInvoiced: current.manuallyInvoiced,
+      invoiceStatusOverride: current.invoiceStatusOverride,
     },
     invoice,
   );
@@ -161,6 +162,12 @@ export function InvoiceSection({
     !externalOpen;
   const showManual =
     emitter === null && (state === 'none' || state === 'manual');
+  const showReminder =
+    actorRole === 'owner' &&
+    (state === 'pending' || state === 'none') &&
+    Boolean(current.leftAt) &&
+    paidTotal !== null &&
+    paidTotal > 0;
   const letter = expectedLetter({
     emitter: emitter?.condicionIva,
     choice: receiver.choice,
@@ -295,6 +302,72 @@ export function InvoiceSection({
           },
         );
       }
+    } catch (error) {
+      showToast({ message: translateApiError(error), kind: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setInvoicePending(next: boolean) {
+    if (actionBusy || !showReminder || next === (state === 'pending')) return;
+    setBusy('reminder');
+    const expectedVersion = current.version;
+    const override = next ? 'pending' : 'none';
+    try {
+      if (isOnline) {
+        const result = await correctEntry({
+          tenantId,
+          entryId: entry.id,
+          expectedVersion,
+          bearer: accessToken,
+          body: { invoicePending: next },
+        });
+        await localDb.entries.update(entry.id, {
+          invoiceStatusOverride: override,
+          version: result.version,
+          syncSeq: result.syncSeq,
+          updatedAt: result.updatedAt,
+        });
+        if (await refreshInvoiceHistory({ tenantId, bearer: accessToken })) {
+          await localDb.entries.update(entry.id, {
+            invoiceStatusOverride: undefined,
+          });
+        }
+      } else {
+        await localDb.transaction(
+          'rw',
+          localDb.entries,
+          localDb.pendingOps,
+          async () => {
+            await localDb.entries.update(entry.id, {
+              invoiceStatusOverride: override,
+              version: expectedVersion + 1,
+              updatedAt: new Date().toISOString(),
+            });
+            await enqueuePendingOp({
+              entityType: 'entry',
+              operation: 'update',
+              tenantId,
+              entityId: entry.id,
+              payload: {
+                kind: 'correction',
+                expectedVersion,
+                body: { invoicePending: next },
+              },
+              status: 'pending',
+            });
+          },
+        );
+      }
+      showToast({
+        message: isOnline
+          ? next
+            ? 'Factura marcada como pendiente.'
+            : 'Factura marcada como no facturada.'
+          : 'Cambio guardado localmente. Se sincronizará al volver la conexión.',
+        kind: 'success',
+      });
     } catch (error) {
       showToast({ message: translateApiError(error), kind: 'error' });
     } finally {
@@ -437,6 +510,38 @@ export function InvoiceSection({
           </>
         ) : null}
       </dl>
+      {showReminder ? (
+        <div
+          className="entry-invoice-reminder"
+          aria-label="Seguimiento de factura"
+        >
+          <span className="entry-invoice-reminder-label">Seguimiento</span>
+          <div
+            className="entry-invoice-reminder-options"
+            role="group"
+            aria-label="Estado de seguimiento"
+          >
+            <button
+              type="button"
+              className={state === 'none' ? 'active' : ''}
+              aria-pressed={state === 'none'}
+              disabled={actionBusy}
+              onClick={() => void setInvoicePending(false)}
+            >
+              <BellOff size={15} aria-hidden="true" /> No facturado
+            </button>
+            <button
+              type="button"
+              className={state === 'pending' ? 'active' : ''}
+              aria-pressed={state === 'pending'}
+              disabled={actionBusy}
+              onClick={() => void setInvoicePending(true)}
+            >
+              <Bell size={15} aria-hidden="true" /> Pendiente
+            </button>
+          </div>
+        </div>
+      ) : null}
       {state === 'issued' ? (
         <ClientContact
           tenantId={tenantId}

@@ -520,6 +520,14 @@ export function EntryFormCore({
   const prefillFromPlate = useCallback(async () => {
     const normalized = plate.trim().toUpperCase();
     if (!normalized || plateResolved.current) return;
+    if (
+      variant === 'auto' &&
+      initialPlate &&
+      (activeRates === undefined ||
+        vehicleTypes === undefined ||
+        catalogVehicles === undefined)
+    )
+      return;
 
     const prev = await localDb.entries
       .where('tenantId')
@@ -553,9 +561,13 @@ export function EntryFormCore({
         setVehicleSelected(true);
         // El tipo del ingreso anterior (si sigue vivo) y, si no, el del catálogo.
         const prevType = vehicleTypes?.find((t) => t.id === prev.vehicleTypeId);
+        const catalogType = typeIdForCatalogSelection(
+          catalogVehicles ?? [],
+          b,
+          m,
+        );
         const resolved =
-          prevType?.id ??
-          typeIdForCatalogSelection(catalogVehicles ?? [], b, m);
+          prevType?.id ?? vehicleTypes?.find((t) => t.id === catalogType)?.id;
         if (resolved && !vehicleTypeId) {
           setVehicleTypeId(resolved);
           setTypeAutofilled(true);
@@ -566,6 +578,8 @@ export function EntryFormCore({
   }, [
     plate,
     tenantId,
+    variant,
+    initialPlate,
     color,
     rateId,
     vehicleInput,
@@ -575,14 +589,27 @@ export function EntryFormCore({
     vehicleTypeId,
   ]);
 
-  // Auto-detected entries: prefill once the initial plate and rates are ready.
+  // Auto-detected entries: the catalog and types resolve independently of rates.
   const didAutoPrefill = useRef(false);
   useEffect(() => {
     if (variant !== 'auto' || didAutoPrefill.current) return;
-    if (!initialPlate || activeRates === undefined) return;
+    if (
+      !initialPlate ||
+      activeRates === undefined ||
+      vehicleTypes === undefined ||
+      catalogVehicles === undefined
+    )
+      return;
     didAutoPrefill.current = true;
     void prefillFromPlate();
-  }, [variant, initialPlate, activeRates, prefillFromPlate]);
+  }, [
+    variant,
+    initialPlate,
+    activeRates,
+    vehicleTypes,
+    catalogVehicles,
+    prefillFromPlate,
+  ]);
 
   const checkActivePlate = useCallback(async () => {
     const normalized = plate.trim().toUpperCase();

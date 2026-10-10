@@ -7148,6 +7148,68 @@ h2 {
   gap: 10px;
 }
 
+.entry-invoice-reminder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #f7faff;
+}
+
+.entry-invoice-reminder-label {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.entry-invoice-reminder-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.entry-invoice-reminder-options button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.entry-invoice-reminder-options button.active {
+  border-color: #b8d3fa;
+  background: var(--color-card);
+  color: var(--color-brand-strong);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+}
+
+.entry-invoice-reminder-options button:hover:not(:disabled):not(.active) {
+  background: #eef4ff;
+}
+
+.entry-invoice-reminder-options button:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.entry-invoice-reminder-options button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .entry-invoice-error {
   display: grid;
   gap: 6px;

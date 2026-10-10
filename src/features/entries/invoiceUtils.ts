@@ -456,6 +456,7 @@ export function resolveInvoiceState(
     leftAt?: string | null;
     paidTotal: number | null;
     manuallyInvoiced?: boolean;
+    invoiceStatusOverride?: 'pending' | 'none';
   },
   invoice: { status: string } | undefined,
 ): InvoiceState {
@@ -463,8 +464,9 @@ export function resolveInvoiceState(
     return invoice.status;
   }
   if (entry.manuallyInvoiced) return 'manual';
+  if (invoice?.status === 'error') return 'error';
+  if (entry.invoiceStatusOverride) return entry.invoiceStatusOverride;
   switch (invoice?.status) {
-    case 'error':
     case 'pending':
       return invoice.status;
     default:
