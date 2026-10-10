@@ -562,6 +562,27 @@ describe('historial: estado de facturación (gemelo del panel web)', () => {
     ).toBe('na');
   });
 
+  it('usa el recordatorio local hasta que llegue la factura sincronizada', () => {
+    expect(
+      resolveInvoiceState(
+        { ...paid, invoiceStatusOverride: 'none' },
+        { status: 'pending' },
+      ),
+    ).toBe('none');
+    expect(
+      resolveInvoiceState(
+        { ...paid, invoiceStatusOverride: 'pending' },
+        { status: 'not_required' },
+      ),
+    ).toBe('pending');
+    expect(
+      resolveInvoiceState(
+        { ...paid, invoiceStatusOverride: 'pending' },
+        { status: 'issued' },
+      ),
+    ).toBe('issued');
+  });
+
   it('«Sin facturar» cuenta Pendiente + Sin factura + Con error', () => {
     const rows = (
       ['pending', 'none', 'error', 'issued', 'manual', 'na'] as const

@@ -3172,6 +3172,8 @@ export interface components {
             color?: string;
             /** Format: date-time */
             enteredAt?: string;
+            /** @description Solo el dueño: marca o quita el recordatorio de factura pendiente para una estadía cobrada. */
+            invoicePending?: boolean;
             /** Format: date-time */
             leftAt?: string;
             /** @description Número de la factura emitida fuera de Parkit. */

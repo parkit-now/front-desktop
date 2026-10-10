@@ -64,6 +64,8 @@ export interface LocalEntry {
    * bumpear `sync_seq`, así que una fila vieja no lo trae; `undefined` = no.
    */
   manuallyInvoiced?: boolean;
+  /** Optimistic reminder state until the invoice change is pulled from the server. */
+  invoiceStatusOverride?: 'pending' | 'none';
   manualInvoiceNumber?: string;
   manualInvoiceType?: 'A' | 'B' | 'C';
   manualInvoicePointOfSale?: string;

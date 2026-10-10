@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalEntry } from '../../lib/db/localDb';
+import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { InvoiceSection } from './InvoiceSection';
 
 const mock = vi.hoisted(() => ({
@@ -271,6 +272,65 @@ describe('factura manual', () => {
     expect(
       container.querySelector('[aria-label="Guardar número de factura"]'),
     ).not.toBeNull();
+  });
+});
+
+describe('seguimiento de factura', () => {
+  function option(label: string) {
+    return Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        '.entry-invoice-reminder-options button',
+      ),
+    ).find((button) => button.textContent?.includes(label));
+  }
+
+  it('solo el dueño puede alternar entre pendiente y no facturado', async () => {
+    mock.invoice.status = 'pending';
+    await render(true, entry, null, 'operator');
+    expect(option('No facturado')).toBeUndefined();
+
+    await render(true, entry, null, 'owner');
+    expect(option('Pendiente')?.getAttribute('aria-pressed')).toBe('true');
+    mock.correct.mockResolvedValue({ ...entry, version: 2, syncSeq: 2 });
+    await update(() => option('No facturado')!.click());
+    expect(mock.correct).toHaveBeenCalledWith({
+      tenantId: 'tenant',
+      entryId: 'entry-1',
+      expectedVersion: 1,
+      bearer: 'token',
+      body: { invoicePending: false },
+    });
+    expect(mock.entryUpdate).toHaveBeenCalledWith(
+      'entry-1',
+      expect.objectContaining({ invoiceStatusOverride: 'none' }),
+    );
+  });
+
+  it('encola el cambio offline y lo refleja en Dexie', async () => {
+    mock.invoice.status = 'not_required';
+    await render(false);
+    expect(option('No facturado')?.getAttribute('aria-pressed')).toBe('true');
+    await update(() => option('Pendiente')!.click());
+    expect(mock.entryUpdate).toHaveBeenCalledWith(
+      'entry-1',
+      expect.objectContaining({ invoiceStatusOverride: 'pending', version: 2 }),
+    );
+    expect(enqueuePendingOp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'entry',
+        entityId: 'entry-1',
+        payload: {
+          kind: 'correction',
+          expectedVersion: 1,
+          body: { invoicePending: true },
+        },
+      }),
+    );
+  });
+
+  it('no muestra el control en facturas emitidas', async () => {
+    await render();
+    expect(option('Pendiente')).toBeUndefined();
   });
 });
 

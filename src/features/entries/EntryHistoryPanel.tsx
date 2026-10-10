@@ -780,6 +780,7 @@ export function EntryHistoryPanel({
             leftAt: entry.leftAt,
             paidTotal,
             manuallyInvoiced: entry.manuallyInvoiced,
+            invoiceStatusOverride: entry.invoiceStatusOverride,
           },
           invoice ?? undefined,
         );
