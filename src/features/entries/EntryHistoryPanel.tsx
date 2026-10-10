@@ -43,6 +43,7 @@ import {
   INVOICE_STATE_BADGE,
   INVOICE_STATE_LABEL,
   INVOICE_STATE_ORDER,
+  isPartialInvoice,
   formatExternalInvoice,
   invoiceLetter,
   receiverDescription,
@@ -108,7 +109,12 @@ function invoiceExportValue(row: EntryHistoryRow): string {
       ? `${String(invoice.ptoVta).padStart(4, '0')}-${String(invoice.cbteNro).padStart(8, '0')}`
       : null;
   return [
-    INVOICE_STATE_LABEL[row.invoiceState],
+    isPartialInvoice(row.invoiceState, invoice?.impTotal, row.paidTotal)
+      ? 'Factura parcial'
+      : INVOICE_STATE_LABEL[row.invoiceState],
+    isPartialInvoice(row.invoiceState, invoice?.impTotal, row.paidTotal)
+      ? `${formatArs(invoice!.impTotal)} de ${formatArs(row.paidTotal!)}`
+      : null,
     row.invoiceState === 'manual' && row.manualInvoiceNumber
       ? formatExternalInvoice(row)
       : null,
@@ -132,11 +138,21 @@ function InvoiceCell({ row }: { row: EntryHistoryRow }) {
       ? `${String(invoice.ptoVta).padStart(4, '0')}-${String(invoice.cbteNro).padStart(8, '0')}`
       : null;
   const voucher = invoice ? voucherLabel(invoice) : null;
+  const partial = isPartialInvoice(
+    row.invoiceState,
+    invoice?.impTotal,
+    row.paidTotal,
+  );
   return (
     <div className="entry-invoice-cell">
       <span className={`status-badge ${INVOICE_STATE_BADGE[row.invoiceState]}`}>
-        {INVOICE_STATE_LABEL[row.invoiceState]}
+        {partial ? 'Factura parcial' : INVOICE_STATE_LABEL[row.invoiceState]}
       </span>
+      {partial ? (
+        <span className="entry-invoice-line">
+          {formatArs(invoice!.impTotal)} de {formatArs(row.paidTotal!)}
+        </span>
+      ) : null}
       {letter ? (
         <span className="entry-invoice-line">Factura {letter}</span>
       ) : voucher ? (

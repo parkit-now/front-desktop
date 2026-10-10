@@ -15,6 +15,7 @@ type ReceiverSnapshot = {
   letter: InvoiceLetter | null;
   cuit: string | null | undefined;
   receiverName?: string | null;
+  invoicePaymentIds?: string[];
 };
 
 export function useInvoiceConfirmation(input: {
@@ -42,7 +43,12 @@ export function useInvoiceConfirmation(input: {
 
   async function prepare(receiver: ReceiverSnapshot, active: number) {
     setSnapshot(null);
-    const preview = await getInvoicePreview(input);
+    const preview = await getInvoicePreview({
+      ...input,
+      ...(receiver.invoicePaymentIds
+        ? { invoicePaymentIds: receiver.invoicePaymentIds }
+        : {}),
+    });
     if (generation.current === active)
       setSnapshot({ ...receiver, amount: preview.amount });
   }
@@ -79,6 +85,9 @@ export function useInvoiceConfirmation(input: {
         ...input,
         receiverCuit: confirmed.cuit ?? undefined,
         expectedAmount: confirmed.amount,
+        ...(confirmed.invoicePaymentIds
+          ? { invoicePaymentIds: confirmed.invoicePaymentIds }
+          : {}),
       });
       issued = result.status === 'issued';
       if (generation.current !== active) return;

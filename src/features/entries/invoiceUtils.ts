@@ -429,6 +429,19 @@ export const INVOICE_STATE_LABEL: Record<InvoiceState, string> = {
   na: 'No aplica',
 };
 
+export function isPartialInvoice(
+  state: InvoiceState,
+  invoiceAmount: number | null | undefined,
+  paidTotal: number | null | undefined,
+): boolean {
+  return (
+    state === 'issued' &&
+    invoiceAmount != null &&
+    paidTotal != null &&
+    invoiceAmount < paidTotal - 0.005
+  );
+}
+
 /** Clase de `.status-badge` para cada estado. */
 export const INVOICE_STATE_BADGE: Record<InvoiceState, string> = {
   issued: 'status-ok',

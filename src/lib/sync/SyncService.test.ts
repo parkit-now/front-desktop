@@ -1323,6 +1323,7 @@ describe('pullInvoices', () => {
   function invoice(id: string, syncSeq: number): LocalInvoice {
     return {
       id,
+      selectedPaymentIds: [],
       tenantId: TENANT,
       entryId: `entry-${id}`,
       status: 'issued',

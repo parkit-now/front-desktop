@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalEntry, LocalInvoice } from '../../lib/db/localDb';
+import type { CloseEntryDto } from '../../lib/api/entries';
 import { localDb } from '../../lib/db/localDb';
 import { ExitModal } from './ExitModal';
 import { EntryHistoryPanel } from './EntryHistoryPanel';
@@ -201,6 +202,7 @@ const entry: LocalEntry = {
 };
 const invoice: LocalInvoice = {
   id: 'invoice',
+  selectedPaymentIds: [],
   tenantId: 'tenant',
   entryId: 'entry',
   status: 'issued',
@@ -226,6 +228,16 @@ async function click(text: string, host: Element = container) {
   expect(button).toBeTruthy();
   expect(button.disabled).toBe(false);
   await act(() => Promise.resolve(button.click()));
+}
+async function changeInput(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await Promise.resolve();
+  });
 }
 function historyRow() {
   return container.querySelector('tbody tr')!;
@@ -325,6 +337,76 @@ afterEach(async () => {
 });
 
 describe('historial reactivo al facturar desde cualquier panel', () => {
+  it('en un cobro dividido envía sólo el pago elegido para la factura automática', async () => {
+    mock.tables.get('paymentMethods')!.get('method')!.name = 'Mercado Pago QR';
+    mock.tables.get('paymentMethods')!.get('method')!.type = 'mercadopago_qr';
+    mock.tables.get('paymentMethods')!.set('mp', {
+      id: 'mp',
+      tenantId: 'tenant',
+      name: 'Mercado Pago',
+      type: 'transfer',
+      enabled: true,
+      invoiceMode: 'auto',
+    });
+    mock.tables.get('paymentMethods')!.set('cash-method', {
+      id: 'cash-method',
+      tenantId: 'tenant',
+      name: 'Efectivo',
+      type: 'cash',
+      enabled: true,
+      invoiceMode: 'manual',
+    });
+    await render(true);
+    const modal = container.querySelector('.exit-modal')!;
+    await changeInput(
+      modal.querySelector<HTMLInputElement>('#exit-amount')!,
+      '5000',
+    );
+    act(() => {
+      modal
+        .querySelector<HTMLInputElement>('.exit-split-toggle input')!
+        .click();
+    });
+    for (const [name, value] of [
+      ['Mercado Pago QR', '2500'],
+      ['Mercado Pago', '1500'],
+      ['Efectivo', '1000'],
+    ]) {
+      await changeInput(
+        modal.querySelector<HTMLInputElement>(
+          `input[aria-label="Monto en ${name}"]`,
+        )!,
+        value,
+      );
+    }
+    const rows = [
+      ...modal.querySelectorAll<HTMLLabelElement>(
+        '.invoice-payment-selector__row',
+      ),
+    ];
+    for (const name of ['Mercado Pago', 'Efectivo']) {
+      act(() => {
+        rows
+          .find(
+            (row) =>
+              row.textContent?.includes(name) &&
+              !row.textContent?.includes('QR'),
+          )!
+          .querySelector<HTMLInputElement>('input')!
+          .click();
+      });
+    }
+    expect(
+      modal.querySelector('.invoice-payment-selector__total')?.textContent,
+    ).toContain('2.500');
+    await click('Confirmar cobro', modal);
+    const body = (mock.close.mock.calls[0][0] as { body: CloseEntryDto }).body;
+    expect(body.payments).toHaveLength(3);
+    expect(body.invoicePaymentIds).toEqual([
+      body.payments?.find((line) => line.paymentMethodId === 'method')?.id,
+    ]);
+  });
+
   it('un QR recuperado espera configuracion y CUIT antes de facturar automaticamente', async () => {
     Object.assign(mock.tables.get('paymentMethods')!.get('method')!, {
       name: 'Mercado Pago QR',
@@ -474,6 +556,122 @@ describe('historial reactivo al facturar desde cualquier panel', () => {
     expect(
       container.querySelector('.entry-invoice-section')!.textContent,
     ).toContain('123456789');
+  });
+  it('desde Historial confirma el importe de un solo medio en un cobro dividido', async () => {
+    mock.tables.get('entries')!.set(entry.id, {
+      ...entry,
+      leftAt,
+      amountPaid: '5000',
+    });
+    mock.tables.get('paymentMethods')!.get('method')!.name = 'Mercado Pago QR';
+    mock.tables.get('paymentMethods')!.set('mp', {
+      id: 'mp',
+      tenantId: 'tenant',
+      name: 'Mercado Pago',
+      type: 'transfer',
+      enabled: true,
+      invoiceMode: 'manual',
+    });
+    mock.tables.get('paymentMethods')!.set('cash-method', {
+      id: 'cash-method',
+      tenantId: 'tenant',
+      name: 'Efectivo',
+      type: 'cash',
+      enabled: true,
+      invoiceMode: 'manual',
+    });
+    for (const [id, methodId, name, amount] of [
+      ['qr-payment', 'method', 'Mercado Pago QR', 2500],
+      ['mp-payment', 'mp', 'Mercado Pago', 1500],
+      ['cash-payment', 'cash-method', 'Efectivo', 1000],
+    ] as const) {
+      mock.tables.get('paymentTransactions')!.set(id, {
+        id,
+        tenantId: 'tenant',
+        entryId: entry.id,
+        paymentMethodId: methodId,
+        paymentMethodName: name,
+        amount,
+      });
+    }
+    mock.preview.mockResolvedValue({ amount: 2500 });
+    await render();
+    await act(() =>
+      Promise.resolve((historyRow() as HTMLTableRowElement).click()),
+    );
+    const section = container.querySelector('.entry-invoice-section')!;
+    await click('Emitir factura', section);
+    const rows = [
+      ...section.querySelectorAll<HTMLLabelElement>(
+        '.invoice-payment-selector__row',
+      ),
+    ];
+    for (const name of ['Mercado Pago', 'Efectivo']) {
+      act(() => {
+        rows
+          .find(
+            (row) =>
+              row.textContent?.includes(name) &&
+              !row.textContent?.includes('QR'),
+          )!
+          .querySelector<HTMLInputElement>('input')!
+          .click();
+      });
+    }
+    await click('Emitir Factura C', section);
+    expect(mock.preview).toHaveBeenCalledWith(
+      expect.objectContaining({ invoicePaymentIds: ['qr-payment'] }),
+    );
+    expect(container.querySelector('.confirm-dialog')?.textContent).toContain(
+      '2.500',
+    );
+    await click(
+      'Emitir Factura C',
+      container.querySelector('.confirm-dialog')!,
+    );
+    expect(mock.issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedAmount: 2500,
+        invoicePaymentIds: ['qr-payment'],
+      }),
+    );
+  });
+  it('una factura parcial muestra el cobrado restante sin dar la estadía por totalmente facturada', async () => {
+    mock.tables.get('entries')!.set(entry.id, {
+      ...entry,
+      leftAt,
+      amountPaid: '5000',
+    });
+    mock.tables.get('paymentTransactions')!.set('qr-payment', {
+      id: 'qr-payment',
+      tenantId: 'tenant',
+      entryId: entry.id,
+      paymentMethodId: 'method',
+      paymentMethodName: 'Mercado Pago QR',
+      amount: 2500,
+    });
+    mock.tables.get('paymentTransactions')!.set('cash-payment', {
+      id: 'cash-payment',
+      tenantId: 'tenant',
+      entryId: entry.id,
+      paymentMethodId: 'method',
+      paymentMethodName: 'Efectivo',
+      amount: 2500,
+    });
+    mock.tables.get('invoices')!.set(invoice.id, {
+      ...invoice,
+      impTotal: 2500,
+      selectedPaymentIds: ['qr-payment'],
+    });
+    await render();
+    expect(historyRow().textContent).toContain('Factura parcial');
+    expect(historyRow().textContent).toContain('2.500');
+    await act(() =>
+      Promise.resolve((historyRow() as HTMLTableRowElement).click()),
+    );
+    const section = container.querySelector('.entry-invoice-section')!;
+    expect(section.textContent).toContain('Sin facturar');
+    expect(section.textContent).toContain('2.500');
   });
   it('un fallo del refresco no revierte el cobro ni oculta su resultado fiscal', async () => {
     mock.pull.mockRejectedValueOnce(new Error('offline after charge'));

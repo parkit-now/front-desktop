@@ -58,10 +58,16 @@ export function getInvoicePreview(input: {
   tenantId: string;
   entryId: string;
   bearer: string;
+  invoicePaymentIds?: string[];
 }): Promise<InvoicePreviewDto> {
+  const params = new URLSearchParams();
+  input.invoicePaymentIds?.forEach((id) =>
+    params.append('invoicePaymentIds', id),
+  );
+  const query = params.size > 0 ? `?${params.toString()}` : '';
   return apiRequest<InvoicePreviewDto>({
     method: 'GET',
-    path: `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/invoice/preview`,
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/entries/${encodeURIComponent(input.entryId)}/invoice/preview${query}`,
     bearer: input.bearer,
   });
 }
@@ -79,6 +85,7 @@ export function issueInvoice(
     body: {
       receiverCuit: input.receiverCuit,
       expectedAmount: input.expectedAmount,
+      invoicePaymentIds: input.invoicePaymentIds,
     } satisfies components['schemas']['IssueInvoiceDto'],
     bearer: input.bearer,
   });

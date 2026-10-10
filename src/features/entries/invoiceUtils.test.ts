@@ -22,6 +22,7 @@ import {
 
 const base: InvoiceSummaryDto = {
   id: 'inv-1',
+  selectedPaymentIds: [],
   status: 'issued',
   cbteTipo: 6,
   ptoVta: 1,

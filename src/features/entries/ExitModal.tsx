@@ -38,6 +38,10 @@ import {
   type InvoiceNotice,
 } from './invoiceUtils';
 import { InvoiceReceiverChooser } from './InvoiceReceiverChooser';
+import {
+  eligibleInvoicePaymentIds,
+  InvoicePaymentSelector,
+} from './InvoicePaymentSelector';
 import { useArcaEmitterState } from './useArcaEmitter';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
@@ -172,6 +176,13 @@ export function ExitModal({
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [selectedPmId, setSelectedPmId] = useState('');
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  const [selectedInvoicePmIds, setSelectedInvoicePmIds] = useState<
+    string[] | null
+  >(null);
+  const [closedPayments, setClosedPayments] = useState<PaymentLineDto[]>([]);
+  const [selectedClosedPaymentIds, setSelectedClosedPaymentIds] = useState<
+    string[] | null
+  >(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   useEscapeKey(onClose, !saving);
@@ -291,13 +302,45 @@ export function ExitModal({
   const qrApproved = mpIntent.intent?.status === 'approved';
   const qrPaymentMethod = pms.find((pm) => isMercadoPagoMethod(pm));
 
+  const splitInvoiceOptions = splitEnabled
+    ? pms
+        .map((pm) => ({
+          id: pm.id,
+          name: pm.name,
+          amount: parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0'),
+          disabled: pm.invoiceMode === 'none',
+        }))
+        .filter((option) => Number.isFinite(option.amount) && option.amount > 0)
+    : [];
+  const eligibleSplitIds = eligibleInvoicePaymentIds(splitInvoiceOptions);
+  const validInvoicePmIds = (selectedInvoicePmIds ?? eligibleSplitIds).filter(
+    (id) => eligibleSplitIds.includes(id),
+  );
+  const activeInvoicePmIds =
+    validInvoicePmIds.length > 0 ? validInvoicePmIds : eligibleSplitIds;
+  const closedInvoiceOptions = closedPayments.map((payment) => ({
+    id: payment.id,
+    name: payment.paymentMethodName,
+    amount: payment.amount,
+    disabled:
+      pms.find((pm) => pm.id === payment.paymentMethodId)?.invoiceMode ===
+      'none',
+  }));
+  const eligibleClosedIds = eligibleInvoicePaymentIds(closedInvoiceOptions);
+  const validClosedIds = (
+    selectedClosedPaymentIds ??
+    (lastInvoice?.selectedPaymentIds?.length
+      ? lastInvoice.selectedPaymentIds
+      : eligibleClosedIds)
+  ).filter((id) => eligibleClosedIds.includes(id));
+  const activeClosedIds =
+    validClosedIds.length > 0 ? validClosedIds : eligibleClosedIds;
+
   // El receptor se elige sólo si el cobro factura solo (todos los medios en
   // Automática): con un medio Manual se elige al emitir después.
   const selectedModes = splitEnabled
     ? pms
-        .filter(
-          (pm) => parseFloat(splitAmounts[pm.id]?.replace(',', '.') || '0') > 0,
-        )
+        .filter((pm) => activeInvoicePmIds.includes(pm.id))
         .map((pm) => pm.invoiceMode)
     : qrApproved
       ? qrPaymentMethod
@@ -509,6 +552,14 @@ export function ExitModal({
     const lineModes = (payments ?? []).map(
       (p) => pms.find((pm) => pm.id === p.paymentMethodId)?.invoiceMode,
     );
+    const invoicePaymentIds =
+      splitEnabled && (payments?.length ?? 0) > 1
+        ? payments
+            ?.filter((payment) =>
+              activeInvoicePmIds.includes(payment.paymentMethodId ?? ''),
+            )
+            .map((payment) => payment.id)
+        : undefined;
 
     try {
       if (isOnline) {
@@ -522,10 +573,13 @@ export function ExitModal({
             amountPaid,
             cashSessionId,
             payments,
+            ...(invoicePaymentIds?.length ? { invoicePaymentIds } : {}),
             invoiceReceiverCuit,
           },
         });
         setLastInvoice(result.invoice ?? null);
+        setClosedPayments(payments ?? []);
+        setSelectedClosedPaymentIds(invoicePaymentIds ?? null);
         issuedOnCharge = result.invoice?.status === 'issued';
         const txs: LocalPaymentTransaction[] = (payments ?? []).map((p) => ({
           id: p.id,
@@ -612,6 +666,7 @@ export function ExitModal({
                   amountPaid,
                   cashSessionId,
                   payments,
+                  ...(invoicePaymentIds?.length ? { invoicePaymentIds } : {}),
                   invoiceReceiverCuit,
                 },
               },
@@ -626,6 +681,8 @@ export function ExitModal({
             lineModes,
           }),
         );
+        setClosedPayments(payments ?? []);
+        setSelectedClosedPaymentIds(invoicePaymentIds ?? null);
       }
 
       showToast({
@@ -886,6 +943,15 @@ export function ExitModal({
               // elige la factura, la única salida es emitir o volver.
               <div className="exit-issue-panel">
                 <p className="exit-issue-title">Emitir factura</p>
+                {closedInvoiceOptions.length > 1 &&
+                eligibleClosedIds.length > 0 ? (
+                  <InvoicePaymentSelector
+                    options={closedInvoiceOptions}
+                    selectedIds={activeClosedIds}
+                    onChange={setSelectedClosedPaymentIds}
+                    disabled={issuing}
+                  />
+                ) : null}
                 <InvoiceReceiverChooser
                   receiver={receiver}
                   emitter={emitter?.condicionIva}
@@ -910,6 +976,9 @@ export function ExitModal({
                         letter,
                         cuit: receiver.cuitToSend,
                         receiverName: receiver.receiverName,
+                        ...(closedInvoiceOptions.length > 1
+                          ? { invoicePaymentIds: activeClosedIds }
+                          : {}),
                       })
                     }
                     disabled={issuing || !receiver.ready}
@@ -1229,6 +1298,16 @@ export function ExitModal({
             ) : null}
 
             {/* Fila 2: la factura, debajo del medio porque depende de él. */}
+            {emitter &&
+            splitInvoiceOptions.length > 1 &&
+            eligibleSplitIds.length > 0 ? (
+              <InvoicePaymentSelector
+                options={splitInvoiceOptions}
+                selectedIds={activeInvoicePmIds}
+                onChange={setSelectedInvoicePmIds}
+                disabled={saving}
+              />
+            ) : null}
             {showInvoiceChooser ? (
               <InvoiceReceiverChooser
                 receiver={receiver}
