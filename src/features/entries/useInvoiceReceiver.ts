@@ -47,8 +47,15 @@ export function useInvoiceReceiver(input: {
   readonly paymentIntentId?: string;
   readonly suggestionEnabled?: boolean;
   readonly frozen?: boolean;
+  readonly arcaAccountId?: string;
 }) {
-  const { tenantId, accessToken, isOnline, plate = null } = input;
+  const {
+    tenantId,
+    accessToken,
+    isOnline,
+    plate = null,
+    arcaAccountId,
+  } = input;
   const [choice, setChoiceState] = useState<ReceiverChoice>('final');
   const [cuit, setCuit] = useState('');
   const [touched, setTouched] = useState(false);
@@ -237,7 +244,7 @@ export function useInvoiceReceiver(input: {
       setLookup({ status: 'idle' });
       return;
     }
-    const key = `${tenantId}:${digits}`;
+    const key = `${tenantId}:${arcaAccountId ?? 'primary'}:${digits}`;
     setLookupKey(key);
     const cached = lookupCache.get(key);
     if (cached) {
@@ -247,7 +254,12 @@ export function useInvoiceReceiver(input: {
     setLookup({ status: 'loading' });
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      lookupTaxpayer({ tenantId, cuit: digits, bearer: accessToken })
+      lookupTaxpayer({
+        tenantId,
+        cuit: digits,
+        bearer: accessToken,
+        ...(arcaAccountId ? { arcaAccountId } : {}),
+      })
         .then((taxpayer) => {
           lookupCache.set(key, taxpayer);
           if (!cancelled) setLookup({ status: 'done', taxpayer });
@@ -262,7 +274,7 @@ export function useInvoiceReceiver(input: {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [wantsCuit, digits, tenantId, accessToken]);
+  }, [wantsCuit, digits, tenantId, accessToken, arcaAccountId]);
 
   useEffect(() => {
     if (!wantsCuit || suggestionsLoaded || !accessToken) return;
@@ -285,7 +297,9 @@ export function useInvoiceReceiver(input: {
   return useMemo(() => {
     const effectiveChoice: ReceiverChoice = wantsCuit ? 'cuit' : 'final';
     const currentLookup: TaxpayerLookup =
-      wantsCuit && isValidCuit(digits) && lookupKey !== `${tenantId}:${digits}`
+      wantsCuit &&
+      isValidCuit(digits) &&
+      lookupKey !== `${tenantId}:${arcaAccountId ?? 'primary'}:${digits}`
         ? { status: 'loading' }
         : lookup;
     const state = { choice: effectiveChoice, cuit, lookup: currentLookup };
@@ -341,6 +355,7 @@ export function useInvoiceReceiver(input: {
     digits,
     touched,
     lookupKey,
+    arcaAccountId,
     tenantId,
     source,
     resolvingSuggestion,

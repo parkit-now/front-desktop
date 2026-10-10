@@ -1109,6 +1109,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/arca/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ArcaSelectedAccountsController_list"];
+        put?: never;
+        post: operations["ArcaSelectedAccountsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ArcaSelectedAccountsController_get"];
+        put?: never;
+        post?: never;
+        delete: operations["ArcaSelectedAccountsController_unlink"];
+        options?: never;
+        head?: never;
+        patch: operations["ArcaSelectedAccountsController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ArcaSelectedAccountsController_certificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/csr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ArcaSelectedAccountsController_csr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/renewal/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ArcaSelectedAccountsController_renewalCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/renewal/csr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ArcaSelectedAccountsController_renewalCsr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/reusable-certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ArcaSelectedAccountsController_reusable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/reuse-certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ArcaSelectedAccountsController_reuse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/arca/accounts/{accountId}/sales-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ArcaSelectedAccountsController_salesPoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenantId}/arca/taxpayers/{cuit}": {
         parameters: {
             query?: never;
@@ -2905,6 +3049,7 @@ export interface components {
              * @description Cuándo se preparó la solicitud de renovación del certificado (null si no hay una en curso).
              */
             renewalPreparedAt?: string | null;
+            role: components["schemas"]["ArcaAccountRole"];
             /**
              * @description Paso de la vinculación en el que está la playa:
              *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
@@ -2915,6 +3060,8 @@ export interface components {
              */
             status: components["schemas"]["ArcaAccountStatus"];
         };
+        /** @enum {string} */
+        ArcaAccountRole: "primary" | "secondary";
         /**
          * @description Paso de la vinculación en el que está la playa:
          *     - `pending_certificate`: se generó la solicitud (CSR), falta subir el certificado.
@@ -2941,10 +3088,15 @@ export interface components {
         /** @enum {string} */
         ArcaEnvironment: "homologacion" | "produccion";
         ArcaReusableCertificateDto: {
+            /** Format: uuid */
+            accountId: string;
             /** Format: date-time */
             certExpiresAt?: string | null;
             cuit: string;
+            ptoVta?: number | null;
             razonSocial?: string | null;
+            /** @enum {string} */
+            role?: "primary" | "secondary";
             /** Format: uuid */
             tenantId: string;
             tenantName: string;
@@ -3058,6 +3210,11 @@ export interface components {
             amountPaid?: number;
             /**
              * Format: uuid
+             * @description Cuenta emisora de esta factura; primaria si se omite.
+             */
+            arcaAccountId?: string;
+            /**
+             * Format: uuid
              * @description Cash session ID.
              */
             cashSessionId?: string;
@@ -3103,6 +3260,10 @@ export interface components {
             invoice?: components["schemas"]["InvoiceSummaryDto"] | null;
             /** Format: date-time */
             leftAt?: string;
+            /** Format: uuid */
+            manualInvoiceArcaAccountId?: string | null;
+            manualInvoiceIssuerCuit?: string | null;
+            manualInvoiceIssuerName?: string | null;
             manualInvoiceNumber?: string | null;
             manualInvoicePointOfSale?: string | null;
             /** @enum {string|null} */
@@ -3178,6 +3339,15 @@ export interface components {
             invoicePending?: boolean;
             /** Format: date-time */
             leftAt?: string;
+            /**
+             * Format: uuid
+             * @description Cuenta de la factura registrada externamente.
+             */
+            manualInvoiceArcaAccountId?: string | null;
+            /** @description CUIT de un emisor externo no vinculado. Admite guiones. */
+            manualInvoiceIssuerCuit?: string | null;
+            /** @description Nombre o razón social de un emisor externo no vinculado. */
+            manualInvoiceIssuerName?: string | null;
             /** @description Número de la factura emitida fuera de Parkit. */
             manualInvoiceNumber?: string;
             /** @description Punto de venta de una factura emitida fuera de Parkit. */
@@ -3270,6 +3440,8 @@ export interface components {
              * @example 901-123456-7
              */
             iibb: string;
+            /** @default primary */
+            role: components["schemas"]["ArcaAccountRole"];
         };
         CreateCashSessionDto: {
             /**
@@ -4178,6 +4350,10 @@ export interface components {
             id: string;
             /** Format: date-time */
             leftAt?: string;
+            /** Format: uuid */
+            manualInvoiceArcaAccountId?: string | null;
+            manualInvoiceIssuerCuit?: string | null;
+            manualInvoiceIssuerName?: string | null;
             manualInvoiceNumber?: string | null;
             manualInvoicePointOfSale?: string | null;
             /** @enum {string|null} */
@@ -4416,6 +4592,8 @@ export interface components {
             razonSocial: string;
         };
         InvoiceDto: {
+            /** Format: uuid */
+            arcaAccountId?: string | null;
             /** @example 86380920935994 */
             cae?: string | null;
             /**
@@ -4428,6 +4606,8 @@ export interface components {
             cbteNro?: number | null;
             /** @description Código de ARCA: 1 = A, 6 = B, 11 = C. */
             cbteTipo?: number | null;
+            emisorCuit?: string | null;
+            emisorRazonSocial?: string | null;
             /** Format: uuid */
             entryId: string;
             /** @description Código estable (`ARCA_*` / `INVOICE_*`) del último problema. */
@@ -4480,6 +4660,8 @@ export interface components {
         /** @enum {string} */
         InvoiceStatus: "not_required" | "pending" | "issuing" | "issued" | "error";
         InvoiceSummaryDto: {
+            /** Format: uuid */
+            arcaAccountId?: string | null;
             /** @example 86380920935994 */
             cae?: string | null;
             /**
@@ -4490,6 +4672,8 @@ export interface components {
             cbteNro?: number | null;
             /** @description Código de ARCA: 1 = A, 6 = B, 11 = C. */
             cbteTipo?: number | null;
+            emisorCuit?: string | null;
+            emisorRazonSocial?: string | null;
             /** @description Código estable (`ARCA_*` / `INVOICE_*`) del último problema. */
             errorCode?: string | null;
             /** @description Detalle, por ejemplo las observaciones de ARCA al rechazar. */
@@ -4507,10 +4691,17 @@ export interface components {
             status: components["schemas"]["InvoiceStatus"];
         };
         IssueInvoiceBatchDto: {
+            /** Format: uuid */
+            arcaAccountId?: string;
             /** @description Estadías cobradas a facturar a consumidor final (1 a 50). */
             entryIds: string[];
         };
         IssueInvoiceDto: {
+            /**
+             * Format: uuid
+             * @description Cuenta emisora. Nueva factura: primaria; reintento: cuenta anterior.
+             */
+            arcaAccountId?: string;
             /** @description Importe confirmado por el operador. Si cambio, no se emite. */
             expectedAmount?: number;
             /** @description IDs de los pagos incluidos en esta factura. Se omite para conservar la selección previa o facturar el total. */
@@ -5858,9 +6049,14 @@ export interface components {
         ReuseArcaCertificateDto: {
             /**
              * Format: uuid
+             * @description Cuenta de origen del certificado.
+             */
+            fromAccountId?: string;
+            /**
+             * Format: uuid
              * @description La otra playa del mismo dueño, ya vinculada con este CUIT.
              */
-            fromTenantId: string;
+            fromTenantId?: string;
         };
         RevenueBucketDto: {
             /**
@@ -10017,9 +10213,295 @@ export interface operations {
             };
         };
     };
-    InvoicesController_taxpayer: {
+    ArcaSelectedAccountsController_list: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"][];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateArcaAccountDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_unlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ArcaSelectedAccountsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateArcaAccountDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_certificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCertificateResultDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_csr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCsrDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_renewalCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_renewalCsr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaCsrDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_reusable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaReusableCertificateDto"][];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_reuse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReuseArcaCertificateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+        };
+    };
+    ArcaSelectedAccountsController_salesPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetArcaSalesPointDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArcaAccountDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_taxpayer: {
+        parameters: {
+            query?: {
+                arcaAccountId?: string;
+            };
             header?: never;
             path: {
                 /** @description Con o sin guiones */
@@ -10554,6 +11036,7 @@ export interface operations {
     InvoicesController_preview: {
         parameters: {
             query?: {
+                arcaAccountId?: string;
                 invoicePaymentIds?: string[];
             };
             header?: never;

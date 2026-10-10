@@ -16,6 +16,8 @@ type ReceiverSnapshot = {
   cuit: string | null | undefined;
   receiverName?: string | null;
   invoicePaymentIds?: string[];
+  arcaAccountId?: string;
+  issuerLabel?: string;
 };
 
 export function useInvoiceConfirmation(input: {
@@ -45,6 +47,9 @@ export function useInvoiceConfirmation(input: {
     setSnapshot(null);
     const preview = await getInvoicePreview({
       ...input,
+      ...(receiver.arcaAccountId
+        ? { arcaAccountId: receiver.arcaAccountId }
+        : {}),
       ...(receiver.invoicePaymentIds
         ? { invoicePaymentIds: receiver.invoicePaymentIds }
         : {}),
@@ -85,6 +90,9 @@ export function useInvoiceConfirmation(input: {
         ...input,
         receiverCuit: confirmed.cuit ?? undefined,
         expectedAmount: confirmed.amount,
+        ...(confirmed.arcaAccountId
+          ? { arcaAccountId: confirmed.arcaAccountId }
+          : {}),
         ...(confirmed.invoicePaymentIds
           ? { invoicePaymentIds: confirmed.invoicePaymentIds }
           : {}),

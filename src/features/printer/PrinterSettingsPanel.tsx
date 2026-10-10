@@ -27,6 +27,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildEntryTicketHtml } from '../../lib/print/entryTicket';
 import { buildPaymentReceiptHtml } from '../../lib/print/receipt';
 import {
+  buildCashSessionSummaryHtml,
+  type CashSessionPrintData,
+} from '../../lib/print/cashSessionSummary';
+import {
+  CASH_SESSION_TEMPLATE_FIELD_LABELS,
+  isRequiredCashSessionField,
+  readCashSessionTemplateSettings,
+  resetCashSessionTemplateSettings,
+  type CashSessionTemplateField,
+  type CashSessionTemplateSettings,
+  writeCashSessionTemplateSettings,
+} from '../../lib/print/cashSessionTemplate';
+import {
   fetchEntityProfileSettings,
   updateEntityTicketTemplate,
 } from '../../lib/api/entities';
@@ -89,8 +102,18 @@ const FIELD_SIZE_OPTIONS = (
   label: TICKET_TEMPLATE_SIZE_OPTIONS[key].label,
 }));
 
-type TemplateKind = 'entry' | 'receipt';
-type PrintableTemplateField = TicketTemplateField | ReceiptTemplateField;
+type TemplateKind = 'entry' | 'receipt' | 'cash';
+type PrintableTemplateField =
+  | TicketTemplateField
+  | ReceiptTemplateField
+  | CashSessionTemplateField;
+
+const TEMPLATE_KIND_LABELS: Record<TemplateKind, string> = {
+  entry: 'Ticket de ingreso',
+  receipt: 'Comprobante no fiscal',
+  cash: 'Cierre de caja',
+};
+const TEMPLATE_KINDS: TemplateKind[] = ['entry', 'receipt', 'cash'];
 
 function testTicketData({
   tenantName,
@@ -142,6 +165,43 @@ function testReceiptData({
     paymentMethodName: 'Efectivo',
     enteredAt: '2026-09-17T12:28:00Z',
     leftAt: '2026-09-18T14:46:00Z',
+  };
+}
+
+function testCashSessionData(
+  tenantId: string | null,
+  tenantName: string | null,
+): CashSessionPrintData {
+  return {
+    tenantId,
+    parkingName: tenantName,
+    openedAt: '2026-10-10T12:00:00Z',
+    closedAt: '2026-10-10T20:00:00Z',
+    summary: {
+      byPm: [
+        {
+          pmId: 'cash',
+          pmName: 'Efectivo',
+          total: 5000,
+          count: 2,
+          isCash: true,
+        },
+        {
+          pmId: 'mp',
+          pmName: 'Mercado Pago',
+          total: 3000,
+          count: 1,
+          isCash: false,
+        },
+      ],
+      grandTotal: 8000,
+      txCount: 3,
+      openingCash: 100,
+      cashCollected: 5000,
+      cashTotal: 5100,
+    },
+    leavingCash: 100,
+    notes: 'Turno cerrado sin novedades',
   };
 }
 
@@ -263,6 +323,9 @@ export function PrinterSettingsPanel({
     useState<ReceiptTemplateSettings>(() =>
       readReceiptTemplateSettings(templateTenantId),
     );
+  const [cashTemplate, setCashTemplate] = useState<CashSessionTemplateSettings>(
+    () => readCashSessionTemplateSettings(templateTenantId),
+  );
   const [activeTemplateKind, setActiveTemplateKind] =
     useState<TemplateKind>('entry');
   const [previewHeight, setPreviewHeight] = useState(180);
@@ -282,6 +345,7 @@ export function PrinterSettingsPanel({
     const localTemplate = readTicketTemplateSettings(templateTenantId);
     setTemplate(localTemplate);
     setReceiptTemplate(readReceiptTemplateSettings(templateTenantId));
+    setCashTemplate(readCashSessionTemplateSettings(templateTenantId));
 
     if (!tenantId || !accessToken) return;
 
@@ -439,6 +503,15 @@ export function PrinterSettingsPanel({
     [canEditTicketTemplate, tenantCuit],
   );
 
+  const saveCashTemplate = useCallback(
+    (next: CashSessionTemplateSettings) => {
+      if (!canEditTicketTemplate) return;
+      setCashTemplate(next);
+      writeCashSessionTemplateSettings(next);
+    },
+    [canEditTicketTemplate],
+  );
+
   function handleFieldChange(nextField: TicketTemplateField): void {
     if (!canEditTicketTemplate) return;
 
@@ -462,11 +535,37 @@ export function PrinterSettingsPanel({
     });
   }
 
+  function handleCashFieldChange(nextField: PrintableTemplateField): void {
+    if (!canEditTicketTemplate) return;
+    const cashField = nextField as CashSessionTemplateField;
+    saveCashTemplate({
+      ...cashTemplate,
+      fields: cashTemplate.fields.map((field) =>
+        field.id === cashField.id ? cashField : field,
+      ),
+    });
+  }
+
   function handleDragEnd(event: DragEndEvent): void {
     if (!canEditTicketTemplate) return;
 
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+
+    if (activeTemplateKind === 'cash') {
+      const oldIndex = cashTemplate.fields.findIndex(
+        (field) => field.id === active.id,
+      );
+      const newIndex = cashTemplate.fields.findIndex(
+        (field) => field.id === over.id,
+      );
+      if (oldIndex === -1 || newIndex === -1) return;
+      saveCashTemplate({
+        ...cashTemplate,
+        fields: arrayMove(cashTemplate.fields, oldIndex, newIndex),
+      });
+      return;
+    }
 
     if (activeTemplateKind === 'receipt') {
       const oldIndex = receiptTemplate.fields.findIndex(
@@ -498,6 +597,15 @@ export function PrinterSettingsPanel({
 
   function handleResetTemplate(): void {
     if (!canEditTicketTemplate) return;
+
+    if (activeTemplateKind === 'cash') {
+      setCashTemplate(resetCashSessionTemplateSettings(templateTenantId));
+      showToast({
+        message: 'Plantilla de cierre restaurada.',
+        kind: 'success',
+      });
+      return;
+    }
 
     if (activeTemplateKind === 'receipt') {
       const next = resetReceiptTemplateSettings(templateTenantId);
@@ -536,6 +644,13 @@ export function PrinterSettingsPanel({
   );
 
   const previewHtml = useMemo(() => {
+    if (activeTemplateKind === 'cash') {
+      return buildCashSessionSummaryHtml(
+        testCashSessionData(tenantId, tenantName),
+        resolvedPaper.bodyWidthMm,
+        cashTemplate,
+      );
+    }
     if (activeTemplateKind === 'receipt') {
       return buildPaymentReceiptHtml(
         testReceiptData({
@@ -560,12 +675,14 @@ export function PrinterSettingsPanel({
     );
   }, [
     activeTemplateKind,
+    cashTemplate,
     receiptTemplate,
     resolvedPaper.bodyWidthMm,
     template,
     tenantAddress,
     tenantCuit,
     tenantName,
+    tenantId,
     templateTenantId,
   ]);
 
@@ -593,24 +710,7 @@ export function PrinterSettingsPanel({
       // Uses the real builder and the real channel so one click validates the
       // paper width, the device name and silent mode end to end.
       const outcome: PrintOutcome = await bridge.printTicket({
-        html:
-          activeTemplateKind === 'receipt'
-            ? buildPaymentReceiptHtml(
-                testReceiptData({
-                  tenantId: templateTenantId,
-                  tenantName,
-                  tenantAddress,
-                  tenantCuit,
-                }),
-                {
-                  bodyWidthMm: resolvedPaper.bodyWidthMm,
-                  template: receiptTemplate,
-                },
-              )
-            : buildEntryTicketHtml(
-                testTicketData({ tenantName, tenantAddress, tenantCuit }),
-                { bodyWidthMm: resolvedPaper.bodyWidthMm, template },
-              ),
+        html: previewHtml,
         deviceName: selected || null,
         tailFeedMm: tailFeed,
         mediaWidthMm: resolvedPaper.mediaWidthMm,
@@ -620,10 +720,7 @@ export function PrinterSettingsPanel({
       showToast(
         outcome.ok
           ? {
-              message:
-                activeTemplateKind === 'receipt'
-                  ? 'Prueba no fiscal enviada a la impresora.'
-                  : 'Prueba enviada a la impresora.',
+              message: `${TEMPLATE_KIND_LABELS[activeTemplateKind]} enviado a la impresora.`,
               kind: 'success',
             }
           : { message: describePrintFailure(outcome), kind: 'error' },
@@ -667,21 +764,29 @@ export function PrinterSettingsPanel({
   ];
   // El modelo no tiene fila propia: lo maneja la de "Marca y modelo".
   const activeFields =
-    activeTemplateKind === 'receipt'
-      ? receiptTemplate.fields
-      : template.fields.filter((field) => field.id !== 'vehicleModel');
+    activeTemplateKind === 'cash'
+      ? cashTemplate.fields
+      : activeTemplateKind === 'receipt'
+        ? receiptTemplate.fields
+        : template.fields.filter((field) => field.id !== 'vehicleModel');
   const templateTitle =
-    activeTemplateKind === 'receipt'
-      ? 'Plantilla no fiscal'
-      : 'Plantilla del ticket';
+    activeTemplateKind === 'cash'
+      ? 'Plantilla del cierre de caja'
+      : activeTemplateKind === 'receipt'
+        ? 'Plantilla no fiscal'
+        : 'Plantilla del ticket';
   const templateDescription =
-    activeTemplateKind === 'receipt'
+    activeTemplateKind === 'cash'
       ? canEditTicketTemplate
-        ? 'Elegí qué datos imprimir en el comprobante no fiscal.'
-        : 'Solo dueños y administradores pueden modificar el comprobante no fiscal.'
-      : canEditTicketTemplate
-        ? 'Elegí qué datos imprimir, en qué orden y con qué tamaño.'
-        : 'Solo dueños y administradores pueden modificar qué datos imprime el ticket.';
+        ? 'Elegí qué datos imprimir en el resumen de cierre.'
+        : 'Solo dueños y administradores pueden modificar el resumen de cierre.'
+      : activeTemplateKind === 'receipt'
+        ? canEditTicketTemplate
+          ? 'Elegí qué datos imprimir en el comprobante no fiscal.'
+          : 'Solo dueños y administradores pueden modificar el comprobante no fiscal.'
+        : canEditTicketTemplate
+          ? 'Elegí qué datos imprimir, en qué orden y con qué tamaño.'
+          : 'Solo dueños y administradores pueden modificar qué datos imprime el ticket.';
   const activeCuitOverride =
     activeTemplateKind === 'receipt'
       ? receiptTemplate.cuitOverride
@@ -703,6 +808,7 @@ export function PrinterSettingsPanel({
       >
     >,
   ): void {
+    if (activeTemplateKind === 'cash') return;
     if (activeTemplateKind === 'receipt') {
       saveReceiptTemplate({ ...receiptTemplate, ...patch });
       return;
@@ -711,6 +817,7 @@ export function PrinterSettingsPanel({
   }
 
   function activeFieldHasValue(field: PrintableTemplateField): boolean {
+    if (activeTemplateKind === 'cash') return true;
     return activeTemplateKind === 'receipt'
       ? receiptFieldHasValue(field.id as ReceiptTemplateField['id'])
       : fieldHasValue(field.id as TicketTemplateField['id']);
@@ -718,12 +825,19 @@ export function PrinterSettingsPanel({
 
   function activeFieldIsLocked(field: PrintableTemplateField): boolean {
     return (
-      activeTemplateKind === 'receipt' &&
-      isRequiredReceiptField(field.id as ReceiptTemplateField['id'])
+      (activeTemplateKind === 'receipt' &&
+        isRequiredReceiptField(field.id as ReceiptTemplateField['id'])) ||
+      (activeTemplateKind === 'cash' &&
+        isRequiredCashSessionField(field.id as CashSessionTemplateField['id']))
     );
   }
 
   function activeFieldLabel(field: PrintableTemplateField): string {
+    if (activeTemplateKind === 'cash') {
+      return CASH_SESSION_TEMPLATE_FIELD_LABELS[
+        field.id as CashSessionTemplateField['id']
+      ];
+    }
     return activeTemplateKind === 'receipt'
       ? RECEIPT_TEMPLATE_FIELD_LABELS[field.id as ReceiptTemplateField['id']]
       : TICKET_TEMPLATE_FIELD_LABELS[field.id as TicketTemplateField['id']];
@@ -925,25 +1039,23 @@ export function PrinterSettingsPanel({
         <section className="dashboard-card printer-preview-card">
           <div className="printer-panel-title-row">
             <h2>Vista previa</h2>
-            <div className="printer-template-tabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTemplateKind === 'entry'}
-                className={activeTemplateKind === 'entry' ? 'active' : ''}
-                onClick={() => setActiveTemplateKind('entry')}
-              >
-                Ingreso
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTemplateKind === 'receipt'}
-                className={activeTemplateKind === 'receipt' ? 'active' : ''}
-                onClick={() => setActiveTemplateKind('receipt')}
-              >
-                No fiscal
-              </button>
+            <div
+              className="printer-template-tabs"
+              role="tablist"
+              aria-label="Vista previa"
+            >
+              {TEMPLATE_KINDS.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTemplateKind === kind}
+                  className={activeTemplateKind === kind ? 'active' : ''}
+                  onClick={() => setActiveTemplateKind(kind)}
+                >
+                  {TEMPLATE_KIND_LABELS[kind]}
+                </button>
+              ))}
             </div>
           </div>
           <p className="muted printer-panel-hint">
@@ -962,7 +1074,7 @@ export function PrinterSettingsPanel({
           <div className="ticket-preview-shell">
             <iframe
               ref={previewFrameRef}
-              title="Vista previa del ticket"
+              title={`Vista previa de ${TEMPLATE_KIND_LABELS[activeTemplateKind].toLowerCase()}`}
               className="ticket-preview-frame"
               srcDoc={previewHtml}
               style={{ height: previewHeight }}
@@ -975,11 +1087,8 @@ export function PrinterSettingsPanel({
       <section
         className={`dashboard-card printer-template-card ${canEditTicketTemplate ? '' : 'is-readonly'}`}
       >
-        <div className="printer-panel-title-row">
-          <div>
-            <h2>{templateTitle}</h2>
-            <p className="muted">{templateDescription}</p>
-          </div>
+        <div className="printer-template-heading">
+          <h2>{templateTitle}</h2>
           <button
             type="button"
             className="ghost-button compact"
@@ -994,86 +1103,84 @@ export function PrinterSettingsPanel({
             <RotateCcw size={15} aria-hidden="true" />
             Restaurar
           </button>
+          <p className="muted">{templateDescription}</p>
         </div>
         <div
           className="printer-template-tabs printer-template-tabs--wide"
           role="tablist"
+          aria-label="Plantillas de impresión"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTemplateKind === 'entry'}
-            className={activeTemplateKind === 'entry' ? 'active' : ''}
-            onClick={() => setActiveTemplateKind('entry')}
-          >
-            Ticket de ingreso
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTemplateKind === 'receipt'}
-            className={activeTemplateKind === 'receipt' ? 'active' : ''}
-            onClick={() => setActiveTemplateKind('receipt')}
-          >
-            Comprobante no fiscal
-          </button>
+          {TEMPLATE_KINDS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              role="tab"
+              aria-selected={activeTemplateKind === kind}
+              className={activeTemplateKind === kind ? 'active' : ''}
+              onClick={() => setActiveTemplateKind(kind)}
+            >
+              {TEMPLATE_KIND_LABELS[kind]}
+            </button>
+          ))}
         </div>
 
-        <div className="printer-template-text-grid">
-          <div className="printer-panel-field">
-            <label className="form-label" htmlFor="ticket-cuit">
-              CUIT impreso
-            </label>
-            <input
-              id="ticket-cuit"
-              className="form-input"
-              value={activeCuitOverride}
-              placeholder={tenantCuit ?? 'Ej. 20-16865508-0'}
-              disabled={!canEditTicketTemplate}
-              onChange={(event) =>
-                saveActiveTemplateText({ cuitOverride: event.target.value })
-              }
-            />
+        {activeTemplateKind !== 'cash' ? (
+          <div className="printer-template-text-grid">
+            <div className="printer-panel-field">
+              <label className="form-label" htmlFor="ticket-cuit">
+                CUIT impreso
+              </label>
+              <input
+                id="ticket-cuit"
+                className="form-input"
+                value={activeCuitOverride}
+                placeholder={tenantCuit ?? 'Ej. 20-16865508-0'}
+                disabled={!canEditTicketTemplate}
+                onChange={(event) =>
+                  saveActiveTemplateText({ cuitOverride: event.target.value })
+                }
+              />
+            </div>
+            <div className="printer-panel-field">
+              <label className="form-label" htmlFor="ticket-iibb">
+                IIBB
+              </label>
+              <input
+                id="ticket-iibb"
+                className="form-input"
+                value={activeGrossIncomeText}
+                placeholder="Ej. IIBB: 1027025-06"
+                disabled={!canEditTicketTemplate}
+                onChange={(event) =>
+                  saveActiveTemplateText({
+                    grossIncomeText: event.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="printer-panel-field">
+              <label className="form-label" htmlFor="ticket-control">
+                Control fiscal
+              </label>
+              <input
+                id="ticket-control"
+                className="form-input"
+                value={activeNonFiscalControlText}
+                placeholder={
+                  activeTemplateKind === 'receipt'
+                    ? 'No válido como factura'
+                    : 'Control no fiscal'
+                }
+                disabled={!canEditTicketTemplate}
+                onChange={(event) =>
+                  saveActiveTemplateText({
+                    nonFiscalControlText: event.target.value,
+                  })
+                }
+              />
+            </div>
           </div>
-          <div className="printer-panel-field">
-            <label className="form-label" htmlFor="ticket-iibb">
-              IIBB
-            </label>
-            <input
-              id="ticket-iibb"
-              className="form-input"
-              value={activeGrossIncomeText}
-              placeholder="Ej. IIBB: 1027025-06"
-              disabled={!canEditTicketTemplate}
-              onChange={(event) =>
-                saveActiveTemplateText({
-                  grossIncomeText: event.target.value,
-                })
-              }
-            />
-          </div>
-          <div className="printer-panel-field">
-            <label className="form-label" htmlFor="ticket-control">
-              Control fiscal
-            </label>
-            <input
-              id="ticket-control"
-              className="form-input"
-              value={activeNonFiscalControlText}
-              placeholder={
-                activeTemplateKind === 'receipt'
-                  ? 'No válido como factura'
-                  : 'Control no fiscal'
-              }
-              disabled={!canEditTicketTemplate}
-              onChange={(event) =>
-                saveActiveTemplateText({
-                  nonFiscalControlText: event.target.value,
-                })
-              }
-            />
-          </div>
-        </div>
+        ) : null}
 
         <DndContext
           sensors={sensors}
@@ -1094,10 +1201,12 @@ export function PrinterSettingsPanel({
                   visibilityLocked={activeFieldIsLocked(field)}
                   readOnly={!canEditTicketTemplate}
                   onChange={
-                    activeTemplateKind === 'receipt'
-                      ? handleReceiptFieldChange
-                      : (nextField) =>
-                          handleFieldChange(nextField as TicketTemplateField)
+                    activeTemplateKind === 'cash'
+                      ? handleCashFieldChange
+                      : activeTemplateKind === 'receipt'
+                        ? handleReceiptFieldChange
+                        : (nextField) =>
+                            handleFieldChange(nextField as TicketTemplateField)
                   }
                 />
               ))}

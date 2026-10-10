@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalEntry } from '../../lib/db/localDb';
 import { enqueuePendingOp } from '../../lib/sync/enqueue';
 import { InvoiceSection } from './InvoiceSection';
+vi.mock('./useArcaEmitter', () => ({
+  useArcaEmitterState: () => ({ accounts: [] }),
+  toArcaEmitter: () => null,
+}));
 
 const mock = vi.hoisted(() => ({
   invoice: {
@@ -373,6 +377,104 @@ describe('seguimiento de factura', () => {
 
 describe('factura externa con ARCA', () => {
   const emitter = { condicionIva: 'monotributo', certExpired: false } as const;
+
+  it.each(['nombre', 'cuit'])(
+    'registra otro emisor solo con %s sin vincular una cuenta',
+    async (field) => {
+      mock.invoice.status = 'pending';
+      const issuer =
+        field === 'nombre'
+          ? {
+              manualInvoiceIssuerName: 'Emisor tercero',
+              manualInvoiceIssuerCuit: null,
+            }
+          : {
+              manualInvoiceIssuerName: null,
+              manualInvoiceIssuerCuit: '20123456786',
+            };
+      mock.correct.mockResolvedValue({
+        ...entry,
+        manuallyInvoiced: true,
+        manualInvoiceType: 'C',
+        manualInvoicePointOfSale: '12',
+        manualInvoiceNumber: '123',
+        manualInvoiceArcaAccountId: null,
+        ...issuer,
+      });
+      await render(
+        true,
+        {
+          ...entry,
+          manualInvoicePointOfSale: '12',
+          manualInvoiceNumber: '123',
+        },
+        emitter,
+      );
+      const button = (label: string) =>
+        [...container.querySelectorAll('button')].find(
+          (item) => item.textContent === label,
+        )!;
+      await update(() => button('Registrar factura externa').click());
+      expect(container.querySelector('.entry-invoice-account')).toBeNull();
+      await update(() =>
+        container
+          .querySelector<HTMLInputElement>(
+            '.entry-external-issuer-toggle input',
+          )!
+          .click(),
+      );
+      expect(button('Guardar factura externa').disabled).toBe(true);
+      const input = [
+        ...container.querySelectorAll('.entry-external-issuer-fields label'),
+      ]
+        .find((label) =>
+          label.textContent?.includes(field === 'nombre' ? 'Nombre' : 'CUIT'),
+        )!
+        .querySelector('input')!;
+      await update(() => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          'value',
+        )!.set!.call(
+          input,
+          field === 'nombre' ? ' Emisor tercero ' : '20-12345678-6',
+        );
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(button('Guardar factura externa').disabled).toBe(false);
+      await update(() => button('Guardar factura externa').click());
+      const request = mock.correct.mock.calls[0]?.[0] as {
+        body: Record<string, unknown>;
+      };
+      expect(request.body).toMatchObject({
+        manuallyInvoiced: true,
+        manualInvoiceArcaAccountId: null,
+        ...issuer,
+      });
+      expect(mock.entryUpdate).toHaveBeenCalledWith(
+        entry.id,
+        expect.objectContaining({
+          manualInvoiceArcaAccountId: undefined,
+          manualInvoiceIssuerName: issuer.manualInvoiceIssuerName ?? undefined,
+          manualInvoiceIssuerCuit: issuer.manualInvoiceIssuerCuit ?? undefined,
+        }),
+      );
+    },
+  );
+
+  it('muestra el emisor aunque solo se haya cargado su nombre', async () => {
+    await render(
+      true,
+      {
+        ...entry,
+        manuallyInvoiced: true,
+        manualInvoiceIssuerName: 'Emisor tercero',
+      },
+      emitter,
+    );
+    expect(container.textContent).toContain('Emisor tercero');
+    expect(container.textContent).not.toContain('· CUIT');
+  });
 
   it('no ofrece emitir si el medio tiene la facturación desactivada', async () => {
     mock.invoice.status = 'not_required';

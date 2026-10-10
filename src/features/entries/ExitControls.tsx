@@ -155,6 +155,8 @@ export function ExitControls({
 
       {exitEntry ? (
         <ExitModal
+          key={exitEntry.id}
+          actorRole={actorRole}
           entry={exitEntry}
           tenantId={tenantId}
           accessToken={accessToken}

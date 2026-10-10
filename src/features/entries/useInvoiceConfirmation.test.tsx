@@ -28,6 +28,22 @@ const receiver = {
   cuit: '20427205208',
   receiverName: 'Cliente',
 };
+it('congela la cuenta junto al importe y la usa al confirmar', async () => {
+  await act(async () =>
+    controller.open({
+      ...receiver,
+      arcaAccountId: 'secondary',
+      issuerLabel: 'Emisor secundario',
+    }),
+  );
+  expect(mock.preview).toHaveBeenCalledWith(
+    expect.objectContaining({ arcaAccountId: 'secondary' }),
+  );
+  await act(async () => controller.confirm(vi.fn()));
+  expect(mock.issue).toHaveBeenCalledWith(
+    expect.objectContaining({ arcaAccountId: 'secondary', expectedAmount: 10 }),
+  );
+});
 let controller: ReturnType<typeof useInvoiceConfirmation>;
 let root: Root;
 let container: HTMLDivElement;

@@ -19,6 +19,7 @@ export function CashSessionWorkspace({ canViewHistory, ...props }: Props) {
       <CashSessionPanel
         tenantId={props.tenantId}
         accessToken={props.accessToken}
+        parkingName={props.parkingName}
         onViewMovements={(session) => setMovementsSessionId(session.id)}
       />
       {canViewHistory ? (

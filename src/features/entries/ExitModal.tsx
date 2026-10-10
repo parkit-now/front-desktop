@@ -42,7 +42,11 @@ import {
   eligibleInvoicePaymentIds,
   InvoicePaymentSelector,
 } from './InvoicePaymentSelector';
-import { useArcaEmitterState } from './useArcaEmitter';
+import { toArcaEmitter, useArcaEmitterState } from './useArcaEmitter';
+import {
+  InvoiceAccountSelector,
+  invoiceAccountLabel,
+} from './InvoiceAccountSelector';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import { ClientContact } from '../clients/ClientContact';
@@ -80,6 +84,7 @@ import {
 const TICK_MS = 15_000;
 
 interface Props {
+  actorRole?: 'admin' | 'owner' | 'operator' | null;
   entry: LocalEntry;
   tenantId: string;
   accessToken: string;
@@ -90,6 +95,7 @@ interface Props {
 }
 
 export function ExitModal({
+  actorRole = null,
   entry,
   tenantId,
   accessToken,
@@ -193,18 +199,39 @@ export function ExitModal({
   );
   // El receptor: consumidor final o el CUIT que dicta el cliente (la letra la
   // decide el padrón). Lo mismo sirve para el cobro y para «Emitir factura».
-  const { emitter, status: emitterStatus } = useArcaEmitterState(
-    tenantId,
-    accessToken,
-    isOnline,
-  );
-  // Certificado vencido: el cobro sigue igual, pero no se factura (la
-  // factura queda pendiente hasta que el dueño lo renueve).
-  const invoicingPaused = emitter?.certExpired ?? false;
-  const offersReceiver = emitter !== null && !invoicingPaused;
+  const {
+    emitter: primaryEmitter,
+    status: emitterStatus,
+    accounts: configuredAccounts,
+  } = useArcaEmitterState(tenantId, accessToken, isOnline);
   const [lastInvoice, setLastInvoice] = useState<InvoiceSummaryDto | null>(
     null,
   );
+  const accounts = configuredAccounts ?? [];
+  const [accountChoice, setAccountChoice] = useState<string>();
+  const accountId =
+    accountChoice ??
+    lastInvoice?.arcaAccountId ??
+    accounts.find(
+      (item) =>
+        item.role === 'primary' &&
+        ['linked', 'cert_expired'].includes(item.status),
+    )?.id;
+  const account = accounts.find((item) => item.id === accountId);
+  const emitter = account
+    ? toArcaEmitter(account)
+    : accountId
+      ? null
+      : primaryEmitter;
+  const emitterLocked = Boolean(
+    lastInvoice &&
+    (lastInvoice.status === 'issued' ||
+      lastInvoice.status === 'issuing' ||
+      lastInvoice.cbteNro != null),
+  );
+  const canSelectAccount = actorRole === 'owner' || actorRole === 'admin';
+  const invoicingPaused = emitter?.certExpired ?? false;
+  const offersReceiver = emitter !== null && !invoicingPaused;
   const [pdfBusy, setPdfBusy] = useState<'save' | 'folder' | null>(null);
   const [savedPdf, setSavedPdf] = useState<{
     invoiceId: string;
@@ -388,6 +415,7 @@ export function ExitModal({
     suggestionEnabled:
       issuePanelOpen || (showInvoiceChooser && qrApproved && !receipt),
     frozen: saving || confirmation.busy || confirmation.snapshot !== null,
+    arcaAccountId: accountId,
   });
   const letter = expectedLetter({
     emitter: emitter?.condicionIva,
@@ -574,6 +602,7 @@ export function ExitModal({
             cashSessionId,
             payments,
             ...(invoicePaymentIds?.length ? { invoicePaymentIds } : {}),
+            ...(accountId ? { arcaAccountId: accountId } : {}),
             invoiceReceiverCuit,
           },
         });
@@ -667,6 +696,7 @@ export function ExitModal({
                   cashSessionId,
                   payments,
                   ...(invoicePaymentIds?.length ? { invoicePaymentIds } : {}),
+                  ...(accountId ? { arcaAccountId: accountId } : {}),
                   invoiceReceiverCuit,
                 },
               },
@@ -837,6 +867,13 @@ export function ExitModal({
           <div>
             <p className="rate-dialog-kicker">Egreso</p>
             <h3 id="exit-modal-title">{entry.plate}</h3>
+            {entry.vehicleBrand || entry.vehicleModel ? (
+              <p className="exit-vehicle-name">
+                {[entry.vehicleBrand, entry.vehicleModel]
+                  .filter(Boolean)
+                  .join(' ')}
+              </p>
+            ) : null}
             {entry.color ? <p className="muted">{entry.color}</p> : null}
             {entry.ticketNumber != null ? (
               <p className="muted">Ticket #{entry.ticketNumber}</p>
@@ -896,6 +933,15 @@ export function ExitModal({
                   </span>
                 </div>
               ) : null}
+              {lastInvoice?.emisorCuit ? (
+                <div className="exit-info-row">
+                  <span className="muted">Emisor</span>
+                  <span>
+                    {lastInvoice.emisorRazonSocial ?? ''} · CUIT{' '}
+                    {lastInvoice.emisorCuit}
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             {lastInvoice?.status === 'issued' ? (
@@ -943,6 +989,17 @@ export function ExitModal({
               // elige la factura, la única salida es emitir o volver.
               <div className="exit-issue-panel">
                 <p className="exit-issue-title">Emitir factura</p>
+                {canSelectAccount &&
+                (accounts.length > 1 || (accountId && !account)) ? (
+                  <InvoiceAccountSelector
+                    accounts={accounts}
+                    value={accountId}
+                    disabled={
+                      issuing || emitterLocked || confirmation.snapshot !== null
+                    }
+                    onChange={setAccountChoice}
+                  />
+                ) : null}
                 {closedInvoiceOptions.length > 1 &&
                 eligibleClosedIds.length > 0 ? (
                   <InvoicePaymentSelector
@@ -976,6 +1033,10 @@ export function ExitModal({
                         letter,
                         cuit: receiver.cuitToSend,
                         receiverName: receiver.receiverName,
+                        arcaAccountId: accountId,
+                        issuerLabel: account
+                          ? invoiceAccountLabel(account)
+                          : undefined,
                         ...(closedInvoiceOptions.length > 1
                           ? { invoicePaymentIds: activeClosedIds }
                           : {}),
@@ -1060,12 +1121,22 @@ export function ExitModal({
             onConfirm={() => void handleConfirm(mpIntent.intent?.id)}
           >
             {qrApproved && showInvoiceChooser ? (
-              <InvoiceReceiverChooser
-                receiver={receiver}
-                emitter={emitter?.condicionIva}
-                isOnline={isOnline}
-                disabled={saving}
-              />
+              <>
+                {canSelectAccount && accounts.length > 1 ? (
+                  <InvoiceAccountSelector
+                    accounts={accounts}
+                    value={accountId}
+                    disabled={saving}
+                    onChange={setAccountChoice}
+                  />
+                ) : null}
+                <InvoiceReceiverChooser
+                  receiver={receiver}
+                  emitter={emitter?.condicionIva}
+                  isOnline={isOnline}
+                  disabled={saving}
+                />
+              </>
             ) : null}
           </MercadoPagoQrPanel>
         ) : (
@@ -1298,6 +1369,14 @@ export function ExitModal({
             ) : null}
 
             {/* Fila 2: la factura, debajo del medio porque depende de él. */}
+            {showInvoiceChooser && canSelectAccount && accounts.length > 1 ? (
+              <InvoiceAccountSelector
+                accounts={accounts}
+                value={accountId}
+                disabled={saving}
+                onChange={setAccountChoice}
+              />
+            ) : null}
             {emitter &&
             splitInvoiceOptions.length > 1 &&
             eligibleSplitIds.length > 0 ? (

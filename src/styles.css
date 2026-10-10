@@ -3550,6 +3550,7 @@ h2 {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
@@ -3561,10 +3562,37 @@ h2 {
   white-space: nowrap;
 }
 
+.printer-template-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px var(--space-2);
+}
+
+.printer-template-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.printer-template-heading .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  white-space: nowrap;
+}
+
+.printer-template-heading > .muted {
+  grid-column: 1 / -1;
+}
+
 .printer-template-tabs {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 4px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
@@ -4379,8 +4407,9 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 24px;
+  min-width: 30px;
+  height: 30px;
+  flex: none;
   padding: 0 8px;
   border-radius: 999px;
   background: linear-gradient(
@@ -4389,8 +4418,10 @@ h2 {
     var(--color-brand-strong)
   );
   color: #fff;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 /* Columns 2-3: auto-detected entry suggestions */
@@ -4838,7 +4869,62 @@ h2 {
   gap: 10px;
 }
 
-.entry-external-invoice-fields label {
+.entry-invoice-account {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 12px 0;
+}
+
+.entry-invoice-account small {
+  color: #526680;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.entry-invoice-account .app-select-wrap,
+.entry-invoice-account .app-select-trigger {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.entry-invoice-account .app-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-external-issuer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.entry-external-issuer-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-brand);
+}
+
+.entry-external-issuer-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 10px;
+}
+
+.entry-external-issuer-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: 12px;
+}
+
+.entry-external-invoice-fields label,
+.entry-external-issuer-fields label {
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -4847,6 +4933,7 @@ h2 {
 }
 
 .entry-external-invoice-fields input,
+.entry-external-issuer-fields input,
 .entry-external-invoice-fields .app-select-trigger {
   width: 100%;
   min-width: 0;
@@ -4859,7 +4946,8 @@ h2 {
 }
 
 @media (max-width: 540px) {
-  .entry-external-invoice-fields {
+  .entry-external-invoice-fields,
+  .entry-external-issuer-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -5621,6 +5709,8 @@ h2 {
 .close-session-dialog {
   max-width: 440px;
   width: 100%;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .session-summary {
@@ -6530,6 +6620,13 @@ h2 {
 
 .exit-modal .rate-dialog-header h3 {
   font-size: 20px;
+}
+
+.exit-modal .exit-vehicle-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .exit-modal .exit-modal-info {

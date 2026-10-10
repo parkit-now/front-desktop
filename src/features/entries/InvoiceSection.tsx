@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Bell, BellOff, FolderOpen, Save } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getInvoiceDocument } from '../../lib/api/arca';
-import { correctEntry } from '../../lib/api/entries';
+import { correctEntry, type CorrectEntryDto } from '../../lib/api/entries';
 import { translateApiError, translateErrorCode } from '../../lib/api/translate';
 import {
   localDb,
@@ -32,11 +32,21 @@ import {
   invoicePdfFileName,
   isPartialInvoice,
   isUnbilled,
+  isValidCuit,
+  normalizeCuit,
   receiverDescription,
   resolveInvoiceState,
   voucherLabel,
 } from './invoiceUtils';
-import type { ArcaEmitter } from './useArcaEmitter';
+import {
+  type ArcaEmitter,
+  toArcaEmitter,
+  useArcaEmitterState,
+} from './useArcaEmitter';
+import {
+  InvoiceAccountSelector,
+  invoiceAccountLabel,
+} from './InvoiceAccountSelector';
 import { useInvoiceReceiver } from './useInvoiceReceiver';
 import { useInvoiceConfirmation } from './useInvoiceConfirmation';
 import { saveEntryInlineField } from './entryInlineFields';
@@ -60,7 +70,7 @@ export function InvoiceSection({
   tenantId,
   accessToken,
   isOnline,
-  emitter,
+  emitter: primaryEmitter,
   actorRole,
   invoiceModeAllowed,
 }: {
@@ -93,6 +103,21 @@ export function InvoiceSection({
   const [externalNumber, setExternalNumber] = useState(
     entry.manualInvoiceNumber ?? '',
   );
+  const [externalOtherIssuer, setExternalOtherIssuer] = useState(
+    !entry.manualInvoiceArcaAccountId &&
+      Boolean(entry.manualInvoiceIssuerCuit || entry.manualInvoiceIssuerName),
+  );
+  const [externalIssuerCuit, setExternalIssuerCuit] = useState(
+    entry.manualInvoiceIssuerCuit ?? '',
+  );
+  const [externalIssuerName, setExternalIssuerName] = useState(
+    entry.manualInvoiceIssuerName ?? '',
+  );
+  const normalizedIssuerCuit = normalizeCuit(externalIssuerCuit);
+  const externalIssuerValid =
+    !externalOtherIssuer ||
+    (Boolean(normalizedIssuerCuit || externalIssuerName.trim()) &&
+      (!normalizedIssuerCuit || isValidCuit(normalizedIssuerCuit)));
   const [savedPdf, setSavedPdf] = useState<{
     invoiceId: string;
     path: string;
@@ -108,6 +133,47 @@ export function InvoiceSection({
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<string[] | null>(
     null,
   );
+  const invoice = useLiveQuery(
+    () => localDb.invoices.where('entryId').equals(entry.id).first(),
+    [entry.id],
+  );
+  const config = useArcaEmitterState(tenantId, accessToken, isOnline);
+  const accounts = config.accounts ?? [];
+  const [accountChoice, setAccountChoice] = useState<string>();
+  const accountId =
+    accountChoice ??
+    invoice?.arcaAccountId ??
+    accounts.find(
+      (item) =>
+        item.role === 'primary' &&
+        ['linked', 'cert_expired'].includes(item.status),
+    )?.id;
+  const account = accounts.find((item) => item.id === accountId);
+  const emitter = account
+    ? toArcaEmitter(account)
+    : accountId
+      ? null
+      : primaryEmitter;
+  const emitterLocked = Boolean(
+    invoice &&
+    (invoice.status === 'issuing' ||
+      invoice.status === 'issued' ||
+      invoice.cbteNro != null),
+  );
+  const canSelectAccount = actorRole === 'owner' || actorRole === 'admin';
+  const [externalAccountChoice, setExternalAccountChoice] = useState<string>();
+  useEffect(() => {
+    setAccountChoice(undefined);
+    setExternalAccountChoice(undefined);
+  }, [entry.id]);
+  const externalAccountId =
+    externalAccountChoice ??
+    entry.manualInvoiceArcaAccountId ??
+    accounts.find(
+      (item) =>
+        item.role === 'primary' &&
+        ['linked', 'cert_expired'].includes(item.status),
+    )?.id;
   const receiver = useInvoiceReceiver({
     tenantId,
     accessToken,
@@ -116,11 +182,8 @@ export function InvoiceSection({
     entryId: entry.id,
     suggestionEnabled: issueOpen,
     frozen: actionBusy || confirmation.snapshot !== null,
+    arcaAccountId: accountId,
   });
-  const invoice = useLiveQuery(
-    () => localDb.invoices.where('entryId').equals(entry.id).first(),
-    [entry.id],
-  );
   const currentPaymentLines =
     useLiveQuery(
       () =>
@@ -198,23 +261,25 @@ export function InvoiceSection({
         (state === 'error' ? 'No se pudo emitir.' : null))
       : null;
   const showExternal =
-    emitter !== null &&
+    primaryEmitter !== null &&
     actorRole === 'owner' &&
     (state === 'none' ||
       state === 'pending' ||
       state === 'error' ||
       state === 'manual');
-  const externalSaved =
-    emitter !== null && state === 'manual' && current.manuallyInvoiced;
+  const externalSaved = state === 'manual' && current.manuallyInvoiced;
   const canIssue =
     emitter !== null &&
+    (account?.role !== 'secondary' || canSelectAccount) &&
     invoiceModeAllowed &&
     eligiblePaymentIds.length > 0 &&
     isUnbilled(state) &&
     !current.manuallyInvoiced &&
     !externalOpen;
   const showManual =
-    emitter === null && (state === 'none' || state === 'manual');
+    primaryEmitter === null &&
+    !accountId &&
+    (state === 'none' || state === 'manual');
   const showReminder =
     actorRole === 'owner' &&
     (state === 'pending' || state === 'none') &&
@@ -457,12 +522,18 @@ export function InvoiceSection({
     }
   }
 
-  async function saveExternalInvoice(details: {
-    manuallyInvoiced: boolean;
-    manualInvoiceType?: 'A' | 'B' | 'C';
-    manualInvoicePointOfSale?: string;
-    manualInvoiceNumber?: string;
-  }) {
+  async function saveExternalInvoice(
+    details: Required<Pick<CorrectEntryDto, 'manuallyInvoiced'>> &
+      Pick<
+        CorrectEntryDto,
+        | 'manualInvoiceType'
+        | 'manualInvoicePointOfSale'
+        | 'manualInvoiceNumber'
+        | 'manualInvoiceArcaAccountId'
+        | 'manualInvoiceIssuerCuit'
+        | 'manualInvoiceIssuerName'
+      >,
+  ) {
     if (!isOnline || actionBusy) return;
     setBusy('external');
     try {
@@ -484,6 +555,12 @@ export function InvoiceSection({
             manualInvoicePointOfSale:
               result.manualInvoicePointOfSale ?? undefined,
             manualInvoiceNumber: result.manualInvoiceNumber ?? undefined,
+            manualInvoiceArcaAccountId:
+              result.manualInvoiceArcaAccountId ?? undefined,
+            manualInvoiceIssuerCuit:
+              result.manualInvoiceIssuerCuit ?? undefined,
+            manualInvoiceIssuerName:
+              result.manualInvoiceIssuerName ?? undefined,
             version: result.version,
             syncSeq: result.syncSeq,
             updatedAt: result.updatedAt,
@@ -522,6 +599,33 @@ export function InvoiceSection({
     <section className="entry-invoice-section" aria-label="Factura">
       <h4>Factura</h4>
       <dl className="entry-invoice-rows">
+        {(
+          current.manuallyInvoiced
+            ? current.manualInvoiceIssuerCuit || current.manualInvoiceIssuerName
+            : invoice?.emisorCuit
+        ) ? (
+          <>
+            <dt>Emisor</dt>
+            <dd>
+              {current.manuallyInvoiced
+                ? current.manualInvoiceIssuerName
+                : invoice?.emisorRazonSocial}{' '}
+              {(
+                current.manuallyInvoiced
+                  ? current.manualInvoiceIssuerCuit
+                  : invoice?.emisorCuit
+              ) ? (
+                <>
+                  {' '}
+                  · CUIT{' '}
+                  {current.manuallyInvoiced
+                    ? current.manualInvoiceIssuerCuit
+                    : invoice?.emisorCuit}
+                </>
+              ) : null}
+            </dd>
+          </>
+        ) : null}
         <div className="entry-invoice-state">
           <dt>Estado</dt>
           <dd>
@@ -571,6 +675,22 @@ export function InvoiceSection({
           </>
         ) : null}
       </dl>
+      {canSelectAccount &&
+      !externalOpen &&
+      (accounts.length > 1 || (accountId && !account)) &&
+      isUnbilled(state) ? (
+        <InvoiceAccountSelector
+          accounts={accounts}
+          value={accountId}
+          disabled={
+            actionBusy || emitterLocked || confirmation.snapshot !== null
+          }
+          onChange={(id) => {
+            confirmation.close();
+            setAccountChoice(id);
+          }}
+        />
+      ) : null}
       {showReminder ? (
         <div
           className="entry-invoice-reminder"
@@ -661,6 +781,10 @@ export function InvoiceSection({
                   letter,
                   cuit: receiver.cuitToSend,
                   receiverName: receiver.receiverName,
+                  arcaAccountId: accountId,
+                  issuerLabel: account
+                    ? invoiceAccountLabel(account)
+                    : undefined,
                   ...(invoicePaymentOptions.length > 1
                     ? { invoicePaymentIds: activePaymentIds }
                     : {}),
@@ -717,6 +841,16 @@ export function InvoiceSection({
             disabled={actionBusy || !isOnline}
             onClick={() => {
               setIssueOpen(false);
+              setExternalOtherIssuer(
+                !current.manualInvoiceArcaAccountId &&
+                  Boolean(
+                    current.manualInvoiceIssuerCuit ||
+                    current.manualInvoiceIssuerName,
+                  ),
+              );
+              setExternalIssuerCuit(current.manualInvoiceIssuerCuit ?? '');
+              setExternalIssuerName(current.manualInvoiceIssuerName ?? '');
+              setExternalAccountChoice(undefined);
               setExternalOpen(true);
             }}
           >
@@ -756,6 +890,58 @@ export function InvoiceSection({
 
       {showExternal && externalOpen ? (
         <div className="entry-external-invoice">
+          <label className="entry-external-issuer-toggle">
+            <input
+              type="checkbox"
+              checked={externalOtherIssuer}
+              disabled={actionBusy}
+              onChange={(event) => setExternalOtherIssuer(event.target.checked)}
+            />
+            Factura de otro emisor
+          </label>
+          {externalOtherIssuer ? (
+            <div className="entry-external-issuer-fields">
+              <label>
+                CUIT del emisor
+                <input
+                  value={externalIssuerCuit}
+                  inputMode="numeric"
+                  maxLength={32}
+                  placeholder="20-12345678-6"
+                  disabled={actionBusy}
+                  aria-invalid={Boolean(
+                    normalizedIssuerCuit && !isValidCuit(normalizedIssuerCuit),
+                  )}
+                  onChange={(event) =>
+                    setExternalIssuerCuit(event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Nombre o razón social
+                <input
+                  value={externalIssuerName}
+                  maxLength={180}
+                  disabled={actionBusy}
+                  onChange={(event) =>
+                    setExternalIssuerName(event.target.value)
+                  }
+                />
+              </label>
+              {normalizedIssuerCuit && !isValidCuit(normalizedIssuerCuit) ? (
+                <p className="entry-external-issuer-error" role="alert">
+                  El CUIT no es válido.
+                </p>
+              ) : null}
+            </div>
+          ) : accounts.length > 0 ? (
+            <InvoiceAccountSelector
+              accounts={accounts}
+              value={externalAccountId}
+              onChange={setExternalAccountChoice}
+              disabled={actionBusy}
+            />
+          ) : null}
           <div className="entry-external-invoice-fields">
             <label>
               Tipo
@@ -810,6 +996,7 @@ export function InvoiceSection({
               disabled={
                 actionBusy ||
                 !isOnline ||
+                !externalIssuerValid ||
                 !/^\d{1,5}$/.test(externalPoint) ||
                 !/^\d{1,8}$/.test(externalNumber)
               }
@@ -819,6 +1006,14 @@ export function InvoiceSection({
                   manualInvoiceType: externalType,
                   manualInvoicePointOfSale: externalPoint,
                   manualInvoiceNumber: externalNumber,
+                  ...(externalOtherIssuer
+                    ? {
+                        manualInvoiceArcaAccountId: null,
+                        manualInvoiceIssuerCuit: normalizedIssuerCuit || null,
+                        manualInvoiceIssuerName:
+                          externalIssuerName.trim() || null,
+                      }
+                    : { manualInvoiceArcaAccountId: externalAccountId }),
                 })
               }
             >

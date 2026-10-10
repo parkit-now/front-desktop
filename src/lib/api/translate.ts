@@ -196,6 +196,13 @@ const CODE_MESSAGES: Record<string, string> = {
   ARCA_NOT_LINKED:
     'Esta playa no tiene la facturación electrónica vinculada. El dueño la vincula desde el panel web.',
   ARCA_UNAVAILABLE: 'ARCA no responde. Intentalo más tarde.',
+  ARCA_PRIMARY_REQUIRED: 'Primero vinculá la cuenta primaria de ARCA.',
+  ARCA_ACCOUNT_DUPLICATE:
+    'Ya existe una cuenta con ese CUIT, entorno y punto de venta.',
+  ARCA_ACCOUNT_UNAVAILABLE:
+    'La cuenta elegida ya no está disponible. La factura conserva su emisor y queda pendiente.',
+  INVOICE_EMITTER_LOCKED:
+    'La emisión anterior debe resolverse con su cuenta original antes de cambiar el emisor.',
   ARCA_CERT_EXPIRED:
     'Venció el certificado de ARCA. Avisale al dueño para que lo renueve.',
   ARCA_CERT_NOT_AUTHORIZED:
