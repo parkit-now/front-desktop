@@ -1,3 +1,10 @@
+# [1.22.0](https://github.com/parkit-now/front-desktop/compare/v1.21.0...v1.22.0) (2026-10-10)
+
+
+### Features
+
+* **invoice:** add invoice status reminder feature and related UI components ([9012a11](https://github.com/parkit-now/front-desktop/commit/9012a118fdbb718a0bdfed7c526b974280c0294e))
+
 # [1.21.0](https://github.com/parkit-now/front-desktop/compare/v1.20.0...v1.21.0) (2026-10-09)
 
 
