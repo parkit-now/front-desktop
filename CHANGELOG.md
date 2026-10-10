@@ -1,3 +1,11 @@
+# [1.24.0](https://github.com/parkit-now/front-desktop/compare/v1.23.0...v1.24.0) (2026-10-10)
+
+
+### Features
+
+* **desktop:** agregar vista previa configurable e impresión del cierre de caja ([65e38a1](https://github.com/parkit-now/front-desktop/commit/65e38a149765d822d05e25e2790860f4fc8aafb1))
+* **facturacion:** incorporar cuenta ARCA secundaria y emisores externos ([f9123ab](https://github.com/parkit-now/front-desktop/commit/f9123ab768fd7dec3e89ec15b4b34e495f2a1314))
+
 # [1.23.0](https://github.com/parkit-now/front-desktop/compare/v1.22.0...v1.23.0) (2026-10-10)
 
 
