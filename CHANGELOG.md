@@ -1,3 +1,10 @@
+# [1.23.0](https://github.com/parkit-now/front-desktop/compare/v1.22.0...v1.23.0) (2026-10-10)
+
+
+### Features
+
+* **facturacion:** elegir pagos al facturar un cobro dividido ([30565cb](https://github.com/parkit-now/front-desktop/commit/30565cb6c4e30d7afda0e7872ac7db56a82d0faf))
+
 # [1.22.0](https://github.com/parkit-now/front-desktop/compare/v1.21.0...v1.22.0) (2026-10-10)
 
 
