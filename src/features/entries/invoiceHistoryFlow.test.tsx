@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import ExcelJS from 'exceljs';
 import type { LocalEntry, LocalInvoice } from '../../lib/db/localDb';
 import type { CloseEntryDto } from '../../lib/api/entries';
 import { localDb } from '../../lib/db/localDb';
@@ -21,6 +22,7 @@ const mock = vi.hoisted(() => ({
   savePdf: vi.fn(),
   reveal: vi.fn(),
   toast: vi.fn(),
+  saveExcel: vi.fn(),
   online: true,
   accounts: [] as Record<string, unknown>[],
   enqueue: vi.fn(),
@@ -126,6 +128,7 @@ vi.mock('dexie-react-hooks', async () => {
 vi.mock('../../lib/network/NetworkContext', () => ({
   useNetwork: () => ({ isOnline: mock.online }),
 }));
+vi.mock('../../lib/download', () => ({ saveBlob: mock.saveExcel }));
 vi.mock('../../lib/notifications/ToastProvider', () => ({
   useToast: () => ({ showToast: mock.toast }),
 }));
@@ -345,6 +348,52 @@ afterEach(async () => {
 });
 
 describe('historial reactivo al facturar desde cualquier panel', () => {
+  it('descarga un Excel con monto numerico, medios juntos y total sin cambiar la tabla', async () => {
+    mock.tables
+      .get('entries')!
+      .set(entry.id, { ...entry, leftAt, amountPaid: '5000' });
+    mock.tables.get('paymentTransactions')!.set('qr', {
+      id: 'qr',
+      tenantId: 'tenant',
+      entryId: entry.id,
+      paymentMethodId: 'qr',
+      paymentMethodName: 'Mercado Pago QR',
+      amount: 2500,
+    });
+    mock.tables.get('paymentTransactions')!.set('cash-payment', {
+      id: 'cash-payment',
+      tenantId: 'tenant',
+      entryId: entry.id,
+      paymentMethodId: 'cash',
+      paymentMethodName: 'Efectivo',
+      amount: 2500,
+    });
+    await render();
+    expect(container.querySelector('thead')?.textContent).toContain('Cobrado');
+    expect(historyRow().textContent).toContain('Mercado Pago QR + Efectivo');
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Descargar Excel"]')!
+        .click();
+      await vi.waitFor(() => expect(mock.saveExcel).toHaveBeenCalledOnce());
+    });
+    const [blob] = mock.saveExcel.mock.calls[0] as [Blob, string];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await blob.arrayBuffer());
+    const sheet = workbook.getWorksheet('Historial')!;
+    const headers = sheet.getRow(1).values as ExcelJS.CellValue[];
+    const amountColumn = headers.indexOf('Monto');
+    const methodColumn = headers.indexOf('Medio de pago');
+    expect(amountColumn).toBeGreaterThan(0);
+    expect(methodColumn).toBe(amountColumn + 1);
+    expect(sheet.rowCount).toBe(3);
+    expect(sheet.getCell(2, amountColumn).value).toBe(5000);
+    expect(sheet.getCell(2, methodColumn).value).toBe(
+      'Mercado Pago QR + Efectivo',
+    );
+    expect(sheet.getCell(3, amountColumn).result).toBe(5000);
+    expect(sheet.getCell(3, 1).value).toBe('Total');
+  });
   async function chooseSecondary() {
     await click('Primaria · Emisor principal');
     await act(() =>

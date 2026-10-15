@@ -85,10 +85,14 @@ const columns: ColumnDef<RecordRow>[] = [
   { accessorKey: 'cuit', header: 'Receptor' },
 ];
 
-function makeTable(state: Partial<TableState> = {}, rows = data) {
+function makeTable(
+  state: Partial<TableState> = {},
+  rows = data,
+  exportColumns = columns,
+) {
   const table = createTable({
     data: rows,
-    columns,
+    columns: exportColumns,
     filterFns: {
       includesSome: filterFns.arrIncludesSome,
       dateRange: filterFns.includesString,
@@ -284,5 +288,171 @@ describe('Excel de la vista filtrada', () => {
     expect(sheet.getRow(2).height).toBe(45);
     expect(sheet.autoFilter).toBe('A1:E3');
     expect(sheet.views[0]).toMatchObject({ state: 'frozen', ySplit: 1 });
+  });
+});
+
+const splitPaymentColumns: ColumnDef<RecordRow>[] = columns.map((column) =>
+  'accessorKey' in column && column.accessorKey === 'paid'
+    ? {
+        ...column,
+        meta: {
+          exportColumns: [
+            {
+              header: 'Monto',
+              value: (row) => row.paid,
+              numFmt: '#,##0.00',
+              sum: true,
+            },
+            { header: 'Medio de pago', value: (row) => row.method },
+          ],
+        },
+      }
+    : column,
+);
+
+describe('montos separados y total del Excel', () => {
+  it('divide una columna solo en Excel, con una fila por auto y pagos mixtos juntos', () => {
+    const table = makeTable(
+      {},
+      [
+        { ...data[0], paid: 5000, method: 'Mercado Pago QR + Efectivo' },
+        { ...data[1], paid: 0 },
+        data[2],
+      ],
+      splitPaymentColumns,
+    );
+    const snapshot = getExcelSnapshot(table);
+    expect(table.getColumn('paid')?.columnDef.header).toBe('Cobrado');
+    expect(snapshot.columns.map((column) => column.header)).toEqual([
+      '#',
+      'Patente',
+      'Notas',
+      'Ingreso',
+      'Monto',
+      'Medio de pago',
+      'Receptor',
+    ]);
+    expect(snapshot.rows).toHaveLength(3);
+    expect(snapshot.rows[0].slice(4, 6)).toEqual([
+      5000,
+      'Mercado Pago QR + Efectivo',
+    ]);
+    expect(snapshot.rows[1][4]).toBe(0);
+    expect(snapshot.rows[2][4]).toBeNull();
+  });
+
+  it('respeta el orden y oculta las dos columnas si Cobrado esta oculto', () => {
+    const table = makeTable(
+      {
+        columnPinning: { left: ['paid'] },
+        columnOrder: ['notes', 'paid', 'ticket', 'plate', 'date', 'cuit'],
+      },
+      data,
+      splitPaymentColumns,
+    );
+    expect(
+      getExcelSnapshot(table)
+        .columns.slice(0, 2)
+        .map((column) => column.header),
+    ).toEqual(['Monto', 'Medio de pago']);
+    const hidden = getExcelSnapshot(
+      makeTable(
+        { columnVisibility: { paid: false } },
+        data,
+        splitPaymentColumns,
+      ),
+    );
+    expect(
+      hidden.columns.some(
+        (column) =>
+          column.header === 'Monto' || column.header === 'Medio de pago',
+      ),
+    ).toBe(false);
+    expect(hidden.columns.some((column) => column.sum)).toBe(false);
+  });
+
+  it('exporta importes numericos y una formula Total fuera del filtro, para todos los resultados y no solo la pagina', async () => {
+    const table = makeTable(
+      {
+        globalFilter: 'AAA',
+        sorting: [{ id: 'ticket', desc: true }],
+        pagination: { pageIndex: 0, pageSize: 1 },
+      },
+      data,
+      splitPaymentColumns,
+    );
+    const snapshot = getExcelSnapshot(table);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      await (await createExcelBlob(snapshot)).arrayBuffer(),
+    );
+    const sheet = workbook.getWorksheet('Historial')!;
+    expect(sheet.rowCount).toBe(4);
+    expect(sheet.getCell('E1').value).toBe('Monto');
+    expect(sheet.getCell('F1').value).toBe('Medio de pago');
+    expect(sheet.getCell('E2').value).toBe(10.25);
+    expect(sheet.getCell('E3').value).toBe(100);
+    expect(sheet.getCell('E2').type).toBe(ExcelJS.ValueType.Number);
+    expect(sheet.getCell('E2').numFmt).toBe('#,##0.00');
+    expect(sheet.getCell('A4').value).toBe('Total');
+    expect(sheet.getCell('E4').value).toEqual({
+      formula: 'SUM(E2:E3)',
+      result: 110.25,
+    });
+    expect(sheet.getCell('E4').numFmt).toBe('#,##0.00');
+    expect(sheet.getRow(4).font.bold).toBe(true);
+    expect(sheet.autoFilter).toBe('A1:G3');
+  });
+
+  it('ignora montos vacios, conserva ceros y evita errores de centavos en el total precalculado', async () => {
+    const table = makeTable(
+      { columnPinning: { left: ['paid'] } },
+      [
+        { ...data[0], paid: 0.1 },
+        { ...data[1], paid: 0.2 },
+        { ...data[2], paid: 0 },
+        { ...data[2], paid: null },
+      ],
+      splitPaymentColumns,
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      await (await createExcelBlob(getExcelSnapshot(table))).arrayBuffer(),
+    );
+    const sheet = workbook.getWorksheet('Historial')!;
+    expect(sheet.getCell('A4').value).toBe(0);
+    expect(sheet.getCell('A5').value).toBeNull();
+    expect(sheet.getCell('A6').value).toEqual({
+      formula: 'SUM(A2:A5)',
+      result: 0.3,
+    });
+    expect(sheet.getCell('B6').value).toBe('Total');
+  });
+
+  it('no suma filas excluidas por filtros ni agrega totales a una vista vacia', async () => {
+    const table = makeTable(
+      { globalFilter: 'AAA', columnFilters: [{ id: 'notes', value: 'QR' }] },
+      data,
+      splitPaymentColumns,
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      await (await createExcelBlob(getExcelSnapshot(table))).arrayBuffer(),
+    );
+    expect(workbook.getWorksheet('Historial')!.getCell('E3').value).toEqual({
+      formula: 'SUM(E2:E2)',
+      result: 10.25,
+    });
+    const empty = new ExcelJS.Workbook();
+    await empty.xlsx.load(
+      await (
+        await createExcelBlob(
+          getExcelSnapshot(
+            makeTable({ globalFilter: 'ZZZ' }, data, splitPaymentColumns),
+          ),
+        )
+      ).arrayBuffer(),
+    );
+    expect(empty.getWorksheet('Historial')!.rowCount).toBe(1);
   });
 });
