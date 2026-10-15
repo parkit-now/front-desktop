@@ -1,3 +1,10 @@
+# [1.25.0](https://github.com/parkit-now/front-desktop/compare/v1.24.0...v1.25.0) (2026-10-15)
+
+
+### Features
+
+* **excel-export:** enhance Excel export functionality with split payment columns and total calculations ([bffe54c](https://github.com/parkit-now/front-desktop/commit/bffe54cdf757803d4287f48633c4d7b2e5b58cfa))
+
 # [1.24.0](https://github.com/parkit-now/front-desktop/compare/v1.23.0...v1.24.0) (2026-10-10)
 
 
