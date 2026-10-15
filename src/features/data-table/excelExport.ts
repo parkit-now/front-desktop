@@ -1,6 +1,13 @@
-import type { RowData, Table } from '@tanstack/react-table';
+import type { Column, RowData, Table } from '@tanstack/react-table';
 
 export type ExcelValue = string | number | boolean | null;
+export type ExcelExportColumn<TData> = {
+  header: string;
+  value: (row: TData) => ExcelValue;
+  width?: number;
+  numFmt?: string;
+  sum?: boolean;
+};
 export type ExcelExportOptions<TData> = {
   fileName: string | ((rows: readonly TData[]) => string);
   sheetName?: string;
@@ -12,6 +19,7 @@ declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     exportHeader?: string;
     exportValue?: (row: TData) => ExcelValue;
+    exportColumns?: ExcelExportColumn<TData>[];
     excludeFromExport?: boolean;
     filterOnly?: boolean;
     displayColumnId?: string;
@@ -19,7 +27,7 @@ declare module '@tanstack/react-table' {
 }
 
 export type ExcelSnapshot = {
-  columns: { header: string; width: number }[];
+  columns: { header: string; width: number; numFmt?: string; sum?: boolean }[];
   rows: ExcelValue[][];
 };
 
@@ -67,26 +75,45 @@ export function getExcelSnapshot<TData>(table: Table<TData>): ExcelSnapshot {
   ].filter(
     (column) =>
       !column.columnDef.meta?.excludeFromExport &&
-      (column.accessorFn || column.columnDef.meta?.exportValue),
+      (column.accessorFn ||
+        column.columnDef.meta?.exportValue ||
+        column.columnDef.meta?.exportColumns?.length),
   );
+  const exportColumns = columns.flatMap<{
+    column: Column<TData>;
+    definition?: ExcelExportColumn<TData>;
+  }>((column) => {
+    const definitions = column.columnDef.meta?.exportColumns;
+    return definitions
+      ? definitions.map((definition) => ({ column, definition }))
+      : [{ column, definition: undefined }];
+  });
 
   return {
-    columns: columns.map((column) => ({
+    columns: exportColumns.map(({ column, definition }) => ({
       header:
+        definition?.header ??
         column.columnDef.meta?.exportHeader ??
         (typeof column.columnDef.header === 'string'
           ? column.columnDef.header
           : column.id),
-      width: Math.max(10, Math.min(50, column.getSize() / 7)),
+      width:
+        definition?.width ?? Math.max(10, Math.min(50, column.getSize() / 7)),
+      ...(definition?.numFmt ? { numFmt: definition.numFmt } : {}),
+      ...(definition?.sum ? { sum: true } : {}),
     })),
     // The pre-pagination model already includes the table's filters and sorting.
     rows: table
       .getPrePaginationRowModel()
       .rows.map((row) =>
-        columns.map((column) =>
-          column.columnDef.meta?.exportValue
-            ? column.columnDef.meta.exportValue(row.original)
-            : cellValue(row.getValue(column.id)),
+        exportColumns.map(({ column, definition }) =>
+          cellValue(
+            definition
+              ? definition.value(row.original)
+              : column.columnDef.meta?.exportValue
+                ? column.columnDef.meta.exportValue(row.original)
+                : row.getValue(column.id),
+          ),
         ),
       ),
   };
@@ -102,8 +129,33 @@ export async function createExcelBlob(
   sheet.columns = snapshot.columns.map((column) => ({
     header: column.header,
     width: column.width,
+    ...(column.numFmt ? { style: { numFmt: column.numFmt } } : {}),
   }));
   sheet.addRows(snapshot.rows);
+  if (
+    snapshot.rows.length > 0 &&
+    snapshot.columns.some((column) => column.sum)
+  ) {
+    const totalRow = sheet.addRow(snapshot.columns.map(() => null));
+    const labelIndex = snapshot.columns.findIndex((column) => !column.sum);
+    if (labelIndex >= 0) totalRow.getCell(labelIndex + 1).value = 'Total';
+    snapshot.columns.forEach((column, index) => {
+      if (!column.sum) return;
+      const letter = sheet.getColumn(index + 1).letter;
+      const total = snapshot.rows.reduce((sum, row) => {
+        const value = row[index];
+        return sum + (typeof value === 'number' ? value : 0);
+      }, 0);
+      totalRow.getCell(index + 1).value = {
+        formula: `SUM(${letter}2:${letter}${snapshot.rows.length + 1})`,
+        result: Number(total.toFixed(2)),
+      };
+    });
+    totalRow.font = { bold: true };
+    totalRow.eachCell((cell) => {
+      cell.border = { top: { style: 'thin', color: { argb: 'FFD0D9E6' } } };
+    });
+  }
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
   if (snapshot.columns.length > 0) {
     sheet.autoFilter = {

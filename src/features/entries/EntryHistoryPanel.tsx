@@ -360,17 +360,27 @@ const AMOUNT_PAID_COLUMN: ColumnDef<EntryHistoryRow, unknown> = {
   filterFn: paymentMethodFilter,
   meta: {
     filterLabel: 'Medio de pago',
-    exportValue: (row) =>
-      row.paidTotal == null
-        ? ''
-        : [
-            formatArs(row.paidTotal),
-            row.paymentLines.length > 0
+    exportColumns: [
+      {
+        header: 'Monto',
+        value: (row) => row.paidTotal,
+        numFmt: '#,##0.00',
+        sum: true,
+        width: 18,
+      },
+      {
+        header: 'Medio de pago',
+        value: (row) =>
+          row.paidTotal == null
+            ? ''
+            : row.paymentLines.length > 0
               ? row.paymentLines
                   .map((line) => line.paymentMethodName)
                   .join(' + ')
               : 'Sin medio',
-          ].join('\n'),
+        width: 30,
+      },
+    ],
   },
   cell: ({ row }) => {
     const { paidTotal, paymentLines } = row.original;
