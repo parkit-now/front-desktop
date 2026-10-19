@@ -1,3 +1,10 @@
+# [1.26.0](https://github.com/parkit-now/front-desktop/compare/v1.25.0...v1.26.0) (2026-10-19)
+
+
+### Features
+
+* **styles:** improve toolbar switch layout and enhance empty state styling ([00de9ae](https://github.com/parkit-now/front-desktop/commit/00de9aeaf4817f75bf965315d927f9ec39667c55))
+
 # [1.25.0](https://github.com/parkit-now/front-desktop/compare/v1.24.0...v1.25.0) (2026-10-15)
 
 
