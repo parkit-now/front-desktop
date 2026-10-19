@@ -1584,13 +1584,14 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 300px;
-  flex-wrap: nowrap;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   min-width: 0;
+  max-width: 100%;
 }
 
 .dt-toolbar-switches .ui-switch {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
   max-width: 100%;
   min-height: 38px;
@@ -1599,6 +1600,13 @@ h2 {
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.dt-toolbar-switches .ui-switch-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .dt-toolbar-switches .ui-switch:hover {
@@ -3316,12 +3324,7 @@ h2 {
 
   .dt-toolbar-switches {
     width: 100%;
-    flex-wrap: nowrap;
-  }
-
-  .dt-toolbar-switches .ui-switch {
-    flex: 1 1 0;
-    justify-content: space-between;
+    flex-wrap: wrap;
   }
 
   .dt-search-cluster {
@@ -4390,14 +4393,6 @@ h2 {
   color: #fff;
 }
 
-.exit-controls__list-count--empty {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-muted);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .exit-controls__list-label {
   flex: 1;
   text-align: left;
@@ -4422,6 +4417,17 @@ h2 {
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.exit-controls__list-count--empty {
+  min-width: 0;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* Columns 2-3: auto-detected entry suggestions */
