@@ -8,7 +8,7 @@ RESET := \033[0m
 ENV_LOCAL := .env.local
 ENV_PROD  := .env.production
 
-.PHONY: help install install-all dev prod build lint typecheck test format \
+.PHONY: help install install-all dev prod build lint typecheck test coverage format \
         env-check env-use-local env-use-prod doctor \
         sync-types clean \
         services-build dist-mac dist-win dist-linux
@@ -67,6 +67,9 @@ typecheck: ## Ejecutar TypeScript sin emitir
 
 test: ## Ejecutar tests
 	@bun run test
+
+coverage: ## Ejecutar tests con reporte de cobertura (coverage/)
+	@bun run test:coverage
 
 format: ## Formatear archivos
 	@bun run format
