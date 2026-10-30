@@ -116,6 +116,23 @@ const h = vi.hoisted(() => {
         for (const row of rows) entries.set(row.id, row);
         return Promise.resolve();
       },
+      // `bulkDelete` y `where` los usa la reconciliación de estadías.
+      bulkDelete(ids: string[]): Promise<void> {
+        for (const id of ids) entries.delete(id);
+        return Promise.resolve();
+      },
+      where(field: keyof LocalEntry) {
+        return {
+          equals(value: unknown) {
+            return {
+              toArray: () =>
+                Promise.resolve(
+                  [...entries.values()].filter((row) => row[field] === value),
+                ),
+            };
+          },
+        };
+      },
     },
     rates,
     vehicles,
@@ -263,6 +280,7 @@ const h = vi.hoisted(() => {
     updateLprDetectionEvent: vi.fn(),
     uploadLprDetectionEventImage: vi.fn(),
     createEntry: vi.fn(),
+    listEntryIds: vi.fn(() => Promise.resolve([] as string[])),
   };
 });
 
@@ -272,6 +290,7 @@ vi.mock('../db/localDb', () => ({ localDb: h.localDb }));
 vi.mock('../api/entries', () => ({
   pullEntryChanges: h.pullEntryChanges,
   createEntry: h.createEntry,
+  listEntryIds: h.listEntryIds,
   closeEntry: vi.fn(),
   correctEntry: vi.fn(),
 }));
@@ -430,6 +449,8 @@ beforeEach(() => {
   h.pullPaymentTransactionChanges.mockReset();
   h.pullLprDetectionEventChanges.mockReset();
   h.listRates.mockReset();
+  h.listEntryIds.mockReset();
+  h.listEntryIds.mockResolvedValue([]);
   h.listVehicleTypes.mockReset();
   h.listPaymentMethods.mockReset();
   h.uploadLprDetectionEventImage.mockReset();
@@ -644,6 +665,11 @@ describe('pullEntries y los cambios locales sin sincronizar', () => {
     // que sea así — el feed no es autoritativo sobre las estadías históricas,
     // y podar por omisión borraría cobros. Lo que este test fija es que la
     // fila tampoco se reenvía sola ni se corrompe.
+    //
+    // La poda existe, pero vive en la reconciliación (`reconcileCatalogs`),
+    // que compara contra la lista completa del servidor y tiene sus propias
+    // salvaguardas. Son dos caminos distintos a propósito: ver
+    // `describe('reconciliación de estadías')`.
     h.entries.set('e-fantasma', localEntry('e-fantasma', { syncSeq: 1 }));
     h.syncState.set(STATE_KEY, {
       key: STATE_KEY,
@@ -1566,6 +1592,70 @@ describe('pushLprDetectionEventImages', () => {
   });
 });
 
+describe('reconciliación de estadías', () => {
+  function estadiaLocal(id: string) {
+    h.entries.set(id, localEntry(id));
+  }
+
+  function servidorConoce(ids: string[]) {
+    h.listEntryIds.mockResolvedValue(ids);
+    h.listRates.mockResolvedValue([]);
+    h.listVehicleTypes.mockResolvedValue([]);
+    h.listPaymentMethods.mockResolvedValue([]);
+  }
+
+  it('poda la estadía que el servidor no conoce', async () => {
+    // El caso real: dos estadías de un entorno de desarrollo viejo que
+    // sobrevivieron en la base local y aparecían en el historial de un solo
+    // equipo. El pull incremental no las menciona nunca, así que la única
+    // salida era borrar la base entera.
+    estadiaLocal('viva');
+    estadiaLocal('fantasma');
+    servidorConoce(['viva']);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.entries.has('fantasma')).toBe(false);
+    expect(h.entries.has('viva')).toBe(true);
+  });
+
+  it('NO poda una estadía con una operación encolada', async () => {
+    // Un ingreso cargado sin conexión todavía no existe en el servidor. Si la
+    // reconciliación lo leyera como fantasma, borraría un auto que está
+    // adentro del estacionamiento.
+    estadiaLocal('sin-pushear');
+    h.pendingOps.push({
+      localId: 1,
+      entityType: 'entry',
+      operation: 'create',
+      tenantId: TENANT,
+      entityId: 'sin-pushear',
+      payload: {},
+      status: 'pending',
+      createdAt: Date.now(),
+      retryCount: 0,
+    });
+    servidorConoce([]);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.entries.has('sin-pushear')).toBe(true);
+  });
+
+  it('no borra nada si el servidor devuelve la lista vacía', async () => {
+    // Un tenant legítimamente vacío y un endpoint que falla devolviendo `[]`
+    // son indistinguibles desde acá, y equivocarse deja al operador sin poder
+    // cobrar.
+    estadiaLocal('una');
+    estadiaLocal('otra');
+    servidorConoce([]);
+
+    await syncService.reconcileCatalogs(true);
+
+    expect(h.entries.size).toBe(2);
+  });
+});
+
 describe('reconcileCatalogs', () => {
   function tarifaLocal(id: string) {
     h.rates.rows.set(id, localRate(id));
@@ -1575,6 +1665,9 @@ describe('reconcileCatalogs', () => {
     h.listRates.mockResolvedValue(ids.map((id) => ({ id })));
     h.listVehicleTypes.mockResolvedValue([]);
     h.listPaymentMethods.mockResolvedValue([]);
+    // Sin estadías locales, la reconciliación de `entry` no tiene nada que
+    // podar: devolver vacío acá no afecta a los casos de tarifas.
+    h.listEntryIds.mockResolvedValue([]);
   }
 
   it('poda la tarifa que el servidor ya no conoce', async () => {

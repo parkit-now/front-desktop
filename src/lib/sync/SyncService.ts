@@ -25,6 +25,7 @@ import {
   createEntry,
   closeEntry,
   correctEntry,
+  listEntryIds,
   pullEntryChanges,
   type EntryDto,
 } from '../api/entries';
@@ -1798,6 +1799,37 @@ class SyncService {
     if (!bearer || !tenantId) return;
 
     const entities: [string, () => Promise<void>][] = [
+      [
+        'estadías',
+        () =>
+          this.reconcileEntity({
+            entity: 'entry',
+            entityType: 'entry',
+            table: localDb.entries,
+            // 24 h y no 6: es la lista más larga de todas y no cambia de
+            // golpe. El botón Sincronizar la fuerza igual cuando el operador
+            // ve algo que no debería estar.
+            intervalMs: RECONCILE_INTERVAL_MS.large,
+            force,
+            fetchServerIds: async () => {
+              // Podar estadías es más delicado que podar un catálogo: son
+              // cobros. Lo que lo hace seguro NO es este llamado, son las
+              // reglas de `decidePrune`: una fila con operación encolada
+              // nunca se toca (un alta local sin pushear se protege sola), un
+              // servidor que responde vacío no borra nada, y una poda que se
+              // pasa de la mitad del total se bloquea.
+              //
+              // El endpoint devuelve SÓLO las vivas, y eso es deliberado: así
+              // una estadía borrada en el servidor desaparece también acá. Si
+              // alguien le agrega un filtro del lado del backend —por fecha,
+              // por caja— todo lo que quede afuera se lee como fantasma y se
+              // borra del equipo. Es el mismo cuidado que `listRates` con
+              // `includeInactive`.
+              const ids = await listEntryIds({ tenantId, bearer });
+              return { ids, complete: true };
+            },
+          }),
+      ],
       [
         'clientes',
         () =>
