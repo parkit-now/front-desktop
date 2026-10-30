@@ -65,14 +65,58 @@ export function normalizeText(value: unknown): string {
     .trim();
 }
 
+function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || value === '';
+}
+
+/**
+ * Orden por defecto de todas las columnas.
+ *
+ * Compara según el TIPO del valor, no según su representación en texto: si se
+ * normaliza todo a string, una columna numérica queda ordenada
+ * lexicográficamente (`1, 10, 100, 11, 2, 20, 3`) en vez de por su valor.
+ *
+ * Los vacíos se resuelven primero y siempre para el mismo lado, para que el
+ * comparador sea transitivo aun en columnas que mezclan valores y nulos.
+ */
 export const caseInsensitiveSort: SortingFn<unknown> = (
   rowA,
   rowB,
   columnId,
 ) => {
-  const left = normalizeText(rowA.getValue(columnId));
-  const right = normalizeText(rowB.getValue(columnId));
-  return left.localeCompare(right, 'es');
+  const left: unknown = rowA.getValue(columnId);
+  const right: unknown = rowB.getValue(columnId);
+
+  const leftEmpty = isEmptyValue(left);
+  const rightEmpty = isEmptyValue(right);
+  if (leftEmpty || rightEmpty) {
+    if (leftEmpty && rightEmpty) return 0;
+    return leftEmpty ? -1 : 1;
+  }
+
+  if (typeof left === 'number' && typeof right === 'number') {
+    return left === right ? 0 : left < right ? -1 : 1;
+  }
+
+  if (typeof left === 'bigint' && typeof right === 'bigint') {
+    return left === right ? 0 : left < right ? -1 : 1;
+  }
+
+  if (left instanceof Date && right instanceof Date) {
+    return left.getTime() - right.getTime();
+  }
+
+  if (typeof left === 'boolean' && typeof right === 'boolean') {
+    return left === right ? 0 : left ? 1 : -1;
+  }
+
+  // `numeric: true` para los números guardados como texto: los precios de las
+  // tarifas viajan como `string` desde Dexie y llegan acá sin convertir, así
+  // que sin esto `'900'` quedaría después de `'10000'`. De paso ordena bien
+  // los tramos numéricos de las patentes (`AA2` antes que `AA10`).
+  return normalizeText(left).localeCompare(normalizeText(right), 'es', {
+    numeric: true,
+  });
 };
 
 export function defaultSortOrder(keys: string[]): SortingState {
