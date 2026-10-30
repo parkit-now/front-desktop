@@ -2602,6 +2602,12 @@ h2 {
   cursor: pointer;
 }
 
+/* Columna activa: la flecha y el rótulo toman el color de marca para que se
+   vea de un vistazo por cuál columna está ordenada la tabla. */
+.dt-sort-button.is-sorted {
+  color: var(--color-brand);
+}
+
 .dt-state {
   display: grid;
   min-height: 130px;

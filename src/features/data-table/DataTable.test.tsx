@@ -390,3 +390,51 @@ it('mantiene el filtro de comprobante sin mostrar su columna en una vista guarda
     'Comprobante',
   );
 });
+
+describe('dirección de orden en el encabezado', () => {
+  const headers = () => [...container.querySelectorAll('thead th')];
+  const sortButton = (label: string) =>
+    headers()
+      .find((th) => th.textContent === label)
+      ?.querySelector<HTMLButtonElement>('.dt-sort-button');
+
+  it('refleja el estado en aria-sort y en el icono, sin tocar el texto', async () => {
+    await render();
+    const textoInicial = headers().map((th) => th.textContent);
+    const boton = sortButton('Patente');
+    expect(boton).toBeTruthy();
+
+    const th = () => headers().find((item) => item.textContent === 'Patente');
+    expect(th()?.getAttribute('aria-sort')).toBe('none');
+
+    await act(() => Promise.resolve(boton!.click()));
+    expect(th()?.getAttribute('aria-sort')).toBe('ascending');
+
+    await act(() => Promise.resolve(sortButton('Patente')!.click()));
+    expect(th()?.getAttribute('aria-sort')).toBe('descending');
+
+    // Las demás columnas ordenables siguen sin orden.
+    expect(
+      headers()
+        .filter((item) => item.textContent !== 'Patente')
+        .map((item) => item.getAttribute('aria-sort')),
+    ).toEqual(['none', 'none']);
+
+    // El estado viaja por atributos e iconos: el texto del encabezado no cambia.
+    expect(headers().map((item) => item.textContent)).toEqual(textoInicial);
+  });
+
+  it('marca la columna activa y conserva un boton enfocable', async () => {
+    await render();
+    const boton = sortButton('Notas')!;
+    expect(boton.tagName).toBe('BUTTON');
+    expect(boton.className).toBe('dt-sort-button');
+
+    boton.focus();
+    await act(() => Promise.resolve(boton.click()));
+
+    const activo = sortButton('Notas')!;
+    expect(activo.className).toContain('is-sorted');
+    expect(document.activeElement).toBe(activo);
+  });
+});

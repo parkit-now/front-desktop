@@ -18,7 +18,14 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table';
 import { format } from 'date-fns';
-import { ArrowUpDown, RefreshCcw, Search, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  RefreshCcw,
+  Search,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DateRange } from '../../lib/ui/DateRangeFilter';
 import {
@@ -805,9 +812,19 @@ export function DataTable<TData>({
                 {headerGroup.headers.map((header) => {
                   const column = header.column;
                   const pinned = column.getIsPinned();
+                  const sorted = column.getIsSorted();
                   return (
                     <th
                       key={header.id}
+                      aria-sort={
+                        !column.getCanSort()
+                          ? undefined
+                          : sorted === 'asc'
+                            ? 'ascending'
+                            : sorted === 'desc'
+                              ? 'descending'
+                              : 'none'
+                      }
                       className={pinned === 'left' ? 'pinned-left' : undefined}
                       style={
                         pinned === 'left'
@@ -818,14 +835,24 @@ export function DataTable<TData>({
                       {header.isPlaceholder ? null : column.getCanSort() ? (
                         <button
                           type="button"
-                          className="dt-sort-button"
+                          className={
+                            sorted
+                              ? 'dt-sort-button is-sorted'
+                              : 'dt-sort-button'
+                          }
                           onClick={column.getToggleSortingHandler()}
                         >
                           {flexRender(
                             header.column.columnDef.header,
                             header.getContext(),
                           )}
-                          <ArrowUpDown size={14} />
+                          {sorted === 'asc' ? (
+                            <ArrowUp size={14} aria-hidden />
+                          ) : sorted === 'desc' ? (
+                            <ArrowDown size={14} aria-hidden />
+                          ) : (
+                            <ArrowUpDown size={14} aria-hidden />
+                          )}
                         </button>
                       ) : (
                         flexRender(
