@@ -262,6 +262,7 @@ const h = vi.hoisted(() => {
     upsertLprDetectionEvent: vi.fn(),
     updateLprDetectionEvent: vi.fn(),
     uploadLprDetectionEventImage: vi.fn(),
+    createEntry: vi.fn(),
   };
 });
 
@@ -270,7 +271,7 @@ import { ApiError } from '../api/client';
 vi.mock('../db/localDb', () => ({ localDb: h.localDb }));
 vi.mock('../api/entries', () => ({
   pullEntryChanges: h.pullEntryChanges,
-  createEntry: vi.fn(),
+  createEntry: h.createEntry,
   closeEntry: vi.fn(),
   correctEntry: vi.fn(),
 }));
@@ -631,6 +632,34 @@ describe('pullEntries y los cambios locales sin sincronizar', () => {
       plate: 'NUEVA22',
       version: 2,
     });
+  });
+
+  it('conserva una estadía local que el servidor no conoce, y no la reenvía', async () => {
+    // El caso real: una IndexedDB de desarrollo que no se borró cuando se
+    // limpió producción dejó dos estadías viejas que sólo existían en ese
+    // equipo, y salieron en el Excel del historial.
+    //
+    // `pullEntries` es incremental por `syncSeq` y sólo aplica lo que el feed
+    // trae: nunca poda una fila local que el servidor no menciona. Está bien
+    // que sea así — el feed no es autoritativo sobre las estadías históricas,
+    // y podar por omisión borraría cobros. Lo que este test fija es que la
+    // fila tampoco se reenvía sola ni se corrompe.
+    h.entries.set('e-fantasma', localEntry('e-fantasma', { syncSeq: 1 }));
+    h.syncState.set(STATE_KEY, {
+      key: STATE_KEY,
+      lastSeq: 50,
+      lastSyncAt: ENTERED_AT,
+    });
+    h.pullEntryChanges.mockResolvedValue({ items: [], maxSeq: 50 });
+
+    await syncService.pullEntries();
+    await syncService.pushPendingOps();
+
+    // Sigue ahí: borrarla en silencio sería perder una estadía cobrada.
+    expect(h.entries.get('e-fantasma')).toBeDefined();
+    // Sin op encolada no hay nada que empujar: no se recrea en el servidor.
+    expect(h.pendingOps).toHaveLength(0);
+    expect(h.createEntry).not.toHaveBeenCalled();
   });
 });
 
