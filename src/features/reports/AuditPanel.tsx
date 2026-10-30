@@ -25,6 +25,7 @@ import {
 import { DateRangeFilter, type DateRange } from '../../lib/ui/DateRangeFilter';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { DataTable } from '../data-table/DataTable';
+import { textSorting } from '../data-table/utils';
 import { Pagination } from '../data-table/components/Pagination';
 import { PlateCell } from '../data-table/components/PlateCell';
 import { VehicleCell } from '../data-table/components/VehicleCell';
@@ -847,6 +848,7 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
         id: 'plate',
         header: 'Patente / ticket',
         accessorKey: 'plate',
+        sortingFn: textSorting(),
         cell: ({ row }) => (
           <div className="report-stack">
             <PlateCell plate={row.original.plate} />

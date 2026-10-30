@@ -119,6 +119,22 @@ export const caseInsensitiveSort: SortingFn<unknown> = (
   });
 };
 
+/**
+ * Orden alfabético estricto, sin tratar los dígitos como números.
+ *
+ * Es lo contrario de lo que hace `caseInsensitiveSort` para el texto, y está
+ * pensado para los identificadores donde los dígitos son parte del código y no
+ * una cantidad: en una patente, `AA10` va antes que `AA2` porque se lee como
+ * una cadena, igual que en el papel y en los listados del estacionamiento.
+ */
+export function textSorting<TData>(): SortingFn<TData> {
+  return (rowA, rowB, columnId) => {
+    const left = normalizeText(rowA.getValue(columnId));
+    const right = normalizeText(rowB.getValue(columnId));
+    return left.localeCompare(right, 'es');
+  };
+}
+
 export function defaultSortOrder(keys: string[]): SortingState {
   return keys.map((id) => ({ id, desc: false }));
 }

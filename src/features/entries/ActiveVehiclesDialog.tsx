@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../data-table';
+import { textSorting } from '../data-table/utils';
 import { VehicleCell } from '../data-table/components/VehicleCell';
 import { PlateCell } from '../data-table/components/PlateCell';
 import { StayDateCell } from '../data-table/components/StayDateCell';
@@ -239,6 +240,7 @@ export function ActiveVehiclesDialog({
       },
       {
         accessorKey: 'plate',
+        sortingFn: textSorting(),
         header: 'Patente',
         size: 120,
         cell: ({ row }) => <PlateCell plate={row.original.plate} />,

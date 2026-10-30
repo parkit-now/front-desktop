@@ -36,7 +36,7 @@ import {
   StayDateCell,
   TableDateTimeCell,
 } from '../data-table/components/StayDateCell';
-import { dateTimeSorting } from '../data-table/utils';
+import { dateTimeSorting, textSorting } from '../data-table/utils';
 import { getDateRangeExcelFileName } from '../data-table/excelExport';
 import { EntryEditDialog } from './EntryEditDialog';
 import {
@@ -273,6 +273,7 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
   },
   {
     accessorKey: 'plate',
+    sortingFn: textSorting(),
     header: 'Patente',
     size: 120,
     cell: ({ row }) => <PlateCell plate={row.original.plate} />,
