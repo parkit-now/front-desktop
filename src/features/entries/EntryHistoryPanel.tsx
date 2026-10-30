@@ -36,7 +36,11 @@ import {
   StayDateCell,
   TableDateTimeCell,
 } from '../data-table/components/StayDateCell';
-import { dateTimeSorting, textSorting } from '../data-table/utils';
+import {
+  dateTimeSorting,
+  enumOrderSorting,
+  textSorting,
+} from '../data-table/utils';
 import { getDateRangeExcelFileName } from '../data-table/excelExport';
 import { EntryEditDialog } from './EntryEditDialog';
 import {
@@ -420,6 +424,7 @@ const INVOICE_COLUMNS: ColumnDef<EntryHistoryRow, unknown>[] = [
     meta: { exportValue: invoiceExportValue },
     size: 170,
     filterFn: 'includesSome',
+    sortingFn: enumOrderSorting(INVOICE_STATE_ORDER),
     cell: ({ row }) => <InvoiceCell row={row.original} />,
   },
   {
