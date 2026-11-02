@@ -1982,11 +1982,7 @@ h2 {
 
 .dt-date-presence {
   display: flex;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid #c9d6e8;
-  border-radius: 6px;
-  background: #fff;
+  gap: 6px;
 }
 
 .dt-date-presence label {
@@ -1997,17 +1993,33 @@ h2 {
 }
 
 .dt-date-presence label > span {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
   padding: 6px 4px;
-  border-radius: 4px;
+  border: 1px solid #c9d6e8;
+  border-radius: 10px;
+  background: #fff;
   color: #31506f;
   font-size: 13px;
+  font-weight: 700;
   line-height: 18px;
   text-align: center;
 }
 
+.dt-date-presence label:hover > span {
+  border-color: #9eb8db;
+  background: #f6faff;
+}
+
 .dt-date-presence input:checked + span {
-  background: #0e5fd8;
+  border-color: var(--color-brand-strong);
+  background: linear-gradient(
+    150deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
   color: #fff;
 }
 
