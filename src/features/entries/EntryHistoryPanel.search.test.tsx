@@ -363,10 +363,8 @@ describe('búsqueda por campo del historial', () => {
     await click(field('En base', group));
     expect(rowPlates(container)).toEqual(['ENBASE']);
     expect(
-      container.querySelector<HTMLButtonElement>(
-        '.dt-filter-date-presence button',
-      )?.disabled,
-    ).toBe(true);
+      container.querySelector('.dt-filter-date-presence button'),
+    ).toBeNull();
     await change(search(container), '#66');
     await mode('ticket');
     expect(rowPlates(container)).toEqual(['ENBASE']);

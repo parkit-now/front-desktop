@@ -81,7 +81,7 @@ function summary() {
 function dateButton() {
   return container.querySelector<HTMLButtonElement>(
     '.dt-filter-date-presence button',
-  )!;
+  );
 }
 
 beforeEach(() => {
@@ -104,6 +104,7 @@ describe('selector de estado dentro del filtro de fecha', () => {
     await render();
     await click('.dt-filter-trigger');
     expect(selected()).toBe('Todos');
+    expect(dateButton()).toBeNull();
     expect(container.querySelectorAll('[role="radiogroup"]')).toHaveLength(1);
     expect(summary()).toContain('de 3');
     const next = [
@@ -114,16 +115,17 @@ describe('selector de estado dentro del filtro de fecha', () => {
     await select('En base');
     expect(summary()).toContain('Mostrando 1 a 1 de 1');
     expect(container.querySelector('tbody')?.textContent).toContain('ENBASE');
-    expect(dateButton().disabled).toBe(true);
+    expect(dateButton()).toBeNull();
     expect(container.querySelector('.dt-button-count')?.textContent).toBe('1');
     await select('Egresados');
     expect(summary()).toContain('de 2');
-    expect(dateButton().disabled).toBe(false);
+    expect(dateButton()?.disabled).toBe(false);
     const clear = [
       ...container.querySelectorAll<HTMLButtonElement>('button'),
     ].find((item) => item.textContent?.includes('Limpiar'))!;
     await act(() => Promise.resolve(clear.click()));
     expect(selected()).toBe('Todos');
+    expect(dateButton()).toBeNull();
     expect(summary()).toContain('de 3');
     expect(container.querySelector('.dt-button-count')).toBeNull();
   });
@@ -142,16 +144,18 @@ describe('selector de estado dentro del filtro de fecha', () => {
     });
     await render();
     await click('.dt-filter-trigger');
-    expect(selected()).toBe('Todos');
-    expect(dateButton().textContent).toContain('2/11');
+    expect(selected()).toBe('Egresados');
+    expect(dateButton()?.textContent).toContain('2/11');
     expect(summary()).toContain('de 1');
     expect(container.querySelector('tbody')?.textContent).toContain('EGRESADO');
     await select('En base');
-    expect(dateButton().textContent).toContain('Elegir fecha');
+    expect(dateButton()).toBeNull();
     await select('Todos');
-    expect(dateButton().disabled).toBe(false);
-    expect(dateButton().textContent).toContain('Elegir fecha');
+    expect(dateButton()).toBeNull();
     expect(summary()).toContain('de 3');
+    await select('Egresados');
+    expect(dateButton()?.textContent).toContain('Elegir fecha');
+    expect(summary()).toContain('de 2');
   });
 
   it.each(['present', 'missing'])(
@@ -169,4 +173,27 @@ describe('selector de estado dentro del filtro de fecha', () => {
       expect(summary()).toContain(presence === 'missing' ? 'de 1' : 'de 2');
     },
   );
+
+  it('limpia la fecha al pasar directamente de Egresados a Todos', async () => {
+    saveTableTemplate(scope, {
+      name: 'Egresos por fecha',
+      config: TableViewConfigSchema.parse({
+        filters: [
+          {
+            id: 'leftAt',
+            value: { presence: 'present', from: '2026-11-02T00:00:00' },
+          },
+        ],
+      }),
+    });
+    await render();
+    await click('.dt-filter-trigger');
+    expect(summary()).toContain('de 1');
+    await select('Todos');
+    expect(dateButton()).toBeNull();
+    expect(summary()).toContain('de 3');
+    await select('Egresados');
+    expect(dateButton()?.textContent).toContain('Elegir fecha');
+    expect(summary()).toContain('de 2');
+  });
 });

@@ -47,10 +47,9 @@ export function DateColumnFilter({
                 onChange={() =>
                   onChange(
                     normalizeDateFilter(
-                      {
-                        ...filter,
-                        presence: mode === 'all' ? undefined : mode,
-                      },
+                      mode === 'all'
+                        ? undefined
+                        : { ...filter, presence: mode },
                       true,
                     ),
                   )
@@ -61,19 +60,20 @@ export function DateColumnFilter({
           ))}
         </div>
       ) : null}
-      <DateRangeFilter
-        value={filter?.from ? filter : undefined}
-        onChange={(range) =>
-          onChange(
-            normalizeDateFilter(
-              { ...range, presence: filter?.presence },
-              Boolean(presenceLabels),
-            ),
-          )
-        }
-        placeholder="Elegir fecha"
-        disabled={presence === 'missing'}
-      />
+      {!presenceLabels || presence === 'present' ? (
+        <DateRangeFilter
+          value={filter?.from ? filter : undefined}
+          onChange={(range) =>
+            onChange(
+              normalizeDateFilter(
+                { ...range, presence: filter?.presence },
+                Boolean(presenceLabels),
+              ),
+            )
+          }
+          placeholder="Elegir fecha"
+        />
+      ) : null}
     </div>
   );
 }

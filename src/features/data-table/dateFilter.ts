@@ -25,9 +25,11 @@ export function normalizeDateFilter(
   if (allowPresence && raw.presence === 'missing') {
     return { from: undefined, presence: 'missing' };
   }
-  const presence =
-    allowPresence && raw.presence === 'present' ? 'present' : undefined;
   const from = validDate(raw.from);
+  const presence =
+    allowPresence && (raw.presence === 'present' || from)
+      ? 'present'
+      : undefined;
   if (!from && !presence) return undefined;
   const to = from ? validDate(raw.to) : undefined;
   return { from, ...(to ? { to } : {}), ...(presence ? { presence } : {}) };

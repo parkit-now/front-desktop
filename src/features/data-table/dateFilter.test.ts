@@ -55,6 +55,12 @@ describe('fecha y presencia de egreso', () => {
     expect(
       normalizeDateFilter({ from: from.toISOString(), to: to.toISOString() }),
     ).toEqual({ from, to });
+    expect(
+      normalizeDateFilter(
+        { from: from.toISOString(), to: to.toISOString() },
+        true,
+      ),
+    ).toEqual({ from, to, presence: 'present' });
     expect(normalizeDateFilter({ presence: 'missing' })).toBeUndefined();
     expect(matchesDateFilter('2026-11-02', { presence: 'missing' })).toBe(true);
     expect(
@@ -73,6 +79,6 @@ describe('fecha y presencia de egreso', () => {
     ).toEqual({ from: undefined, presence: 'present' });
     expect(
       normalizeDateFilter({ from, to: 'invalid', presence: 'unknown' }, true),
-    ).toEqual({ from });
+    ).toEqual({ from, presence: 'present' });
   });
 });
