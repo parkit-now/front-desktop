@@ -17,10 +17,13 @@ import {
   useReactTable,
   type VisibilityState,
 } from '@tanstack/react-table';
-import { format } from 'date-fns';
 import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCcw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DateRange } from '../../lib/ui/DateRangeFilter';
+import {
+  matchesDateFilter,
+  normalizeDateFilter,
+  type DatePresenceLabels,
+} from './dateFilter';
 import {
   TemplateSelector,
   type TableFilterValueNormalizers,
@@ -59,6 +62,7 @@ declare module '@tanstack/react-table' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface ColumnMeta<TData extends RowData, TValue> {
     filterLabel?: string;
+    datePresenceLabels?: DatePresenceLabels;
   }
 }
 
@@ -71,23 +75,15 @@ const EMPTY_FILTERABLE_COLUMNS: string[] = [];
 const EMPTY_VISIBILITY: VisibilityState = {};
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 30, 50];
 
-function toDateKey(raw: unknown): string | null {
-  if (raw instanceof Date) {
-    return Number.isNaN(raw.getTime()) ? null : format(raw, 'yyyy-MM-dd');
-  }
-  if (typeof raw === 'string' && raw.length >= 10) return raw.slice(0, 10);
-  return null;
-}
-
-const dateRangeFilter: FilterFn<unknown> = (row, columnId, value) => {
-  const range = value as DateRange | undefined;
-  if (!range?.from) return true;
-  const key = toDateKey(row.getValue(columnId));
-  if (!key) return false;
-  const fromKey = format(range.from, 'yyyy-MM-dd');
-  const toKey = format(range.to ?? range.from, 'yyyy-MM-dd');
-  return key >= fromKey && key <= toKey;
-};
+const dateRangeFilter: FilterFn<unknown> = (row, columnId, value: unknown) =>
+  matchesDateFilter(
+    row.getValue(columnId),
+    value,
+    Boolean(
+      row.getAllCells().find((cell) => cell.column.id === columnId)?.column
+        .columnDef.meta?.datePresenceLabels,
+    ),
+  );
 
 const numberRangeFilter: FilterFn<unknown> = (row, columnId, value) =>
   inNumberRange(row.getValue(columnId), value as NumberRange | undefined);
@@ -218,7 +214,8 @@ function columnFilterNormalizersFromDefinitions<TData>(
       if (!id) return normalizers;
 
       if (isDateRangeColumn(column)) {
-        normalizers[id] = normalizeDateRangeFilterValue;
+        normalizers[id] = (value) =>
+          normalizeDateFilter(value, Boolean(column.meta?.datePresenceLabels));
         return normalizers;
       }
 
@@ -235,26 +232,6 @@ function columnFilterNormalizersFromDefinitions<TData>(
     },
     {},
   );
-}
-
-function toValidDate(raw: unknown): Date | undefined {
-  if (raw instanceof Date) {
-    return Number.isNaN(raw.getTime()) ? undefined : raw;
-  }
-  if (typeof raw !== 'string' && typeof raw !== 'number') return undefined;
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function normalizeDateRangeFilterValue(value: unknown): DateRange | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-  const range = value as { from?: unknown; to?: unknown };
-  const from = toValidDate(range.from);
-  if (!from) return undefined;
-  const to = toValidDate(range.to);
-  return to ? { from, to } : { from };
 }
 
 function normalizeOptionListFilterValue(value: unknown): string[] | undefined {

@@ -343,6 +343,11 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     meta: {
       exportValue: (row) =>
         row.leftAt ? formatArgentinaDateTime(row.leftAt) : '',
+      datePresenceLabels: {
+        all: 'Todos',
+        present: 'Egresados',
+        missing: 'En base',
+      },
     },
     size: 155,
     filterFn: 'dateRange',
@@ -588,9 +593,6 @@ export function EntryHistoryPanel({
         ? initialOnlyCurrentSession
         : (persistedSwitches.onlyCurrentSession ?? true),
   );
-  const [includeInLot, setIncludeInLot] = useState(() =>
-    renderTable ? true : (persistedSwitches.includeInLot ?? true),
-  );
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
   );
@@ -796,9 +798,7 @@ export function EntryHistoryPanel({
         }
       });
 
-    let filtered = includeInLot
-      ? allEntries
-      : allEntries.filter((e) => Boolean(e.leftAt));
+    let filtered = allEntries;
 
     if (onlyCurrentSession) {
       filtered = activeCashSession
@@ -853,7 +853,6 @@ export function EntryHistoryPanel({
     allPaymentTransactions,
     allInvoices,
     allLprDetections,
-    includeInLot,
     onlyCurrentSession,
     activeCashSession,
   ]);
@@ -900,9 +899,8 @@ export function EntryHistoryPanel({
   const tableSwitches = useMemo(
     () => ({
       onlyCurrentSession: isOperator ? true : onlyCurrentSession,
-      includeInLot,
     }),
-    [includeInLot, isOperator, onlyCurrentSession],
+    [isOperator, onlyCurrentSession],
   );
 
   useEffect(() => {
@@ -999,12 +997,6 @@ export function EntryHistoryPanel({
           checked: isOperator ? true : onlyCurrentSession,
           disabled: isOperator,
           onChange: handleOnlyCurrentSessionChange,
-        },
-        {
-          id: 'includeInLot',
-          label: 'Incluir autos en base',
-          checked: includeInLot,
-          onChange: setIncludeInLot,
         },
       ]}
       subtitle={

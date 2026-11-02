@@ -1973,6 +1973,61 @@ h2 {
   font-size: 13px;
 }
 
+.dt-filter-date-presence {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 10px 11px;
+  gap: 8px;
+}
+
+.dt-date-presence {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #c9d6e8;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.dt-date-presence label {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.dt-date-presence label > span {
+  display: block;
+  padding: 6px 4px;
+  border-radius: 4px;
+  color: #31506f;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.dt-date-presence input:checked + span {
+  background: #0e5fd8;
+  color: #fff;
+}
+
+.dt-date-presence input:focus-visible + span {
+  outline: 2px solid #0e5fd8;
+  outline-offset: 2px;
+}
+
+.dt-filter-date-presence .date-range-filter,
+.dt-filter-date-presence .dr-filter,
+.dt-filter-date-presence .date-range-filter-trigger,
+.dt-filter-date-presence .dr-filter-trigger {
+  width: 100%;
+}
+
+.dt-filter-date-presence button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .dt-filter-section-header {
   width: 100%;
   min-height: 42px;

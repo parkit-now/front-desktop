@@ -1,6 +1,5 @@
 import type { Column, Table } from '@tanstack/react-table';
 import {
-  CalendarDays,
   ChevronDown,
   RotateCcw,
   Search,
@@ -14,10 +13,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  DateRangeFilter,
-  type DateRange,
-} from '../../../lib/ui/DateRangeFilter';
+import { DateColumnFilter } from './DateColumnFilter';
+import { normalizeDateFilter } from '../dateFilter';
 import { useCloseOnOutsideClick } from '../../../lib/ui/useCloseOnOutsideClick';
 import type { DataTableFilterOption } from '../types';
 import {
@@ -45,15 +42,6 @@ function resolveColumnLabel<TData>(column: Column<TData, unknown>): string {
 function selectedValues(column: Column<unknown, unknown>): string[] {
   const value = column.getFilterValue();
   return Array.isArray(value) ? value.map(String) : [];
-}
-
-function dateRangeValue(
-  column: Column<unknown, unknown>,
-): DateRange | undefined {
-  const value = column.getFilterValue();
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as DateRange)
-    : undefined;
 }
 
 function getOptions<TData>(
@@ -104,7 +92,12 @@ function activeUnitCount<TData>(column: Column<TData, unknown>): number {
     return normalizeNumberRange(column.getFilterValue()) ? 1 : 0;
   }
   if (isDateColumn(column)) {
-    return dateRangeValue(column as Column<unknown, unknown>)?.from ? 1 : 0;
+    return normalizeDateFilter(
+      column.getFilterValue(),
+      Boolean(column.columnDef.meta?.datePresenceLabels),
+    )
+      ? 1
+      : 0;
   }
   return selectedValues(column as Column<unknown, unknown>).length;
 }
@@ -257,17 +250,13 @@ export function FilterPanel<TData>({
 
               if (dateColumn) {
                 return (
-                  <div className="dt-filter-date-row" key={column.id}>
-                    <span className="dt-filter-date-label">
-                      <CalendarDays size={15} />
-                      {resolveColumnLabel(column)}
-                    </span>
-                    <DateRangeFilter
-                      value={dateRangeValue(column as Column<unknown, unknown>)}
-                      onChange={(next) => column.setFilterValue(next)}
-                      placeholder="Elegir fecha"
-                    />
-                  </div>
+                  <DateColumnFilter
+                    key={column.id}
+                    label={resolveColumnLabel(column)}
+                    value={column.getFilterValue()}
+                    onChange={(next) => column.setFilterValue(next)}
+                    presenceLabels={column.columnDef.meta?.datePresenceLabels}
+                  />
                 );
               }
 

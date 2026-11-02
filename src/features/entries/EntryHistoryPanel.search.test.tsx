@@ -46,13 +46,16 @@ function entry(id: string, overrides: Partial<LocalEntry> = {}): LocalEntry {
   };
 }
 
-async function render(inDialog = false) {
+async function render(
+  inDialog = false,
+  actorRole: 'owner' | 'operator' = 'owner',
+) {
   const container = await mount(
     <EntryHistoryPanel
       tenantId="tenant"
       userId="user"
       accessToken="token"
-      actorRole="owner"
+      actorRole={actorRole}
       renderTable={inDialog ? (table) => <div>{table}</div> : undefined}
     />,
   );
@@ -340,5 +343,89 @@ describe('búsqueda por campo del historial', () => {
     expect(rowPlates(container)).toHaveLength(5);
     await mode('ticket');
     expect(rowPlates(container)).toEqual(['EXACTA']);
+  });
+
+  it('reemplaza el antiguo switch por el estado de egreso y exporta solo los autos en base, offline', async () => {
+    await localDb.entries.put(entry('ENBASE', { leftAt: undefined }));
+    writePersistedTableState(scope, {
+      version: 1,
+      config: TableViewConfigSchema.parse({}),
+      switches: { includeInLot: false, onlyCurrentSession: true },
+    });
+    const container = await render();
+    expect(container.textContent).not.toContain('Incluir autos en base');
+    expect(rowPlates(container)).toHaveLength(7);
+    await click('Filtros');
+    const group = container.querySelector<HTMLElement>(
+      '[aria-label="Estado de egreso"]',
+    )!;
+    expect(field<HTMLInputElement>('Todos', group).checked).toBe(true);
+    await click(field('En base', group));
+    expect(rowPlates(container)).toEqual(['ENBASE']);
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        '.dt-filter-date-presence button',
+      )?.disabled,
+    ).toBe(true);
+    await change(search(container), '#66');
+    await mode('ticket');
+    expect(rowPlates(container)).toEqual(['ENBASE']);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 350)));
+    expect(readPersistedTableState(scope, ['leftAt'])?.config.filters).toEqual([
+      { id: 'leftAt', value: { presence: 'missing' } },
+    ]);
+    await act(async () => {
+      button('Descargar Excel').click();
+      await vi.waitFor(() => expect(mock.save).toHaveBeenCalledOnce());
+    });
+    const workbook = new ExcelJS.Workbook();
+    const [blob] = mock.save.mock.calls[0] as [Blob];
+    await workbook.xlsx.load(await blob.arrayBuffer());
+    expect(workbook.worksheets[0].getCell('B2').value).toBe('ENBASE');
+    expect(workbook.worksheets[0].rowCount).toBe(3);
+  });
+
+  it('restaura el estado de egreso incluso con su columna oculta', async () => {
+    await localDb.entries.put(entry('ENBASE', { leftAt: undefined }));
+    writePersistedTableState(scope, {
+      version: 1,
+      config: TableViewConfigSchema.parse({
+        columns: { visibility: { leftAt: false } },
+        filters: [{ id: 'leftAt', value: { presence: 'missing' } }],
+      }),
+      switches: {},
+    });
+    const container = await render();
+    expect(rowPlates(container)).toEqual(['ENBASE']);
+    expect(container.querySelector('thead')?.textContent).not.toContain(
+      'Egreso',
+    );
+    await click(
+      container.querySelector<HTMLButtonElement>('.dt-filter-trigger')!,
+    );
+    expect(
+      field<HTMLInputElement>(
+        'En base',
+        container.querySelector('[aria-label="Estado de egreso"]')!,
+      ).checked,
+    ).toBe(true);
+  });
+
+  it('el estado En base no permite al operador salir de su caja actual', async () => {
+    await localDb.entries.bulkPut([
+      entry('ENBASE', { leftAt: undefined }),
+      entry('OTRABASE', { leftAt: undefined, cashSessionId: 'closed' }),
+    ]);
+    const container = await render(true, 'operator');
+    await click('Filtros');
+    await click(
+      field(
+        'En base',
+        container.querySelector('[aria-label="Estado de egreso"]')!,
+      ),
+    );
+    expect(rowPlates(container)).toEqual(['ENBASE']);
+    expect(field<HTMLInputElement>('Solo caja actual').checked).toBe(true);
+    expect(field<HTMLInputElement>('Solo caja actual').disabled).toBe(true);
   });
 });
