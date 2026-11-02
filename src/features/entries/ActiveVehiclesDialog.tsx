@@ -2,7 +2,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable } from '../data-table';
+import { createVehicleSearchModes, DataTable } from '../data-table';
 import { textSorting } from '../data-table/utils';
 import { VehicleCell } from '../data-table/components/VehicleCell';
 import { PlateCell } from '../data-table/components/PlateCell';
@@ -62,6 +62,11 @@ type ActiveRow = {
   lprDetection: LocalLprDetectionEvent | null;
   entry: EditableActiveEntry;
 };
+
+const SEARCH_MODES = createVehicleSearchModes<ActiveRow>({
+  ticket: (row) => row.ticketNumber,
+  plate: (row) => row.plate,
+});
 
 function toRow(
   e: LocalEntry,
@@ -465,6 +470,7 @@ export function ActiveVehiclesDialog({
             }
             emptyMessage="No hay vehículos estacionados en este momento."
             searchPlaceholder="Buscar por ticket, patente, vehículo, color o notas…"
+            searchModes={SEARCH_MODES}
             searchableKeys={[
               'ticketNumber',
               'plate',

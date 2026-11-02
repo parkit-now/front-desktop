@@ -25,6 +25,7 @@ import {
 import { DateRangeFilter, type DateRange } from '../../lib/ui/DateRangeFilter';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { DataTable } from '../data-table/DataTable';
+import { createVehicleSearchModes } from '../data-table/vehicleSearch';
 import { textSorting } from '../data-table/utils';
 import { Pagination } from '../data-table/components/Pagination';
 import { PlateCell } from '../data-table/components/PlateCell';
@@ -50,6 +51,10 @@ type Props = {
   userId: string;
   parkingName?: string | null;
 };
+const SEARCH_MODES = createVehicleSearchModes<AuditRow>({
+  ticket: (row) => row.ticket,
+  plate: (row) => row.plate,
+});
 const statusLabels = { info: 'Info', warn: 'Advertencia', crit: 'Crítico' };
 const comparisonFields = [
   'plate',
@@ -1038,6 +1043,7 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
                 isLoading={audit.isLoading}
                 emptyMessage="No hay eventos de auditoría para mostrar."
                 searchPlaceholder="Buscar por patente, actor, ticket, razón o campo"
+                searchModes={SEARCH_MODES}
                 searchableKeys={['searchText']}
                 filterableColumns={[
                   'severity',

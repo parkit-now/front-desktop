@@ -162,6 +162,32 @@ describe('Excel de autos en base', () => {
     ]);
   });
 
+  it('permite buscar un ticket exacto sin mezclar patentes y exporta ese resultado', async () => {
+    await localDb.entries.put(entry(0, { ticketNumber: 66 }));
+    await localDb.entries.put(
+      entry(20, { plate: 'AA066AA', ticketNumber: 166 }),
+    );
+    const container = await render();
+    await waitForText('AA066AA');
+    expect(button('Campo de búsqueda').title).toBe('Buscar en: Todos');
+    await change(
+      container.querySelector<HTMLInputElement>('.dt-search input')!,
+      '66',
+    );
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      2,
+    );
+    await click('Campo de búsqueda');
+    await click('Ticket');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      1,
+    );
+    const sheet = await download();
+    expect(sheet.rowCount).toBe(2);
+    expect(sheet.getCell('A2').value).toBe(66);
+    expect(sheet.getCell('B2').value).toBe('AA000AA');
+  });
+
   it('exporta solo las columnas visibles y en el orden de la vista guardada', async () => {
     saveTableTemplate(
       { userId: 'user', tenantId: 'tenant', tableKey: 'active-vehicles' },

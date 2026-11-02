@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
-import { DataTable } from '../data-table';
+import { createVehicleSearchModes, DataTable } from '../data-table';
 import { PlateCell } from '../data-table/components/PlateCell';
 import { localDb, type LocalClient } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
@@ -17,6 +17,9 @@ import { isValidCuit } from '../entries/invoiceUtils';
 import './clients.css';
 
 type Props = { tenantId: string; accessToken: string; userId: string };
+const SEARCH_MODES = createVehicleSearchModes<LocalClient>({
+  plate: (row) => row.plates,
+});
 type Form = {
   plates: string[];
   cuit: string;
@@ -239,6 +242,7 @@ export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
             isLoading={rows === undefined}
             emptyMessage="No hay clientes registrados."
             searchPlaceholder="Buscar por nombre, patente, CUIT o contacto..."
+            searchModes={SEARCH_MODES}
             searchableKeys={['name', 'plates', 'cuit', 'email', 'phone']}
             filterableColumns={[
               'name',

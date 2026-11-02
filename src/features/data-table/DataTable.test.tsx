@@ -129,6 +129,13 @@ it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async 
 });
 
 describe('filtro inicial de caja', () => {
+  it('no agrega modos de búsqueda a tablas que no los configuran', async () => {
+    await render();
+    expect(
+      container.querySelector('[aria-label="Campo de búsqueda"]'),
+    ).toBeNull();
+  });
+
   it('se conserva al montar sin plantilla ni orden explicita de limpiar filtros', async () => {
     await render();
     expect(rows()).toHaveLength(1);

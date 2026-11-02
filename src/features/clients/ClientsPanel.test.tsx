@@ -15,7 +15,8 @@ vi.mock('../../lib/sync/SyncContext', () => ({
 vi.mock('../../lib/notifications/ToastProvider', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
-vi.mock('../data-table', () => ({
+vi.mock('../data-table', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../data-table')>()),
   DataTable: ({ headerAction }: { headerAction: ReactNode }) => (
     <div>{headerAction}</div>
   ),

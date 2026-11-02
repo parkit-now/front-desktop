@@ -28,7 +28,11 @@ import {
   readPersistedTableSwitches,
   type TableTemplateScope,
 } from '../table-view-template';
-import { DataTable, type DataTableFilterOption } from '../data-table';
+import {
+  DataTable,
+  createVehicleSearchModes,
+  type DataTableFilterOption,
+} from '../data-table';
 import { VehicleCell } from '../data-table/components/VehicleCell';
 import { PlateCell } from '../data-table/components/PlateCell';
 import {
@@ -541,6 +545,11 @@ const SEARCHABLE_KEYS = [
   'notes',
 ];
 
+const SEARCH_MODES = createVehicleSearchModes<EntryHistoryRow>({
+  ticket: (row) => row.ticketNumber,
+  plate: (row) => row.plate,
+});
+
 export function EntryHistoryPanel({
   tenantId,
   userId,
@@ -962,6 +971,7 @@ export function EntryHistoryPanel({
       emptyMessage="No hay movimientos registrados todavía."
       searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
       searchableKeys={SEARCHABLE_KEYS}
+      searchModes={SEARCH_MODES}
       filterableColumns={filterableColumns}
       filterOptionsByColumn={{
         amountPaid: paymentMethodFilterOptions,

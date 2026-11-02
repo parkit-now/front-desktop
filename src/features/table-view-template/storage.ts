@@ -406,6 +406,9 @@ export function sanitizeTableViewConfig(
     filters,
     sorting,
     globalSearch: parsed.globalSearch,
+    ...(parsed.globalSearchMode !== undefined
+      ? { globalSearchMode: parsed.globalSearchMode }
+      : {}),
     pagination: parsed.pagination,
   };
 }
