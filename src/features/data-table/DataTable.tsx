@@ -288,7 +288,7 @@ export function DataTable<TData>({
   emptyMessage = 'No hay resultados para mostrar.',
   searchPlaceholder = 'Buscar...',
   searchableKeys,
-  searchModes,
+  searchModes: configuredSearchModes,
   filterableColumns = EMPTY_FILTERABLE_COLUMNS,
   filterOptionsByColumn,
   filterSwitches,
@@ -313,6 +313,10 @@ export function DataTable<TData>({
   refreshDisabled,
   serverState,
 }: DataTableProps<TData>) {
+  const searchModes =
+    (configuredSearchModes?.filter((mode) => mode.id !== 'all').length ?? 0) > 1
+      ? configuredSearchModes
+      : undefined;
   const initialKnownColumnIds = useMemo(
     () => columnIdsFromDefinitions(columns),
     [columns],
