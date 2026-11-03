@@ -29,10 +29,13 @@ export type NewPendingOp = Omit<
  * forma de saber de qué turno salió una operación, que en una playa con cambio
  * de operador y arqueo de caja no es un detalle.
  */
-export async function enqueuePendingOp(op: NewPendingOp): Promise<void> {
+export async function enqueuePendingOp(
+  op: NewPendingOp,
+  ownerUserId?: string,
+): Promise<void> {
   await localDb.pendingOps.add({
     ...op,
-    userId: activeUserId ?? undefined,
+    userId: ownerUserId ?? activeUserId ?? undefined,
     createdAt: Date.now(),
     retryCount: 0,
   });

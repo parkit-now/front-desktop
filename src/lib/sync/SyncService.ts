@@ -1,4 +1,9 @@
 import { classifyPushFailure } from './retryPolicy';
+import {
+  pullTemplateScope,
+  pushTemplateOp,
+  hasEarlierTemplateOp,
+} from '../../features/table-view-template/repository';
 import type { Table } from 'dexie';
 import { splitTombstones } from './tombstones';
 import {
@@ -343,12 +348,25 @@ function lprDetectionEventToLocal(
 class SyncService {
   private tenantId = '';
   private accessToken = '';
+  private templateUserId = '';
   /** Ver `recoverStalledOps`: el rescate de huérfanas depende de esto. */
   private pushInFlight = false;
+  private pushTask: Promise<void> | null = null;
 
-  setCredentials(tenantId: string, accessToken: string): void {
+  setCredentials(tenantId: string, accessToken: string, userId = ''): void {
     this.tenantId = tenantId;
     this.accessToken = accessToken;
+    this.templateUserId = userId;
+  }
+
+  async pullTableTemplates(): Promise<void> {
+    const { templateUserId: userId, tenantId, accessToken } = this;
+    if (!userId || !tenantId || !accessToken) return;
+    const scopes = await localDb.tableTemplateScopes
+      .where('[userId+tenantId]')
+      .equals([userId, tenantId])
+      .toArray();
+    for (const scope of scopes) await pullTemplateScope(scope, accessToken);
   }
 
   async pullRates(): Promise<void> {
@@ -1161,21 +1179,36 @@ class SyncService {
    * "Sincronizar": si el operador lo aprieta, espera que salga algo ahora, no
    * que se respete un backoff que él no ve.
    */
-  async pushPendingOps(ignoreBackoff = false): Promise<void> {
+  async pushPendingOps(
+    ignoreBackoff = false,
+    onlyEntity?: PendingOp['entityType'],
+  ): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
     // El rescate de huérfanas de abajo asume que no hay otro push corriendo.
-    if (this.pushInFlight) return;
+    if (this.pushInFlight) {
+      if (onlyEntity) {
+        await this.pushTask;
+        return this.pushPendingOps(ignoreBackoff, onlyEntity);
+      }
+      return;
+    }
     this.pushInFlight = true;
 
-    try {
-      await this.recoverStalledOps();
-      await this.drainPendingOps(ignoreBackoff);
-    } finally {
-      this.pushInFlight = false;
-    }
+    this.pushTask = (async () => {
+      try {
+        await this.recoverStalledOps();
+        await this.drainPendingOps(ignoreBackoff, onlyEntity);
+      } finally {
+        this.pushInFlight = false;
+      }
+    })();
+    await this.pushTask;
   }
 
-  private async drainPendingOps(ignoreBackoff: boolean): Promise<void> {
+  private async drainPendingOps(
+    ignoreBackoff: boolean,
+    onlyEntity?: PendingOp['entityType'],
+  ): Promise<void> {
     // 'unreviewed' ops (audit-only LPR detections not yet acted on by the
     // operator) still need to reach the backend — they're just excluded from
     // the user-facing pending-changes count in SyncContext.
@@ -1198,9 +1231,22 @@ class SyncService {
 
     for (const op of pending) {
       if (op.localId === undefined) continue;
+      if (onlyEntity && op.entityType !== onlyEntity) continue;
+      if (
+        op.entityType === 'tableTemplate' &&
+        (!this.templateUserId || op.userId !== this.templateUserId)
+      )
+        continue;
+      // Keep one device's edits in order even when the oldest write is in backoff.
+      if (op.entityType === 'tableTemplate' && (await hasEarlierTemplateOp(op)))
+        continue;
       await localDb.pendingOps.update(op.localId, { status: 'in-flight' });
 
       try {
+        if (op.entityType === 'tableTemplate') {
+          await pushTemplateOp(op, this.templateUserId, this.accessToken);
+          continue;
+        }
         let serverEntity:
           | LocalRate
           | LocalEntry
@@ -1947,6 +1993,7 @@ class SyncService {
     const ignoreBackoff = options.ignoreBackoff ?? false;
     const stages: [string, () => Promise<void>][] = [
       ['cambios pendientes', () => this.pushPendingOps(ignoreBackoff)],
+      ['plantillas de tabla', () => this.pullTableTemplates()],
       ['lista blanca', () => this.pullLprIgnoredPlates()],
       ['clientes', () => this.pullClients()],
       // Los dos catálogos que bloquean el alta de ingresos van primero.

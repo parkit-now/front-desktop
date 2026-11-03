@@ -81,6 +81,10 @@ vi.mock('../../lib/db/localDb', () => {
   }
   return {
     localDb: {
+      tableTemplates: table('tableTemplates'),
+      tableTemplateScopes: {
+        get: () => Promise.resolve({ key: 'registered' }),
+      },
       entries: table('entries'),
       clients: table('clients'),
       invoices: table('invoices'),

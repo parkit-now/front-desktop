@@ -359,6 +359,7 @@ export type PendingOpStatus =
   | 'conflict'
   | 'failed';
 export type PendingOpEntity =
+  | 'tableTemplate'
   | 'rate'
   | 'entry'
   | 'vehicle'
@@ -394,6 +395,8 @@ export interface PendingOp {
 }
 
 class ParkitLocalDb extends Dexie {
+  tableTemplates!: Table<LocalTableTemplate>;
+  tableTemplateScopes!: Table<LocalTableTemplateScope>;
   rates!: Table<LocalRate>;
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
@@ -753,7 +756,31 @@ class ParkitLocalDb extends Dexie {
     this.version(21).stores({
       clients: 'id, tenantId, cuit, *plates',
     });
+    this.version(22).stores({
+      tableTemplates: 'key, [userId+tenantId+tableKey], userId, tenantId',
+      tableTemplateScopes: 'key, [userId+tenantId]',
+    });
   }
 }
 
 export const localDb = new ParkitLocalDb();
+
+export interface LocalTableTemplate {
+  key: string;
+  userId: string;
+  tenantId: string;
+  tableKey: string;
+  id: string;
+  name: string;
+  description?: string;
+  config: import('../../features/table-view-template/definitions').TableViewConfig;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+export interface LocalTableTemplateScope {
+  key: string;
+  userId: string;
+  tenantId: string;
+  tableKey: string;
+}

@@ -108,7 +108,9 @@ describe('Excel de autos en base', () => {
     ]);
     const container = await render();
     await waitForText('Mostrando 1 a 8 de 10');
-    expect(container.querySelectorAll('tbody tr')).toHaveLength(8);
+    await vi.waitFor(() =>
+      expect(container.querySelectorAll('tbody tr')).toHaveLength(8),
+    );
 
     const sheet = await download();
     expect(headers(sheet)).toEqual([
