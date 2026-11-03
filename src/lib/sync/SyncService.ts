@@ -23,6 +23,7 @@ import {
   type LocalVehicleType,
   type LocalLprIgnoredPlate,
   type LocalClient,
+  type LocalPlateProfile,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -99,6 +100,11 @@ import {
   pullClientChanges,
 } from '../api/clients';
 import { ApiError } from '../api/client';
+import {
+  pullPlateProfileChanges,
+  writePlateProfile,
+} from '../api/plate-profiles';
+import { profileToLocal } from '../../features/clients/plateProfiles';
 import {
   CAMERA_BASE_URL,
   LPR_CLOUD_IMAGE_MAX_WIDTH,
@@ -588,6 +594,90 @@ class SyncService {
           await localDb.syncState.put({
             key,
             lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+      if (response.items.length < 1000 || response.maxSeq <= afterSeq) return;
+      afterSeq = response.maxSeq;
+    }
+  }
+
+  private async dirtyPlateProfilePlates(
+    tenantId: string,
+  ): Promise<Set<string>> {
+    const ops = await localDb.pendingOps
+      .filter((op) => op.tenantId === tenantId)
+      .toArray();
+    const dirty = new Set(
+      ops
+        .filter((op) => op.entityType === 'plateProfile')
+        .map((op) => op.entityId),
+    );
+    for (const op of ops.filter((op) => op.entityType === 'entry')) {
+      const payload = op.payload as {
+        kind?: string;
+        body?: Record<string, unknown>;
+      };
+      const relevant =
+        op.operation === 'create' ||
+        (payload.kind === 'correction' &&
+          [
+            'plate',
+            'vehicleBrand',
+            'vehicleModel',
+            'vehicleTypeId',
+            'color',
+            'rateId',
+          ].some((field) => field in (payload.body ?? {})));
+      if (relevant) {
+        const entry = await localDb.entries.get(op.entityId);
+        if (entry) dirty.add(entry.plate);
+      }
+    }
+    return dirty;
+  }
+
+  async pullPlateProfiles(): Promise<void> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+    if (!tenantId || !bearer) return;
+    const key = `plateProfiles:${tenantId}`;
+    let afterSeq = (await localDb.syncState.get(key))?.lastSeq ?? 0;
+    const startingSeq = afterSeq;
+    let heldCursor = Number.POSITIVE_INFINITY;
+    for (let page = 0; page < 20; page += 1) {
+      const response = await pullPlateProfileChanges({
+        tenantId,
+        bearer,
+        afterSeq,
+      });
+      await localDb.transaction(
+        'rw',
+        localDb.plateProfiles,
+        localDb.pendingOps,
+        localDb.entries,
+        localDb.syncState,
+        async () => {
+          const dirty = await this.dirtyPlateProfilePlates(tenantId);
+          for (const row of response.items) {
+            if (dirty.has(row.plate)) {
+              heldCursor = Math.min(heldCursor, row.syncSeq - 1);
+              continue;
+            }
+            const local = profileToLocal(row);
+            const current = await localDb.plateProfiles.get(local.key);
+            if (!current || current.syncSeq <= row.syncSeq)
+              await localDb.plateProfiles.put(local);
+          }
+          // Do not acknowledge skipped rows: entry acknowledgements don't contain
+          // a profile, so they must be fetched again after its pending edit clears.
+          await localDb.syncState.put({
+            key,
+            lastSeq: Math.max(
+              startingSeq,
+              Math.min(heldCursor, response.maxSeq),
+            ),
             lastSyncAt: new Date().toISOString(),
           });
         },
@@ -1233,12 +1323,27 @@ class SyncService {
       if (op.localId === undefined) continue;
       if (onlyEntity && op.entityType !== onlyEntity) continue;
       if (
-        op.entityType === 'tableTemplate' &&
+        (op.entityType === 'tableTemplate' ||
+          op.entityType === 'plateProfile') &&
         (!this.templateUserId || op.userId !== this.templateUserId)
       )
         continue;
       // Keep one device's edits in order even when the oldest write is in backoff.
       if (op.entityType === 'tableTemplate' && (await hasEarlierTemplateOp(op)))
+        continue;
+      if (
+        op.entityType === 'plateProfile' &&
+        (await localDb.pendingOps
+          .where('entityType')
+          .equals('plateProfile')
+          .filter(
+            (earlier) =>
+              earlier.tenantId === op.tenantId &&
+              earlier.entityId === op.entityId &&
+              earlier.localId! < op.localId!,
+          )
+          .first())
+      )
         continue;
       await localDb.pendingOps.update(op.localId, { status: 'in-flight' });
 
@@ -1255,6 +1360,7 @@ class SyncService {
           | LocalVehicleType
           | LocalLprIgnoredPlate
           | LocalClient
+          | LocalPlateProfile
           | LocalCashSession
           | LocalLprDetectionEvent
           | undefined;
@@ -1271,6 +1377,18 @@ class SyncService {
           serverEntity = await this.applyLprIgnoredPlateOp(op);
         } else if (op.entityType === 'client') {
           serverEntity = await this.applyClientOp(op);
+        } else if (op.entityType === 'plateProfile') {
+          serverEntity = profileToLocal(
+            await writePlateProfile({
+              tenantId: this.tenantId,
+              bearer: this.accessToken,
+              plate: op.entityId,
+              operation: op.operation,
+              body: op.payload as Parameters<
+                typeof writePlateProfile
+              >[0]['body'],
+            }),
+          );
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
@@ -1289,6 +1407,7 @@ class SyncService {
             localDb.vehicleTypes,
             localDb.lprIgnoredPlates,
             localDb.clients,
+            localDb.plateProfiles,
             localDb.paymentMethods,
             localDb.cashSessions,
             localDb.lprDetectionEvents,
@@ -1326,6 +1445,13 @@ class SyncService {
                   if (row.deletedAt) await localDb.clients.delete(row.id);
                   else await localDb.clients.put(row);
                 }
+              } else if (op.entityType === 'plateProfile') {
+                const row = serverEntity as LocalPlateProfile;
+                const stillDirty = await this.dirtyPlateProfilePlates(
+                  op.tenantId,
+                );
+                if (!stillDirty.has(row.plate))
+                  await localDb.plateProfiles.put(row);
               } else if (op.entityType === 'cashSession') {
                 await localDb.cashSessions.put(
                   serverEntity as LocalCashSession,
@@ -1752,6 +1878,7 @@ class SyncService {
     await this.pullEntries();
     await this.pullLprIgnoredPlates();
     await this.pullClients();
+    await this.pullPlateProfiles();
   }
 
   /**
@@ -1996,6 +2123,7 @@ class SyncService {
       ['plantillas de tabla', () => this.pullTableTemplates()],
       ['lista blanca', () => this.pullLprIgnoredPlates()],
       ['clientes', () => this.pullClients()],
+      ['vehículos de clientes', () => this.pullPlateProfiles()],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
       //
       // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así

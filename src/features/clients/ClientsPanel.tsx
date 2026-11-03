@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -15,6 +15,7 @@ import { mutateClient } from './clientMutations';
 import { lookupTaxpayer } from '../../lib/api/arca';
 import { isValidCuit } from '../entries/invoiceUtils';
 import './clients.css';
+import { PlateProfilesPanel } from './PlateProfilesPanel';
 
 type Props = { tenantId: string; accessToken: string; userId: string };
 const SEARCH_MODES = createVehicleSearchModes<LocalClient>({
@@ -43,6 +44,65 @@ const dateLabel = (date: string) =>
   }).format(new Date(date));
 
 export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
+  const [tab, setTab] = useState<'billing' | 'vehicles'>('billing');
+  const id = useId();
+  return (
+    <div className="clients-panel">
+      <div className="report-tabs" role="tablist" aria-label="Clientes">
+        {(
+          [
+            { value: 'billing', label: 'Facturación' },
+            { value: 'vehicles', label: 'Vehículos' },
+          ] as const
+        ).map((item, index) => (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            id={`${id}-${item.value}`}
+            aria-controls={`${id}-panel`}
+            aria-selected={tab === item.value}
+            tabIndex={tab === item.value ? 0 : -1}
+            className={tab === item.value ? 'active' : ''}
+            onClick={() => setTab(item.value)}
+            onKeyDown={(event) => {
+              if (
+                !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+              )
+                return;
+              event.preventDefault();
+              const next =
+                event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - index;
+              setTab(next === 0 ? 'billing' : 'vehicles');
+              event.currentTarget.parentElement
+                ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                [next]?.focus();
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
+        {tab === 'billing' ? (
+          <BillingClientsPanel
+            tenantId={tenantId}
+            accessToken={accessToken}
+            userId={userId}
+          />
+        ) : (
+          <PlateProfilesPanel
+            tenantId={tenantId}
+            accessToken={accessToken}
+            userId={userId}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BillingClientsPanel({ tenantId, accessToken, userId }: Props) {
   const { isOnline } = useNetwork();
   const { triggerSync } = useSync();
   const { showToast } = useToast();

@@ -87,6 +87,7 @@ vi.mock('../../lib/db/localDb', () => {
       },
       entries: table('entries'),
       clients: table('clients'),
+      plateProfiles: table('plateProfiles'),
       invoices: table('invoices'),
       cashSessions: table('cashSessions'),
       paymentMethods: table('paymentMethods'),

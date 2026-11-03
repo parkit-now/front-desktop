@@ -2857,6 +2857,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenantId}/plate-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PlateProfilesController_list"];
+        put?: never;
+        post: operations["PlateProfilesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenantId}/plate-profiles/{plate}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PlateProfilesController_get"];
+        put?: never;
+        post?: never;
+        delete: operations["PlateProfilesController_remove"];
+        options?: never;
+        head?: never;
+        patch: operations["PlateProfilesController_update"];
+        trace?: never;
+    };
+    "/tenants/{tenantId}/plate-profiles/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PlateProfilesController_changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7397,6 +7445,81 @@ export interface components {
         TableTemplateMutationDto: {
             /** Format: uuid */
             mutationId: string;
+        };
+        CreatePlateProfileDto: {
+            color?: string | null;
+            expectedVersion: number;
+            /** Format: uuid */
+            mutationId: string;
+            /**
+             * Format: date-time
+             * @description Original owner edit time, preserved by offline retries.
+             */
+            occurredAt: string;
+            plate: string;
+            /** Format: uuid */
+            rateId?: string | null;
+            vehicleBrand?: string | null;
+            vehicleModel?: string | null;
+            /** Format: uuid */
+            vehicleTypeId?: string | null;
+        };
+        DeletePlateProfileDto: {
+            expectedVersion: number;
+            /** Format: uuid */
+            mutationId: string;
+            /**
+             * Format: date-time
+             * @description Original owner edit time, preserved by offline retries.
+             */
+            occurredAt: string;
+        };
+        PlateProfileChangesDto: {
+            items: components["schemas"]["PlateProfileDto"][];
+            maxSeq: number;
+        };
+        PlateProfileDto: {
+            color: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            deletedAt: string | null;
+            editVersion: number;
+            /** Format: date-time */
+            lastEnteredAt: string | null;
+            lastEntryId: string | null;
+            /** Format: date-time */
+            learnAfter: string | null;
+            plate: string;
+            rateId: string | null;
+            rateName: string | null;
+            syncSeq: number;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: date-time */
+            updatedAt: string;
+            vehicleBrand: string | null;
+            vehicleModel: string | null;
+            vehicleTypeId: string | null;
+            vehicleTypeName: string | null;
+            version: number;
+        };
+        UpdatePlateProfileDto: {
+            color?: string | null;
+            expectedVersion: number;
+            /** Format: uuid */
+            mutationId: string;
+            /**
+             * Format: date-time
+             * @description Original owner edit time, preserved by offline retries.
+             */
+            occurredAt: string;
+            /** Format: uuid */
+            rateId?: string | null;
+            vehicleBrand?: string | null;
+            vehicleModel?: string | null;
+            /** Format: uuid */
+            vehicleTypeId?: string | null;
         };
     };
     responses: never;
@@ -14601,6 +14724,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableTemplateDto"];
+                };
+            };
+        };
+    };
+    PlateProfilesController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlateProfileDto"][];
+                };
+            };
+        };
+    };
+    PlateProfilesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlateProfileDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlateProfileDto"];
+                };
+            };
+        };
+    };
+    PlateProfilesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plate: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletePlateProfileDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlateProfileDto"];
+                };
+            };
+        };
+    };
+    PlateProfilesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plate: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePlateProfileDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlateProfileDto"];
+                };
+            };
+        };
+    };
+    PlateProfilesController_changes: {
+        parameters: {
+            query?: {
+                afterSeq?: components["schemas"]["Object"];
+                limit?: components["schemas"]["Object"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlateProfileChangesDto"];
+                };
+            };
+        };
+    };
+
+    PlateProfilesController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plate: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlateProfileDto"];
                 };
             };
         };

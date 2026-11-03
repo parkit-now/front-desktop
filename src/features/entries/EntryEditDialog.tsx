@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Printer, Save, Trash2, TriangleAlert, X } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { learnLocalPlateProfile } from '../clients/plateProfiles';
 import {
   correctEntry,
   type CorrectEntryDto,
@@ -641,6 +642,7 @@ export function EntryEditDialog({
           'rw',
           localDb.entries,
           localDb.paymentTransactions,
+          localDb.plateProfiles,
           async () => {
             await localDb.entries.update(entry.id, {
               plate: result.plate,
@@ -682,6 +684,8 @@ export function EntryEditDialog({
               syncSeq: result.syncSeq,
               updatedAt: result.updatedAt,
             });
+            const updated = await localDb.entries.get(entry.id);
+            if (updated) await learnLocalPlateProfile(updated, entry);
             if (body.payments !== undefined) {
               await localDb.paymentTransactions
                 .where('entryId')
@@ -711,12 +715,15 @@ export function EntryEditDialog({
           localDb.entries,
           localDb.paymentTransactions,
           localDb.pendingOps,
+          localDb.plateProfiles,
           async () => {
             await localDb.entries.update(entry.id, {
               ...entryToPatch(entry, body, vehicleTypes ?? []),
               version: entry.version + 1,
               updatedAt: now,
             });
+            const updated = await localDb.entries.get(entry.id);
+            if (updated) await learnLocalPlateProfile(updated, entry);
             if (body.payments !== undefined) {
               await localDb.paymentTransactions
                 .where('entryId')

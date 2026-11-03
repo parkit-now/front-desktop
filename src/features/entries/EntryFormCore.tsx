@@ -38,6 +38,11 @@ import {
 } from './ReservationBanner';
 import { isLinkableMatch } from './reservationUtils';
 import { useReservationMatch } from './useReservationMatch';
+import {
+  learnLocalPlateProfile,
+  plateProfileKey,
+  resolvePlateProfile,
+} from '../clients/plateProfiles';
 
 export type EntryFormVariant = 'manual' | 'auto';
 
@@ -86,14 +91,14 @@ interface Props {
   onDraftReset?: () => void;
 }
 
-type VehicleSuggestion =
+export type VehicleSuggestion =
   | { kind: 'model'; label: string; brand: string; model: string }
   | { kind: 'brand'; label: string; brand: string };
 
 const SUGGESTION_LIMIT = 10;
 
 // Portal dropdown for vehicle suggestions — avoids overflow/stacking-context clipping.
-function VehicleSuggestionsPortal({
+export function VehicleSuggestionsPortal({
   inputRef,
   suggestions,
   onSelect,
@@ -514,34 +519,57 @@ export function EntryFormCore({
     }, 2500);
   }
 
-  // Look up previous entries for this tenant with the same plate and pre-fill
-  // vehicle, color and last rate when those fields are still empty. Runs on
-  // plate blur and (for auto-detected entries) once on mount.
+  const prefillContext = useRef({
+    plate,
+    tenantId,
+    color,
+    rateId,
+    rateInput,
+    vehicleInput,
+    vehicleTypeId,
+  });
+  prefillContext.current = {
+    plate,
+    tenantId,
+    color,
+    rateId,
+    rateInput,
+    vehicleInput,
+    vehicleTypeId,
+  };
+  // Remembered data is independent of history. Resolve every option against
+  // today's catalog and never overwrite input typed while Dexie was reading.
   const prefillFromPlate = useCallback(async () => {
     const normalized = plate.trim().toUpperCase();
     if (!normalized || plateResolved.current) return;
     if (
-      variant === 'auto' &&
-      initialPlate &&
-      (activeRates === undefined ||
-        vehicleTypes === undefined ||
-        catalogVehicles === undefined)
+      activeRates === undefined ||
+      vehicleTypes === undefined ||
+      catalogVehicles === undefined
     )
       return;
 
-    const prev = await localDb.entries
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((e) => e.plate === normalized && !e.deletedAt)
-      .first();
-
-    if (prev) {
-      if (!color && prev.color) {
-        setColor(prev.color);
+    const profile = await localDb.plateProfiles.get(
+      plateProfileKey(tenantId, normalized),
+    );
+    const latest = prefillContext.current;
+    if (
+      latest.tenantId !== tenantId ||
+      latest.plate.trim().toUpperCase() !== normalized
+    )
+      return;
+    const resolved = resolvePlateProfile(profile, {
+      vehicles: catalogVehicles ?? [],
+      types: vehicleTypes ?? [],
+      rates: activeRates ?? [],
+    });
+    if (profile && !profile.deletedAt) {
+      if (!latest.color && resolved.color) {
+        setColor(resolved.color);
         setColorSelected(true);
       }
-      if (!rateId && prev.rateId) {
-        const prevRate = activeRates?.find((r) => r.id === prev.rateId);
+      if (!latest.rateId && !latest.rateInput) {
+        const prevRate = resolved.rate;
         if (prevRate) {
           setRateId(prevRate.id);
           setRateInput(
@@ -552,26 +580,17 @@ export function EntryFormCore({
           setRateSelected(true);
         }
       }
-      if (prev.vehicleBrand && !vehicleInput) {
-        const b = prev.vehicleBrand;
-        const m = prev.vehicleModel ?? '';
+      if (resolved.vehicle && !latest.vehicleInput) {
+        const b = resolved.vehicle.brand;
+        const m = resolved.vehicle.model ?? '';
         setBrand(b);
         setModel(m);
         setVehicleInput(m ? `${b} ${m}` : b);
         setVehicleSelected(true);
-        // El tipo del ingreso anterior (si sigue vivo) y, si no, el del catálogo.
-        const prevType = vehicleTypes?.find((t) => t.id === prev.vehicleTypeId);
-        const catalogType = typeIdForCatalogSelection(
-          catalogVehicles ?? [],
-          b,
-          m,
-        );
-        const resolved =
-          prevType?.id ?? vehicleTypes?.find((t) => t.id === catalogType)?.id;
-        if (resolved && !vehicleTypeId) {
-          setVehicleTypeId(resolved);
-          setTypeAutofilled(true);
-        }
+      }
+      if (resolved.type && !latest.vehicleTypeId) {
+        setVehicleTypeId(resolved.type.id);
+        setTypeAutofilled(true);
       }
       plateResolved.current = true;
     }
@@ -1209,11 +1228,18 @@ export function EntryFormCore({
         // excedente.
         const localEntry = entryToLocal(result);
         await localDb.entries.put(localEntry);
+        await learnLocalPlateProfile(localEntry).catch((error) =>
+          console.error(
+            '[plate-profiles] No se pudo actualizar la ficha local.',
+            error,
+          ),
+        );
       } else {
         await localDb.transaction(
           'rw',
           localDb.entries,
           localDb.pendingOps,
+          localDb.plateProfiles,
           async () => {
             await localDb.entries.put({
               id: entryId,
@@ -1249,6 +1275,8 @@ export function EntryFormCore({
               payload: body,
               status: 'pending',
             });
+            const saved = await localDb.entries.get(entryId);
+            if (saved) await learnLocalPlateProfile(saved);
           },
         );
       }

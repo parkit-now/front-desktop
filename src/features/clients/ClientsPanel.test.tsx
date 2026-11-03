@@ -48,6 +48,22 @@ afterEach(() => {
 });
 
 describe('diálogo de clientes', () => {
+  it('separa Facturación de Vehículos y permite cambiar con teclado', () => {
+    const tabs = container.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    expect(tabs[0].textContent).toBe('Facturación');
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    act(() => tabs[1].click());
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    expect(container.textContent).toContain('Agregar vehículo');
+    expect(container.textContent).not.toContain('Agregar cliente');
+    act(() => {
+      tabs[1].dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Home', bubbles: true }),
+      );
+    });
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(container.textContent).toContain('Agregar cliente');
+  });
   it('cierra con el fondo o con la cruz, sin botón Cancelar', () => {
     const open = () =>
       Array.from(container.querySelectorAll('button')).find(
