@@ -1,3 +1,31 @@
+# [1.27.0](https://github.com/parkit-now/front-desktop/compare/v1.26.0...v1.27.0) (2026-11-04)
+
+
+### Bug Fixes
+
+* **clientes:** integrar pestañas en la cabecera de la tabla ([2ce9987](https://github.com/parkit-now/front-desktop/commit/2ce9987b2faabd725b4c87f1ced5319f6d5907a5))
+* **data-table:** mostrar la dirección de orden en el encabezado ([f9e39b7](https://github.com/parkit-now/front-desktop/commit/f9e39b76055484a5e5d04a0956d73612bd257024))
+* **data-table:** ordenar las patentes por texto y no por su valor ([302b6f2](https://github.com/parkit-now/front-desktop/commit/302b6f2979259d5d1c6372390323e54ac297a52e))
+* **data-table:** ordenar por el valor de la celda y no por su texto ([5c533d6](https://github.com/parkit-now/front-desktop/commit/5c533d642b7b23e020d1335ad03366ddd9843307))
+* **entries:** señalar campos faltantes al intentar ingresar ([f72c186](https://github.com/parkit-now/front-desktop/commit/f72c186d257399bb8edc539723617f96cb22a28f))
+* **estadisticas:** aclarar selector de cajas en desktop ([c475253](https://github.com/parkit-now/front-desktop/commit/c475253cd7994c5747759436bc3315618b40542d))
+* **estadisticas:** redondear panel y selector de períodos ([71eec0a](https://github.com/parkit-now/front-desktop/commit/71eec0ad10fafbf3fd087345dcb67901828e657a))
+* **historial:** mostrar fechas solo para egresados ([4b66be7](https://github.com/parkit-now/front-desktop/commit/4b66be7e518e71d111271d87f1a30a34a314421f))
+* **historial:** ordenar la columna Factura por el flujo del estado ([e1b5fb8](https://github.com/parkit-now/front-desktop/commit/e1b5fb8c437d87fe46b6e3ccf4b76941a64afbb3))
+* oculta el selector con un solo campo y conserva la búsqueda general ([bba1126](https://github.com/parkit-now/front-desktop/commit/bba112642a4ee7a821c069f61f6132bac5e4c272))
+* **sync:** reconciliar las estadías para podar las que el servidor no conoce ([7c1553d](https://github.com/parkit-now/front-desktop/commit/7c1553d51eadb8c53c766631118f4db926a9615c))
+* **ui:** ubicar acciones después de los avisos ([d0602b3](https://github.com/parkit-now/front-desktop/commit/d0602b34688e1d6a6639a6cb06276293f14fe382))
+
+
+### Features
+
+* **clientes:** administrar vehículos por patente en desktop ([3450ea7](https://github.com/parkit-now/front-desktop/commit/3450ea72a188b359034d32cbc8bed3bc68d2928e))
+* **data-table:** buscar por ticket y patente en las tablas ([1fe9b71](https://github.com/parkit-now/front-desktop/commit/1fe9b71ca9d5a0b0248e6c85c35b25df8c80c834))
+* **entries:** exportar autos en base a Excel ([0740a91](https://github.com/parkit-now/front-desktop/commit/0740a9123bca1b8ae82502eb737e48614a1e7c82))
+* **estadisticas:** jerarquizar períodos y filtros ([bb6313b](https://github.com/parkit-now/front-desktop/commit/bb6313bddb90f7b1af13cbe4dd9cbec54da1cd30))
+* **historial:** filtrar por estado de egreso ([8d1da3f](https://github.com/parkit-now/front-desktop/commit/8d1da3f82d41fdc31ecb3fd8923e3345e13cc08b))
+* **tablas:** sincronizar plantillas personales de desktop ([29d9d87](https://github.com/parkit-now/front-desktop/commit/29d9d870f8791c145393ae8b543955668475194f))
+
 # [1.26.0](https://github.com/parkit-now/front-desktop/compare/v1.25.0...v1.26.0) (2026-10-19)
 
 
