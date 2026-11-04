@@ -347,6 +347,52 @@ vi.mock('../api/lpr-events', async (importOriginal) => ({
 
 const { syncService } = await import('./SyncService');
 
+describe('errores de fullSync', () => {
+  it('conserva las causas y ejecuta las etapas restantes aunque fallen las nuevas funciones', async () => {
+    const methods = [
+      'pushPendingOps',
+      'pullTableTemplates',
+      'pullLprIgnoredPlates',
+      'pullClients',
+      'pullPlateProfiles',
+      'pullVehicleCategories',
+      'pullVehicleTypes',
+      'pullVehicles',
+      'pullRates',
+      'pullPaymentMethods',
+      'pullCashSessions',
+      'pullEntries',
+      'pullLprDetectionEvents',
+      'pushLprDetectionEventImages',
+      'pullPaymentTransactions',
+      'pullInvoices',
+      'reconcileCatalogs',
+    ] as const;
+    const spies = methods.map((method) =>
+      vi.spyOn(syncService, method).mockResolvedValue(undefined),
+    );
+    const templatesError = new Error('template failure');
+    const profilesError = new Error('profile failure');
+    spies[1].mockRejectedValue(templatesError);
+    spies[4].mockRejectedValue(profilesError);
+    try {
+      await expect(
+        syncService.fullSync({ forceReconcile: true }),
+      ).rejects.toMatchObject({
+        name: 'SyncError',
+        failures: [
+          { stage: 'plantillas de tabla', error: templatesError },
+          { stage: 'vehículos de clientes', error: profilesError },
+        ],
+      });
+      for (const spy of spies) expect(spy).toHaveBeenCalledOnce();
+      expect(spies.at(-1)).toHaveBeenCalledWith(true);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+});
+
 const ENTERED_AT = '2026-09-13T10:00:00.000Z';
 const LEFT_AT = '2026-09-13T12:30:00.000Z';
 
@@ -1718,11 +1764,15 @@ describe('reconcileCatalogs', () => {
 
   it('no sella el timestamp cuando el listado falla, así reintenta', async () => {
     tarifaLocal('a');
-    h.listRates.mockRejectedValue(new Error('sin red'));
+    const failure = new TypeError('Failed to fetch');
+    h.listRates.mockRejectedValue(failure);
     h.listVehicleTypes.mockResolvedValue([]);
     h.listPaymentMethods.mockResolvedValue([]);
 
-    await expect(syncService.reconcileCatalogs(true)).rejects.toThrow();
+    await expect(syncService.reconcileCatalogs(true)).rejects.toMatchObject({
+      name: 'SyncError',
+      failures: [{ stage: 'tarifas', error: failure }],
+    });
 
     expect(h.syncState.get(`reconcile:rate:${TENANT}`)).toBeUndefined();
     expect(h.rates.rows.has('a')).toBe(true);

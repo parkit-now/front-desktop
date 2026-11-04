@@ -1,4 +1,5 @@
 import { classifyPushFailure } from './retryPolicy';
+import { SyncError, type SyncFailure } from './SyncError';
 import {
   pullTemplateScope,
   pushTemplateOp,
@@ -2093,18 +2094,18 @@ class SyncService {
       ],
     ];
 
-    const failures: string[] = [];
+    const failures: SyncFailure[] = [];
     for (const [label, run] of entities) {
       try {
         await run();
       } catch (error) {
-        failures.push(label);
+        failures.push({ stage: label, error });
         console.error(`[sync] falló la reconciliación de ${label}`, error);
       }
     }
 
     if (failures.length > 0) {
-      throw new Error(`reconciliación: ${failures.join(', ')}`);
+      throw new SyncError(failures);
     }
   }
 
@@ -2153,19 +2154,19 @@ class SyncService {
       ],
     ];
 
-    const failures: string[] = [];
+    const failures: SyncFailure[] = [];
 
     for (const [label, run] of stages) {
       try {
         await run();
       } catch (error) {
-        failures.push(label);
+        failures.push({ stage: label, error });
         console.error(`[sync] Falló la etapa "${label}"`, error);
       }
     }
 
     if (failures.length > 0) {
-      throw new Error(`No se pudo sincronizar: ${failures.join(', ')}.`);
+      throw new SyncError(failures);
     }
   }
 }

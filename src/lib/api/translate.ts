@@ -1,4 +1,5 @@
 import { ApiError } from './client';
+import { SyncError } from '../sync/SyncError';
 
 /**
  * Traduce errores del backend a mensajes en español.
@@ -290,6 +291,15 @@ export function translateApiError(
   error: unknown,
   ctx: TranslateContext = {},
 ): string {
+  if (error instanceof SyncError) {
+    return error.failures
+      .map(
+        (failure) =>
+          `${failure.stage}: ${translateApiError(failure.error, ctx)}`,
+      )
+      .join(' · ');
+  }
+
   if (error instanceof ApiError) {
     const code = readProblemCode(error);
     if (code && CODE_MESSAGES[code]) {
