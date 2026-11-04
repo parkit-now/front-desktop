@@ -190,6 +190,32 @@ describe('Excel de autos en base', () => {
     expect(sheet.getCell('B2').value).toBe('AA000AA');
   });
 
+  it('mantiene Marca y Modelo, pero deja color y cochera solo en Filtros', async () => {
+    await localDb.entries.update('entry-0', {
+      color: 'COLORFILTRO',
+      cochera: 'COCHERAFILTRO',
+    });
+    const container = await render();
+    await waitForText('AA009AA');
+    await click('Campo de búsqueda');
+    expect(
+      [...container.querySelectorAll('[role="menuitemradio"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Todos', 'Ticket', 'Patente', 'Marca', 'Modelo', 'Notas']);
+    await click('Todos');
+    for (const query of ['COLORFILTRO', 'COCHERAFILTRO']) {
+      await change(field('Buscar en la tabla'), query);
+      expect(
+        container.querySelectorAll('tbody .dt-plate__number'),
+      ).toHaveLength(0);
+    }
+    await change(field('Buscar en la tabla'), 'Volkswagen');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      8,
+    );
+  });
+
   it('exporta solo las columnas visibles y en el orden de la vista guardada', async () => {
     saveTableTemplate(
       { userId: 'user', tenantId: 'tenant', tableKey: 'active-vehicles' },

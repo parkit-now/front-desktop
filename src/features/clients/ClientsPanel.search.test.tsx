@@ -12,6 +12,7 @@ import {
   waitForText,
 } from '../../test/dom';
 import { ClientsPanel } from './ClientsPanel';
+import { emptyPlateProfile } from './plateProfiles';
 
 vi.mock('../../lib/network/NetworkContext', () => ({
   useNetwork: () => ({ isOnline: false }),
@@ -59,6 +60,49 @@ afterEach(async () => {
 });
 
 describe('búsqueda por campo de clientes offline', () => {
+  it('en Vehículos busca patente, marca y modelo, dejando color, tipo y tarifa en Filtros', async () => {
+    await localDb.plateProfiles.put({
+      ...emptyPlateProfile('tenant', 'AB123CD'),
+      vehicleBrand: 'Ford',
+      vehicleModel: 'Ranger',
+      color: 'COLORFILTRO',
+      vehicleTypeName: 'TIPOFILTRO',
+      rateName: 'TARIFAFILTRO',
+    });
+    const container = await mount(
+      <ClientsPanel tenantId="tenant" userId="owner" accessToken="unused" />,
+    );
+    await click('Vehículos');
+    await waitForText('Ranger');
+    await click('Campo de búsqueda');
+    expect(
+      [...container.querySelectorAll('[role="menuitemradio"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Todos', 'Patente', 'Marca', 'Modelo']);
+    await click('Todos');
+    for (const query of ['COLORFILTRO', 'TIPOFILTRO', 'TARIFAFILTRO']) {
+      await change(field('Buscar en la tabla'), query);
+      expect(
+        container.querySelectorAll('tbody .dt-plate__number'),
+      ).toHaveLength(0);
+    }
+    await change(field('Buscar en la tabla'), 'Ford');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      1,
+    );
+    await change(field('Buscar en la tabla'), '');
+    await click('Filtros');
+    const panel = container.querySelector<HTMLElement>(
+      '[aria-label="Filtros de tabla"]',
+    )!;
+    await click('Color', panel);
+    await click(field('COLORFILTRO', panel));
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      1,
+    );
+  });
+
   it('separa Nombre y Email y conserva Todos como búsqueda inicial', async () => {
     const container = await mount(
       <ClientsPanel tenantId="tenant" userId="owner" accessToken="unused" />,

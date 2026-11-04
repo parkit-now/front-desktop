@@ -26,7 +26,7 @@ import { DateRangeFilter, type DateRange } from '../../lib/ui/DateRangeFilter';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { DataTable } from '../data-table/DataTable';
 import { createVehicleSearchModes } from '../data-table/vehicleSearch';
-import { normalizeText, textSorting } from '../data-table/utils';
+import { textSorting } from '../data-table/utils';
 import { Pagination } from '../data-table/components/Pagination';
 import { PlateCell } from '../data-table/components/PlateCell';
 import { VehicleCell } from '../data-table/components/VehicleCell';
@@ -57,24 +57,8 @@ const SEARCH_MODES = createVehicleSearchModes<AuditRow>({
   fields: [
     { id: 'actor', label: 'Actor', searchableKeys: ['actor'] },
     { id: 'reason', label: 'Razón', searchableKeys: ['reason'] },
-    {
-      id: 'field',
-      label: 'Campo modificado',
-      matches: (row, query) =>
-        row.changedFields.some((field) =>
-          normalizeText(auditFieldLabel(field)).includes(normalizeText(query)),
-        ),
-    },
-    { id: 'event', label: 'Evento', searchableKeys: ['label'] },
     { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
     { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
-    { id: 'color', label: 'Color', searchableKeys: ['color'] },
-    { id: 'rate', label: 'Tarifa', searchableKeys: ['rate'] },
-    {
-      id: 'paymentMethod',
-      label: 'Medio de pago',
-      searchableKeys: ['paymentMethod'],
-    },
   ],
 });
 const statusLabels = { info: 'Info', warn: 'Advertencia', crit: 'Crítico' };
@@ -872,6 +856,15 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
       { id: 'actorRole', header: 'Rol', accessorKey: 'actorRole' },
       { id: 'origin', header: 'Origen', accessorKey: 'origin' },
       {
+        accessorKey: 'changedFields',
+        header: 'Campo modificado',
+        enableHiding: false,
+        meta: { filterOnly: true },
+        filterFn: (row, _columnId, values: string[]) =>
+          !values?.length ||
+          values.some((value) => row.original.changedFields.includes(value)),
+      },
+      {
         id: 'plate',
         header: 'Patente / ticket',
         accessorKey: 'plate',
@@ -1068,13 +1061,21 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
                 columns={columns}
                 isLoading={audit.isLoading}
                 emptyMessage="No hay eventos de auditoría para mostrar."
-                searchPlaceholder="Buscar por patente, actor, ticket, razón o campo"
+                searchPlaceholder="Buscar por patente, ticket, actor, razón, marca o modelo"
                 searchModes={SEARCH_MODES}
-                searchableKeys={['searchText']}
+                searchableKeys={[
+                  'plate',
+                  'ticket',
+                  'actor',
+                  'reason',
+                  'vehicleBrand',
+                  'vehicleModel',
+                ]}
                 filterableColumns={[
                   'severity',
                   'action',
                   'origin',
+                  'changedFields',
                   'cashSessionId',
                   'paymentMethod',
                   'rate',
@@ -1086,6 +1087,11 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
                   'leftAt',
                 ]}
                 filterOptionsByColumn={{
+                  changedFields: [
+                    ...new Set(allRows.flatMap((row) => row.changedFields)),
+                  ]
+                    .sort()
+                    .map((value) => ({ value, label: auditFieldLabel(value) })),
                   severity: [
                     { value: 'info', label: 'Info' },
                     { value: 'warn', label: 'Advertencia' },

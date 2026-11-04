@@ -58,9 +58,6 @@ const SEARCH_MODES = createVehicleSearchModes<LocalPlateProfile>({
   fields: [
     { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
     { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
-    { id: 'type', label: 'Tipo', searchableKeys: ['vehicleTypeName'] },
-    { id: 'color', label: 'Color', searchableKeys: ['color'] },
-    { id: 'rate', label: 'Tarifa', searchableKeys: ['rateName'] },
   ],
 });
 
@@ -394,16 +391,9 @@ export function PlateProfilesPanel({
             headerTabs={headerTabs}
             isLoading={rows === undefined}
             emptyMessage="No hay vehículos registrados."
-            searchPlaceholder="Buscar por patente, vehículo, color o tarifa..."
+            searchPlaceholder="Buscar por patente, marca o modelo..."
             searchModes={SEARCH_MODES}
-            searchableKeys={[
-              'plate',
-              'vehicleBrand',
-              'vehicleModel',
-              'vehicleTypeName',
-              'color',
-              'rateName',
-            ]}
+            searchableKeys={['plate', 'vehicleBrand', 'vehicleModel']}
             filterableColumns={[
               'plate',
               'vehicleBrand',
