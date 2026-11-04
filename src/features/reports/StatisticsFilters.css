@@ -6,7 +6,7 @@
   --stats-tint: #f7faff;
   min-width: 0;
   border: 1px solid var(--stats-border);
-  border-radius: 8px;
+  border-radius: 18px;
   background: var(--stats-surface);
 }
 
@@ -51,7 +51,7 @@
   padding: 3px;
   min-width: 0;
   border: 1px solid var(--stats-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--stats-tint);
 }
 
@@ -59,7 +59,7 @@
   min-height: 34px;
   padding: 6px 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
   color: var(--stats-muted);
   font: inherit;
@@ -88,7 +88,7 @@
   min-height: 42px;
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--stats-muted);
   font: inherit;
