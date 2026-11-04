@@ -13,6 +13,14 @@ export type DataTableFilterOption = {
   label: string;
 };
 
+export type DataTableSearchMode<TData> = {
+  id: string;
+  label: string;
+  placeholder?: string;
+  searchableKeys?: string[];
+  matches?: (row: TData, query: string) => boolean;
+};
+
 export type DataTableFilterSwitch = {
   id: string;
   label: string;
@@ -36,6 +44,7 @@ export type DataTableProps<TData> = {
   emptyMessage?: string;
   searchPlaceholder?: string;
   searchableKeys?: string[];
+  searchModes?: readonly DataTableSearchMode<TData>[];
   filterableColumns?: string[];
   filterOptionsByColumn?: Record<string, DataTableFilterOption[]>;
   filterSwitches?: DataTableFilterSwitch[];
@@ -55,6 +64,7 @@ export type DataTableProps<TData> = {
   onRowClick?: (row: TData) => void;
   templateScope?: TableTemplateScope;
   headerAction?: ReactNode;
+  headerTabs?: ReactNode;
   toolbarExtra?: ReactNode;
   excelExport?: ExcelExportOptions<TData>;
   onRefresh?: () => void;

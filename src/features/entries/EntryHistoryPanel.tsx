@@ -28,7 +28,11 @@ import {
   readPersistedTableSwitches,
   type TableTemplateScope,
 } from '../table-view-template';
-import { DataTable, type DataTableFilterOption } from '../data-table';
+import {
+  DataTable,
+  createVehicleSearchModes,
+  type DataTableFilterOption,
+} from '../data-table';
 import { VehicleCell } from '../data-table/components/VehicleCell';
 import { PlateCell } from '../data-table/components/PlateCell';
 import {
@@ -36,7 +40,11 @@ import {
   StayDateCell,
   TableDateTimeCell,
 } from '../data-table/components/StayDateCell';
-import { dateTimeSorting } from '../data-table/utils';
+import {
+  dateTimeSorting,
+  enumOrderSorting,
+  textSorting,
+} from '../data-table/utils';
 import { getDateRangeExcelFileName } from '../data-table/excelExport';
 import { EntryEditDialog } from './EntryEditDialog';
 import {
@@ -273,6 +281,7 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
   },
   {
     accessorKey: 'plate',
+    sortingFn: textSorting(),
     header: 'Patente',
     size: 120,
     cell: ({ row }) => <PlateCell plate={row.original.plate} />,
@@ -334,6 +343,11 @@ const COLUMNS_HEAD: ColumnDef<EntryHistoryRow, unknown>[] = [
     meta: {
       exportValue: (row) =>
         row.leftAt ? formatArgentinaDateTime(row.leftAt) : '',
+      datePresenceLabels: {
+        all: 'Todos',
+        present: 'Egresados',
+        missing: 'En base',
+      },
     },
     size: 155,
     filterFn: 'dateRange',
@@ -419,6 +433,7 @@ const INVOICE_COLUMNS: ColumnDef<EntryHistoryRow, unknown>[] = [
     meta: { exportValue: invoiceExportValue },
     size: 170,
     filterFn: 'includesSome',
+    sortingFn: enumOrderSorting(INVOICE_STATE_ORDER),
     cell: ({ row }) => <InvoiceCell row={row.original} />,
   },
   {
@@ -535,6 +550,11 @@ const SEARCHABLE_KEYS = [
   'notes',
 ];
 
+const SEARCH_MODES = createVehicleSearchModes<EntryHistoryRow>({
+  ticket: (row) => row.ticketNumber,
+  plate: (row) => row.plate,
+});
+
 export function EntryHistoryPanel({
   tenantId,
   userId,
@@ -572,9 +592,6 @@ export function EntryHistoryPanel({
       : focusedFromCashSession
         ? initialOnlyCurrentSession
         : (persistedSwitches.onlyCurrentSession ?? true),
-  );
-  const [includeInLot, setIncludeInLot] = useState(() =>
-    renderTable ? true : (persistedSwitches.includeInLot ?? true),
   );
   const [editingEntry, setEditingEntry] = useState<EntryHistoryRow | null>(
     null,
@@ -781,9 +798,7 @@ export function EntryHistoryPanel({
         }
       });
 
-    let filtered = includeInLot
-      ? allEntries
-      : allEntries.filter((e) => Boolean(e.leftAt));
+    let filtered = allEntries;
 
     if (onlyCurrentSession) {
       filtered = activeCashSession
@@ -838,7 +853,6 @@ export function EntryHistoryPanel({
     allPaymentTransactions,
     allInvoices,
     allLprDetections,
-    includeInLot,
     onlyCurrentSession,
     activeCashSession,
   ]);
@@ -885,9 +899,8 @@ export function EntryHistoryPanel({
   const tableSwitches = useMemo(
     () => ({
       onlyCurrentSession: isOperator ? true : onlyCurrentSession,
-      includeInLot,
     }),
-    [includeInLot, isOperator, onlyCurrentSession],
+    [isOperator, onlyCurrentSession],
   );
 
   useEffect(() => {
@@ -956,6 +969,7 @@ export function EntryHistoryPanel({
       emptyMessage="No hay movimientos registrados todavía."
       searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
       searchableKeys={SEARCHABLE_KEYS}
+      searchModes={SEARCH_MODES}
       filterableColumns={filterableColumns}
       filterOptionsByColumn={{
         amountPaid: paymentMethodFilterOptions,
@@ -983,12 +997,6 @@ export function EntryHistoryPanel({
           checked: isOperator ? true : onlyCurrentSession,
           disabled: isOperator,
           onChange: handleOnlyCurrentSessionChange,
-        },
-        {
-          id: 'includeInLot',
-          label: 'Incluir autos en base',
-          checked: includeInLot,
-          onChange: setIncludeInLot,
         },
       ]}
       subtitle={

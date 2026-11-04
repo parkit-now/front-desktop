@@ -79,6 +79,60 @@ afterEach(async () => {
   localStorage.clear();
 });
 
+it('no cambia la cabecera de las tablas que no configuran pestañas', async () => {
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable
+          data={data}
+          columns={columns}
+          title="Historial"
+          headerAction={<button>Agregar</button>}
+        />,
+      ),
+    ),
+  );
+  const header = container.querySelector('.dt-card-header')!;
+  expect(header.children).toHaveLength(2);
+  expect(header.querySelector('h3')?.textContent).toBe('Historial');
+  expect(header.firstElementChild?.getAttribute('class')).toBeNull();
+  expect(
+    header.querySelector('.dt-card-header-right button')?.textContent,
+  ).toBe('Agregar');
+  expect(header.querySelector('[role="tablist"]')).toBeNull();
+});
+
+it('ubica las pestañas opcionales junto al título sin mover las acciones', async () => {
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable
+          data={data}
+          columns={columns}
+          title="Clientes"
+          headerTabs={
+            <div role="tablist" aria-label="Clientes">
+              <button role="tab" aria-selected>
+                Facturación
+              </button>
+            </div>
+          }
+          headerAction={<button>Agregar cliente</button>}
+        />,
+      ),
+    ),
+  );
+  const titleGroup = container.querySelector('.dt-card-header-with-tabs')!;
+  expect(titleGroup.querySelector('h3')?.textContent).toBe('Clientes');
+  expect(titleGroup.querySelector('[role="tablist"]')?.textContent).toBe(
+    'Facturación',
+  );
+  expect(
+    container.querySelector('.dt-card-header-right button')?.textContent,
+  ).toBe('Agregar cliente');
+  expect(rows()).toHaveLength(2);
+});
+
 it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async () => {
   const sizedColumns: ColumnDef<(typeof data)[number], unknown>[] = [
     { accessorKey: 'plate', header: 'Patente', size: 180 },
@@ -129,6 +183,13 @@ it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async 
 });
 
 describe('filtro inicial de caja', () => {
+  it('no agrega modos de búsqueda a tablas que no los configuran', async () => {
+    await render();
+    expect(
+      container.querySelector('[aria-label="Campo de búsqueda"]'),
+    ).toBeNull();
+  });
+
   it('se conserva al montar sin plantilla ni orden explicita de limpiar filtros', async () => {
     await render();
     expect(rows()).toHaveLength(1);
@@ -389,4 +450,52 @@ it('mantiene el filtro de comprobante sin mostrar su columna en una vista guarda
   expect(container.querySelector('.dt-filter-panel')?.textContent).toContain(
     'Comprobante',
   );
+});
+
+describe('dirección de orden en el encabezado', () => {
+  const headers = () => [...container.querySelectorAll('thead th')];
+  const sortButton = (label: string) =>
+    headers()
+      .find((th) => th.textContent === label)
+      ?.querySelector<HTMLButtonElement>('.dt-sort-button');
+
+  it('refleja el estado en aria-sort y en el icono, sin tocar el texto', async () => {
+    await render();
+    const textoInicial = headers().map((th) => th.textContent);
+    const boton = sortButton('Patente');
+    expect(boton).toBeTruthy();
+
+    const th = () => headers().find((item) => item.textContent === 'Patente');
+    expect(th()?.getAttribute('aria-sort')).toBe('none');
+
+    await act(() => Promise.resolve(boton!.click()));
+    expect(th()?.getAttribute('aria-sort')).toBe('ascending');
+
+    await act(() => Promise.resolve(sortButton('Patente')!.click()));
+    expect(th()?.getAttribute('aria-sort')).toBe('descending');
+
+    // Las demás columnas ordenables siguen sin orden.
+    expect(
+      headers()
+        .filter((item) => item.textContent !== 'Patente')
+        .map((item) => item.getAttribute('aria-sort')),
+    ).toEqual(['none', 'none']);
+
+    // El estado viaja por atributos e iconos: el texto del encabezado no cambia.
+    expect(headers().map((item) => item.textContent)).toEqual(textoInicial);
+  });
+
+  it('marca la columna activa y conserva un boton enfocable', async () => {
+    await render();
+    const boton = sortButton('Notas')!;
+    expect(boton.tagName).toBe('BUTTON');
+    expect(boton.className).toBe('dt-sort-button');
+
+    boton.focus();
+    await act(() => Promise.resolve(boton.click()));
+
+    const activo = sortButton('Notas')!;
+    expect(activo.className).toContain('is-sorted');
+    expect(document.activeElement).toBe(activo);
+  });
 });

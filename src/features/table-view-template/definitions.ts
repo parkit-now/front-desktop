@@ -26,6 +26,7 @@ export const TableViewConfigSchema = z.object({
   filters: z.array(TableFilterStateSchema).default([]),
   sorting: z.array(TableSortingStateSchema).default([]),
   globalSearch: z.string().default(''),
+  globalSearchMode: z.string().optional(),
   pagination: z
     .object({
       pageSize: z.number().int().min(1).max(500).default(10),

@@ -62,6 +62,27 @@ const config: TableViewConfig = {
 };
 
 describe('table view template storage', () => {
+  it('conserva el modo de búsqueda opcional sin alterar las configuraciones anteriores', () => {
+    const storage = new MemoryStorage();
+    saveTableTemplate(
+      scope,
+      {
+        name: 'Ticket exacto',
+        config: { ...config, globalSearch: '#66', globalSearchMode: 'ticket' },
+      },
+      storage,
+    );
+    const saved = readTableTemplateCollection(scope, storage).templates[0]
+      .config;
+    expect(sanitizeTableViewConfig(saved, ['name', 'status'])).toMatchObject({
+      globalSearch: '#66',
+      globalSearchMode: 'ticket',
+    });
+    expect(
+      sanitizeTableViewConfig(config, ['name', 'status']),
+    ).not.toHaveProperty('globalSearchMode');
+  });
+
   it('builds scoped storage keys', () => {
     expect(buildTableTemplateStorageKey(scope)).toBe(
       'parkit.desktop.table-views:user-1:tenant-1:rates',

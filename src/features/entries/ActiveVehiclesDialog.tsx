@@ -2,10 +2,14 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Eye, LogOut, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable } from '../data-table';
+import { createVehicleSearchModes, DataTable } from '../data-table';
+import { textSorting } from '../data-table/utils';
 import { VehicleCell } from '../data-table/components/VehicleCell';
 import { PlateCell } from '../data-table/components/PlateCell';
-import { StayDateCell } from '../data-table/components/StayDateCell';
+import {
+  formatStayDuration,
+  StayDateCell,
+} from '../data-table/components/StayDateCell';
 import { dateTimeSorting } from '../data-table/utils';
 import {
   localDb,
@@ -22,6 +26,9 @@ import { EntryDeleteAction } from './EntryDeleteAction';
 import { EntryDeleteDialog } from './EntryDeleteDialog';
 import { entryDeletionBlockers } from './entryDeletion';
 import { InlineEntryField } from './InlineEntryField';
+import { formatArgentinaDateTime } from '../../lib/format/argentina';
+import { useToast } from '../../lib/notifications/ToastProvider';
+import { translateApiError } from '../../lib/api/translate';
 
 interface Props {
   tenantId: string;
@@ -55,6 +62,11 @@ type ActiveRow = {
   lprDetection: LocalLprDetectionEvent | null;
   entry: EditableActiveEntry;
 };
+
+const SEARCH_MODES = createVehicleSearchModes<ActiveRow>({
+  ticket: (row) => row.ticketNumber,
+  plate: (row) => row.plate,
+});
 
 function toRow(
   e: LocalEntry,
@@ -96,6 +108,7 @@ export function ActiveVehiclesDialog({
   const [deletingEntry, setDeletingEntry] =
     useState<EditableActiveEntry | null>(null);
   const { isOnline } = useNetwork();
+  const { showToast } = useToast();
   const [photoDetection, setPhotoDetection] =
     useState<LocalLprDetectionEvent | null>(null);
   const activeEntries = useLiveQuery(
@@ -194,6 +207,7 @@ export function ActiveVehiclesDialog({
         size: 42,
         enableSorting: false,
         enableHiding: false,
+        meta: { excludeFromExport: true },
         cell: ({ row }) => {
           const detection = row.original.lprDetection;
           const disabled = !hasDetectionImage(detection);
@@ -227,6 +241,7 @@ export function ActiveVehiclesDialog({
         id: 'ticket',
         header: '#',
         accessorFn: (r) => r.ticketNumber ?? 0,
+        meta: { exportValue: (row) => row.ticketNumber },
         size: 64,
         cell: ({ row }) =>
           row.original.ticketNumber != null ? (
@@ -239,6 +254,7 @@ export function ActiveVehiclesDialog({
       },
       {
         accessorKey: 'plate',
+        sortingFn: textSorting(),
         header: 'Patente',
         size: 120,
         cell: ({ row }) => <PlateCell plate={row.original.plate} />,
@@ -251,6 +267,12 @@ export function ActiveVehiclesDialog({
             .join(' '),
         header: 'Vehículo',
         size: 160,
+        meta: {
+          exportValue: (row) =>
+            [row.vehicleBrand, row.vehicleModel, row.color]
+              .filter((value) => value && value !== '—')
+              .join('\n'),
+        },
         cell: ({ row }) => (
           <VehicleCell
             brand={row.original.vehicleBrand}
@@ -275,6 +297,10 @@ export function ActiveVehiclesDialog({
         id: 'enteredAt',
         header: 'Ingreso',
         accessorKey: 'enteredAtLocalDate',
+        meta: {
+          exportValue: (row) =>
+            `${formatArgentinaDateTime(row.enteredAt)}\nEn curso · ${formatStayDuration(row.enteredAt, null)}`,
+        },
         size: 180,
         filterFn: 'dateRange',
         sortingFn: dateTimeSorting((row) => row.enteredAt),
@@ -426,6 +452,12 @@ export function ActiveVehiclesDialog({
 
         <div className="active-vehicles-dialog__table data-table-host">
           <DataTable
+            excelExport={{
+              fileName: 'autos-en-base.xlsx',
+              sheetName: 'Autos en base',
+              onError: (error) =>
+                showToast({ message: translateApiError(error), kind: 'error' }),
+            }}
             data={rows}
             columns={columns}
             isLoading={
@@ -438,6 +470,7 @@ export function ActiveVehiclesDialog({
             }
             emptyMessage="No hay vehículos estacionados en este momento."
             searchPlaceholder="Buscar por ticket, patente, vehículo, color o notas…"
+            searchModes={SEARCH_MODES}
             searchableKeys={[
               'ticketNumber',
               'plate',

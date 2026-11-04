@@ -346,6 +346,9 @@ export interface SyncState {
 
 export type LocalLprIgnoredPlate = components['schemas']['LprIgnoredPlateDto'];
 export type LocalClient = components['schemas']['ClientDto'];
+export type LocalPlateProfile = components['schemas']['PlateProfileDto'] & {
+  key: string;
+};
 
 // 'unreviewed' is for audit-only ops (e.g. a freshly-detected LPR plate the
 // operator hasn't registered/dismissed yet) — they still get pushed like any
@@ -359,12 +362,14 @@ export type PendingOpStatus =
   | 'conflict'
   | 'failed';
 export type PendingOpEntity =
+  | 'tableTemplate'
   | 'rate'
   | 'entry'
   | 'vehicle'
   | 'vehicleType'
   | 'lprIgnoredPlate'
   | 'client'
+  | 'plateProfile'
   | 'paymentMethod'
   | 'cashSession'
   | 'lprDetectionEvent';
@@ -394,12 +399,15 @@ export interface PendingOp {
 }
 
 class ParkitLocalDb extends Dexie {
+  tableTemplates!: Table<LocalTableTemplate>;
+  tableTemplateScopes!: Table<LocalTableTemplateScope>;
   rates!: Table<LocalRate>;
   entries!: Table<LocalEntry>;
   vehicles!: Table<LocalVehicle>;
   vehicleTypes!: Table<LocalVehicleType>;
   lprIgnoredPlates!: Table<LocalLprIgnoredPlate>;
   clients!: Table<LocalClient>;
+  plateProfiles!: Table<LocalPlateProfile>;
   vehicleCategories!: Table<LocalVehicleCategory>;
   paymentMethods!: Table<LocalPaymentMethod>;
   lprDetectionEvents!: Table<LocalLprDetectionEvent>;
@@ -753,7 +761,34 @@ class ParkitLocalDb extends Dexie {
     this.version(21).stores({
       clients: 'id, tenantId, cuit, *plates',
     });
+    this.version(22).stores({
+      tableTemplates: 'key, [userId+tenantId+tableKey], userId, tenantId',
+      tableTemplateScopes: 'key, [userId+tenantId]',
+    });
+    this.version(23).stores({
+      plateProfiles: 'key, tenantId, [tenantId+plate]',
+    });
   }
 }
 
 export const localDb = new ParkitLocalDb();
+
+export interface LocalTableTemplate {
+  key: string;
+  userId: string;
+  tenantId: string;
+  tableKey: string;
+  id: string;
+  name: string;
+  description?: string;
+  config: import('../../features/table-view-template/definitions').TableViewConfig;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+export interface LocalTableTemplateScope {
+  key: string;
+  userId: string;
+  tenantId: string;
+  tableKey: string;
+}

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { DataTable } from '../data-table';
+import { createVehicleSearchModes, DataTable } from '../data-table';
+import { textSorting } from '../data-table/utils';
 import { PlateCell } from '../data-table/components/PlateCell';
 import { localDb, type LocalLprIgnoredPlate } from '../../lib/db/localDb';
 import { useNetwork } from '../../lib/network/NetworkContext';
@@ -33,6 +34,9 @@ const emptyForm = {
   validFrom: '',
   validUntil: '',
 };
+const SEARCH_MODES = createVehicleSearchModes<LocalLprIgnoredPlate>({
+  plate: (row) => row.plate,
+});
 
 export function LprWhitelistPanel({
   tenantId,
@@ -132,6 +136,7 @@ export function LprWhitelistPanel({
     () => [
       {
         accessorKey: 'plate',
+        sortingFn: textSorting(),
         header: 'Patente',
         size: 120,
         cell: (info) => <PlateCell plate={String(info.getValue())} />,
@@ -239,6 +244,7 @@ export function LprWhitelistPanel({
             isLoading={rows === undefined}
             emptyMessage="No hay patentes en la lista blanca."
             searchPlaceholder="Buscar por patente o nota..."
+            searchModes={SEARCH_MODES}
             searchableKeys={['plate', 'notes']}
             filterableColumns={['active', 'state', 'validFrom', 'validUntil']}
             getRowId={(row) => row.id}

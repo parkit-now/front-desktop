@@ -38,6 +38,11 @@ import {
 } from './ReservationBanner';
 import { isLinkableMatch } from './reservationUtils';
 import { useReservationMatch } from './useReservationMatch';
+import {
+  learnLocalPlateProfile,
+  plateProfileKey,
+  resolvePlateProfile,
+} from '../clients/plateProfiles';
 
 export type EntryFormVariant = 'manual' | 'auto';
 
@@ -86,14 +91,14 @@ interface Props {
   onDraftReset?: () => void;
 }
 
-type VehicleSuggestion =
+export type VehicleSuggestion =
   | { kind: 'model'; label: string; brand: string; model: string }
   | { kind: 'brand'; label: string; brand: string };
 
 const SUGGESTION_LIMIT = 10;
 
 // Portal dropdown for vehicle suggestions — avoids overflow/stacking-context clipping.
-function VehicleSuggestionsPortal({
+export function VehicleSuggestionsPortal({
   inputRef,
   suggestions,
   onSelect,
@@ -498,6 +503,7 @@ export function EntryFormCore({
   }
 
   function triggerSubmitConfirm() {
+    if (saving) return;
     if (awaitingConfirm) {
       setAwaitingConfirm(false);
       if (confirmTimeoutRef.current) {
@@ -514,34 +520,57 @@ export function EntryFormCore({
     }, 2500);
   }
 
-  // Look up previous entries for this tenant with the same plate and pre-fill
-  // vehicle, color and last rate when those fields are still empty. Runs on
-  // plate blur and (for auto-detected entries) once on mount.
+  const prefillContext = useRef({
+    plate,
+    tenantId,
+    color,
+    rateId,
+    rateInput,
+    vehicleInput,
+    vehicleTypeId,
+  });
+  prefillContext.current = {
+    plate,
+    tenantId,
+    color,
+    rateId,
+    rateInput,
+    vehicleInput,
+    vehicleTypeId,
+  };
+  // Remembered data is independent of history. Resolve every option against
+  // today's catalog and never overwrite input typed while Dexie was reading.
   const prefillFromPlate = useCallback(async () => {
     const normalized = plate.trim().toUpperCase();
     if (!normalized || plateResolved.current) return;
     if (
-      variant === 'auto' &&
-      initialPlate &&
-      (activeRates === undefined ||
-        vehicleTypes === undefined ||
-        catalogVehicles === undefined)
+      activeRates === undefined ||
+      vehicleTypes === undefined ||
+      catalogVehicles === undefined
     )
       return;
 
-    const prev = await localDb.entries
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((e) => e.plate === normalized && !e.deletedAt)
-      .first();
-
-    if (prev) {
-      if (!color && prev.color) {
-        setColor(prev.color);
+    const profile = await localDb.plateProfiles.get(
+      plateProfileKey(tenantId, normalized),
+    );
+    const latest = prefillContext.current;
+    if (
+      latest.tenantId !== tenantId ||
+      latest.plate.trim().toUpperCase() !== normalized
+    )
+      return;
+    const resolved = resolvePlateProfile(profile, {
+      vehicles: catalogVehicles ?? [],
+      types: vehicleTypes ?? [],
+      rates: activeRates ?? [],
+    });
+    if (profile && !profile.deletedAt) {
+      if (!latest.color && resolved.color) {
+        setColor(resolved.color);
         setColorSelected(true);
       }
-      if (!rateId && prev.rateId) {
-        const prevRate = activeRates?.find((r) => r.id === prev.rateId);
+      if (!latest.rateId && !latest.rateInput) {
+        const prevRate = resolved.rate;
         if (prevRate) {
           setRateId(prevRate.id);
           setRateInput(
@@ -552,26 +581,17 @@ export function EntryFormCore({
           setRateSelected(true);
         }
       }
-      if (prev.vehicleBrand && !vehicleInput) {
-        const b = prev.vehicleBrand;
-        const m = prev.vehicleModel ?? '';
+      if (resolved.vehicle && !latest.vehicleInput) {
+        const b = resolved.vehicle.brand;
+        const m = resolved.vehicle.model ?? '';
         setBrand(b);
         setModel(m);
         setVehicleInput(m ? `${b} ${m}` : b);
         setVehicleSelected(true);
-        // El tipo del ingreso anterior (si sigue vivo) y, si no, el del catálogo.
-        const prevType = vehicleTypes?.find((t) => t.id === prev.vehicleTypeId);
-        const catalogType = typeIdForCatalogSelection(
-          catalogVehicles ?? [],
-          b,
-          m,
-        );
-        const resolved =
-          prevType?.id ?? vehicleTypes?.find((t) => t.id === catalogType)?.id;
-        if (resolved && !vehicleTypeId) {
-          setVehicleTypeId(resolved);
-          setTypeAutofilled(true);
-        }
+      }
+      if (resolved.type && !latest.vehicleTypeId) {
+        setVehicleTypeId(resolved.type.id);
+        setTypeAutofilled(true);
       }
       plateResolved.current = true;
     }
@@ -1012,6 +1032,9 @@ export function EntryFormCore({
     } else if (norm.length > 7) {
       setPlateError('Máximo 7 caracteres');
       ok = false;
+    } else if (plateHasActiveEntry) {
+      setPlateError(ACTIVE_ENTRY_MESSAGE);
+      ok = false;
     }
     if (!vehicleInput.trim()) {
       setVehicleError('Ingresá el vehículo');
@@ -1045,7 +1068,8 @@ export function EntryFormCore({
       ok = false;
     }
     if (!ok) {
-      if (norm.length < 3 || norm.length > 7) plateRef.current?.focus();
+      if (norm.length < 3 || norm.length > 7 || plateHasActiveEntry)
+        plateRef.current?.focus();
       else if (!vehicleInput.trim() || (hasCatalogMatches && !vehicleSelected))
         vehicleInputRef.current?.focus();
       else if (typeError || (vehicleInput.trim() && !vehicleTypeId))
@@ -1056,6 +1080,8 @@ export function EntryFormCore({
     return ok;
   }
 
+  // aria-disabled conserva el aspecto bloqueado sin impedir que un intento
+  // active validateAll. El disabled nativo queda reservado al guardado.
   const canSubmit =
     plate.trim().length >= 3 &&
     plate.trim().length <= 7 &&
@@ -1209,11 +1235,18 @@ export function EntryFormCore({
         // excedente.
         const localEntry = entryToLocal(result);
         await localDb.entries.put(localEntry);
+        await learnLocalPlateProfile(localEntry).catch((error) =>
+          console.error(
+            '[plate-profiles] No se pudo actualizar la ficha local.',
+            error,
+          ),
+        );
       } else {
         await localDb.transaction(
           'rw',
           localDb.entries,
           localDb.pendingOps,
+          localDb.plateProfiles,
           async () => {
             await localDb.entries.put({
               id: entryId,
@@ -1249,6 +1282,8 @@ export function EntryFormCore({
               payload: body,
               status: 'pending',
             });
+            const saved = await localDb.entries.get(entryId);
+            if (saved) await learnLocalPlateProfile(saved);
           },
         );
       }
@@ -1311,12 +1346,14 @@ export function EntryFormCore({
   // Button click: direct submit (no double-confirm, click is already intentional)
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
+    if (saving) return;
     if (!validateAll()) return;
     await submitEntry({ print: true });
   }
 
   // "Registrar sin imprimir": mismo registro, sin papel.
   async function handleSubmitWithoutPrinting(): Promise<void> {
+    if (saving) return;
     if (!validateAll()) return;
     resetConfirm();
     await submitEntry({ print: false });
@@ -1362,6 +1399,7 @@ export function EntryFormCore({
             onBlur={handlePlateBlur}
             onKeyDown={handlePlateKeyDown}
             className={`entry-form-plate${plateError ? ' input-error' : ''}`}
+            aria-invalid={!!plateError}
             maxLength={7}
             autoFocus={variant === 'manual'}
           />
@@ -1398,6 +1436,7 @@ export function EntryFormCore({
               maxLength={120}
               autoComplete="off"
               className={vehicleError ? 'input-error' : undefined}
+              aria-invalid={!!vehicleError}
             />
             <VehicleSuggestionsPortal
               inputRef={vehicleInputRef}
@@ -1458,6 +1497,7 @@ export function EntryFormCore({
               maxLength={50}
               autoComplete="off"
               className={colorError ? 'input-error' : undefined}
+              aria-invalid={!!colorError}
             />
             <ColorSuggestionsPortal
               inputRef={colorRef}
@@ -1488,6 +1528,7 @@ export function EntryFormCore({
               onKeyDown={handleRateKeyDown}
               autoComplete="off"
               className={rateError ? 'input-error' : undefined}
+              aria-invalid={!!rateError}
             />
             <RateSuggestionsPortal
               inputRef={rateRef}
@@ -1536,7 +1577,8 @@ export function EntryFormCore({
             type="button"
             className="entry-action-square"
             onClick={() => void handleSubmitWithoutPrinting()}
-            disabled={saving || !canSubmit}
+            disabled={saving}
+            aria-disabled={saving || !canSubmit}
             title="Registrar sin imprimir ticket"
             aria-label="Registrar sin imprimir ticket"
           >
@@ -1545,7 +1587,8 @@ export function EntryFormCore({
           <button
             type="submit"
             className={`primary-button${awaitingConfirm ? ' primary-button--confirm' : ''}`}
-            disabled={saving || !canSubmit}
+            disabled={saving}
+            aria-disabled={saving || !canSubmit}
             title="Registrar ingreso e imprimir ticket"
             aria-label="Registrar ingreso e imprimir ticket"
           >

@@ -1,0 +1,218 @@
+.statistics-filters {
+  --stats-border: var(--color-border);
+  --stats-muted: var(--color-muted);
+  --stats-brand: var(--color-brand-strong);
+  --stats-surface: #fff;
+  --stats-tint: #f7faff;
+  min-width: 0;
+  border: 1px solid var(--stats-border);
+  border-radius: 18px;
+  background: var(--stats-surface);
+}
+
+.statistics-filters-primary {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.statistics-filters-toolbar,
+.statistics-filters-period,
+.statistics-filters-range,
+.statistics-filters-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.statistics-filters-toolbar {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.statistics-filters-period {
+  flex: 1;
+  flex-wrap: nowrap;
+  gap: 10px;
+  color: var(--stats-muted);
+}
+
+.statistics-filters-period > svg {
+  flex-shrink: 0;
+}
+
+.statistics-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  min-width: 0;
+  border: 1px solid var(--stats-border);
+  border-radius: var(--radius-control);
+  background: var(--stats-tint);
+}
+
+.statistics-periods button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--stats-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.statistics-periods button.active {
+  background: var(--stats-surface);
+  color: var(--stats-brand);
+  box-shadow: 0 1px 4px rgba(19, 47, 93, 0.12);
+}
+
+.statistics-periods button:hover:not(.active) {
+  background: var(--stats-surface);
+  color: var(--stats-brand);
+}
+
+.statistics-filters-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--stats-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.statistics-filters-reset:hover {
+  background: var(--stats-tint);
+  color: var(--stats-brand);
+}
+
+.statistics-periods button:focus-visible,
+.statistics-filters-reset:focus-visible {
+  outline: 2px solid var(--stats-brand);
+  outline-offset: 2px;
+}
+
+.statistics-filters-secondary {
+  gap: 12px 24px;
+  padding: 16px;
+  border-top: 1px solid var(--stats-border);
+}
+
+.statistics-filters .statistics-filters-range label,
+.statistics-filters .statistics-filters-secondary label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  color: var(--stats-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.statistics-filters-secondary .app-select-wrap {
+  width: 170px;
+}
+
+.statistics-filters-range input[type='time'] {
+  width: 112px;
+  min-height: 40px;
+  font-variant-numeric: tabular-nums;
+}
+
+.statistics-filters-range > small {
+  color: var(--stats-muted);
+  font-size: 12px;
+}
+
+.statistics-filters .statistics-cash-field {
+  width: min(100%, 360px);
+}
+
+.statistics-filters .statistics-cash-field .app-select-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
+.statistics-filters .statistics-cash-field .app-select-trigger {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .statistics-filters-primary,
+  .statistics-filters-secondary {
+    padding: 12px;
+  }
+
+  .statistics-filters-period {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .statistics-filters-period > svg {
+    margin-top: 12px;
+  }
+
+  .statistics-periods button {
+    padding: 6px 10px;
+  }
+
+  .statistics-filters-reset span {
+    display: none;
+  }
+
+  .statistics-filters .statistics-filters-range .statistics-cash-field {
+    display: grid;
+    width: 100%;
+  }
+
+  .statistics-filters-range:has(input[type='time']) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statistics-filters-range:has(input[type='time']) > :first-child,
+  .statistics-filters-range > small {
+    grid-column: 1 / -1;
+  }
+
+  .statistics-filters-range:has(input[type='time']) > label {
+    display: grid;
+    gap: 6px;
+  }
+
+  .statistics-filters-range input[type='time'] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .statistics-filters .statistics-filters-secondary label {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    width: 100%;
+  }
+
+  .statistics-filters .statistics-filters-secondary .app-select-wrap {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+}

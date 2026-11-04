@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { BarChart3, CalendarDays, RefreshCw, RotateCcw } from 'lucide-react';
+import './StatisticsFilters.css';
 import { localDb } from '../../lib/db/localDb';
 import { DateRangeFilter, type DateRange } from '../../lib/ui/DateRangeFilter';
 import { AppSelect } from '../../lib/ui/AppSelect';
@@ -25,6 +26,7 @@ import {
   bucketLabel,
   chartScale,
   dateTime,
+  formatCashSessionLabel,
   groupByWeekday,
   GRANULARITIES,
   money,
@@ -282,7 +284,12 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
     'revenue',
   );
   const cashSessions = useLiveQuery(
-    () => localDb.cashSessions.where('tenantId').equals(tenantId).toArray(),
+    () =>
+      localDb.cashSessions
+        .where('tenantId')
+        .equals(tenantId)
+        .sortBy('openedAt')
+        .then((items) => items.reverse()),
     [tenantId],
   );
   const methods = useLiveQuery(
@@ -437,6 +444,18 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
     setAnchor(new Date());
     void queryClient.invalidateQueries({ queryKey: ['reports', tenantId] });
   };
+  const resetFilters = () => {
+    setPreset('7d');
+    setAnchor(new Date());
+    setRange(undefined);
+    setFromTime('00:00');
+    setToTime('23:59');
+    setCashSessionId('');
+    setPaymentMethod('');
+    setVehicleCategory('');
+    setWantedGranularity(null);
+    setWeekdayMode('total');
+  };
 
   if (!isOnline)
     return (
@@ -488,119 +507,152 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
       />
       <section className="report-filters" aria-label="Filtros de estadísticas">
         <h3 className="report-section-divider">Períodos y filtros</h3>
-        <div className="report-segments">
-          {(Object.keys(PRESETS) as Preset[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={preset === item ? 'active' : ''}
-              onClick={() => {
-                setPreset(item);
-                setWantedGranularity(null);
-                setAnchor(new Date());
-              }}
-            >
-              {PRESETS[item]}
-            </button>
-          ))}
-        </div>
-        {preset === 'custom' && (
-          <div className="report-custom-range">
-            <DateRangeFilter
-              value={range}
-              onChange={setRange}
-              placeholder="Rango de fechas"
-            />
-            <label>
-              Desde{' '}
-              <input
-                type="time"
-                value={fromTime}
-                onChange={(event) => setFromTime(event.target.value)}
-              />
-            </label>
-            <label>
-              Hasta{' '}
-              <input
-                type="time"
-                value={toTime}
-                onChange={(event) => setToTime(event.target.value)}
-              />
-            </label>
-            <small>Hora de Argentina</small>
+        <div className="statistics-filters">
+          <div className="statistics-filters-primary">
+            <div className="statistics-filters-toolbar">
+              <div className="statistics-filters-period">
+                <CalendarDays size={18} aria-hidden="true" />
+                <div
+                  className="statistics-periods"
+                  role="group"
+                  aria-label="Período"
+                >
+                  {(Object.keys(PRESETS) as Preset[]).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={preset === item ? 'active' : ''}
+                      aria-pressed={preset === item}
+                      onClick={() => {
+                        setPreset(item);
+                        setWantedGranularity(null);
+                        setAnchor(new Date());
+                      }}
+                    >
+                      {PRESETS[item]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="statistics-filters-reset"
+                onClick={resetFilters}
+                title="Restablecer filtros"
+                aria-label="Restablecer filtros"
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+                <span>Restablecer</span>
+              </button>
+            </div>
+            {preset === 'custom' && (
+              <div className="statistics-filters-range">
+                <DateRangeFilter
+                  value={range}
+                  onChange={setRange}
+                  placeholder="Rango de fechas"
+                />
+                <label>
+                  Desde{' '}
+                  <input
+                    type="time"
+                    value={fromTime}
+                    onChange={(event) => setFromTime(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Hasta{' '}
+                  <input
+                    type="time"
+                    value={toTime}
+                    onChange={(event) => setToTime(event.target.value)}
+                  />
+                </label>
+                <small>Hora de Argentina</small>
+              </div>
+            )}
+            {preset === 'caja' && (
+              <div className="statistics-filters-range">
+                <label className="statistics-cash-field">
+                  Caja{' '}
+                  <AppSelect
+                    value={cashSessionId}
+                    onChange={setCashSessionId}
+                    options={[
+                      { value: '', label: 'Elegí un turno' },
+                      ...(cashSessions?.map((item) => ({
+                        value: item.id,
+                        label: formatCashSessionLabel(item),
+                      })) ?? []),
+                    ]}
+                  />
+                </label>
+              </div>
+            )}
           </div>
-        )}
-        {preset === 'caja' && (
-          <label>
-            Caja{' '}
-            <AppSelect
-              value={cashSessionId}
-              onChange={setCashSessionId}
-              options={[
-                { value: '', label: 'Elegí un turno' },
-                ...(cashSessions?.map((item) => ({
-                  value: item.id,
-                  label: `${dateTime(item.openedAt)}${item.closedAt ? '' : ' · abierta'}`,
-                })) ?? []),
-              ]}
-            />
-          </label>
-        )}
-        <div className="report-filter-row">
-          <label>
-            Medio de pago{' '}
-            <AppSelect
-              value={paymentMethod}
-              onChange={setPaymentMethod}
-              options={[
-                { value: '', label: 'Todos' },
-                ...(methods?.map((item) => ({
-                  value: item.name,
-                  label: item.name,
-                })) ?? []),
-              ]}
-            />
-          </label>
-          <label>
-            Categoría{' '}
-            <AppSelect
-              value={vehicleCategory}
-              onChange={setVehicleCategory}
-              options={[
-                { value: '', label: 'Todas' },
-                ...(categories?.map((item) => ({
-                  value: item.code,
-                  label: item.label,
-                })) ?? []),
-              ]}
-            />
-          </label>
-          <label>
-            Agrupar{' '}
-            <AppSelect
-              value={
-                wantedGranularity === 'weekday'
-                  ? 'weekday'
-                  : (granularityCheck?.granularity ?? 'day')
-              }
-              onChange={(value) =>
-                setWantedGranularity(value as ReportGrouping)
-              }
-              options={[
-                ...(Object.keys(GRANULARITIES) as Granularity[])
-                  .filter(
-                    (item) =>
-                      item !== 'hour' ||
-                      !valid ||
-                      new Date(resolved.to).getTime() -
-                        new Date(resolved.from).getTime() <=
-                        50 * 3_600_000,
-                  )
-                  .map((item) => ({ value: item, label: GRANULARITIES[item] })),
-                { value: 'weekday', label: 'Por día de semana' },
-              ]}
-            />
-          </label>
+          <div
+            className="statistics-filters-secondary"
+            role="group"
+            aria-label="Filtros secundarios"
+          >
+            <label>
+              Medio de pago{' '}
+              <AppSelect
+                value={paymentMethod}
+                onChange={setPaymentMethod}
+                options={[
+                  { value: '', label: 'Todos' },
+                  ...(methods?.map((item) => ({
+                    value: item.name,
+                    label: item.name,
+                  })) ?? []),
+                ]}
+              />
+            </label>
+            <label>
+              Categoría{' '}
+              <AppSelect
+                value={vehicleCategory}
+                onChange={setVehicleCategory}
+                options={[
+                  { value: '', label: 'Todas' },
+                  ...(categories?.map((item) => ({
+                    value: item.code,
+                    label: item.label,
+                  })) ?? []),
+                ]}
+              />
+            </label>
+            <label>
+              Agrupar{' '}
+              <AppSelect
+                value={
+                  wantedGranularity === 'weekday'
+                    ? 'weekday'
+                    : (granularityCheck?.granularity ?? 'day')
+                }
+                onChange={(value) =>
+                  setWantedGranularity(value as ReportGrouping)
+                }
+                options={[
+                  ...(Object.keys(GRANULARITIES) as Granularity[])
+                    .filter(
+                      (item) =>
+                        item !== 'hour' ||
+                        !valid ||
+                        new Date(resolved.to).getTime() -
+                          new Date(resolved.from).getTime() <=
+                          50 * 3_600_000,
+                    )
+                    .map((item) => ({
+                      value: item,
+                      label: GRANULARITIES[item],
+                    })),
+                  { value: 'weekday', label: 'Por día de semana' },
+                ]}
+              />
+            </label>
+          </div>
         </div>
         {vehicleCategory && (
           <p className="report-note">

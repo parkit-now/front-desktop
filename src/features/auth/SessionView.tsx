@@ -1086,6 +1086,10 @@ export function SessionView({ session, sessionStale = false }: Props) {
               </div>
             </div>
             <div className="workspace-header-side">
+              <WorkspaceHeaderAlerts
+                cameraStatus={cameraStatus}
+                failedServices={failedServices}
+              />
               {section === 'camara' && ratesManageAllowed ? (
                 <button
                   type="button"
@@ -1102,10 +1106,6 @@ export function SessionView({ session, sessionStale = false }: Props) {
                   {cameraSettingsOpen ? 'Ver cámara' : 'Ajustes'}
                 </button>
               ) : null}
-              <WorkspaceHeaderAlerts
-                cameraStatus={cameraStatus}
-                failedServices={failedServices}
-              />
             </div>
           </header>
 

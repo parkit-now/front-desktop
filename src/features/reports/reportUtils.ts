@@ -103,6 +103,41 @@ export const dateTime = (value: string) =>
     timeZone: AR_TZ,
   }).format(new Date(value));
 
+const CASH_SESSION_FORMATTER = new Intl.DateTimeFormat('es-AR', {
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+  timeZone: AR_TZ,
+});
+
+export function formatCashSessionLabel(session: {
+  openedAt: string;
+  closedAt?: string;
+}): string {
+  function parts(value: string) {
+    const formatted = CASH_SESSION_FORMATTER.formatToParts(new Date(value));
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      (formatted.find((part) => part.type === type)?.value ?? '').padStart(
+        2,
+        '0',
+      );
+    return {
+      day: `${get('day')}/${get('month')}`,
+      time: `${get('hour')}:${get('minute')}`,
+    };
+  }
+
+  const start = parts(session.openedAt);
+  const label = `${start.day} ${start.time}`;
+  if (!session.closedAt) return `${label} → abierta`;
+  const end = parts(session.closedAt);
+  return end.day === start.day
+    ? `${label} → ${end.time}`
+    : `${label} → ${end.day} ${end.time}`;
+}
+
 const MONTHS_SHORT = [
   'Ene',
   'Feb',
