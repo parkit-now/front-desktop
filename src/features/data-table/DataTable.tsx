@@ -284,6 +284,7 @@ export function DataTable<TData>({
   onRowClick,
   templateScope,
   headerAction,
+  headerTabs,
   toolbarExtra,
   excelExport,
   onRefresh,
@@ -676,7 +677,9 @@ export function DataTable<TData>({
     columnFilters.length > 0 ||
     globalFilter.trim().length > 0 ||
     Boolean(filterSwitches?.some((item) => item.checked));
-  const hasHeaderContent = Boolean(title || subtitle || headerAction);
+  const hasHeaderContent = Boolean(
+    title || subtitle || headerAction || headerTabs,
+  );
   const showLoading = Boolean(isLoading || serverState?.isFetching);
 
   useEffect(() => {
@@ -709,9 +712,10 @@ export function DataTable<TData>({
     <section className="dt-card">
       {hasHeaderContent ? (
         <div className="dt-card-header">
-          <div>
+          <div className={headerTabs ? 'dt-card-header-with-tabs' : undefined}>
             {title ? <h3>{title}</h3> : null}
             {subtitle ? <p>{subtitle}</p> : null}
+            {headerTabs ?? null}
           </div>
           <div className="dt-card-header-right">{headerAction ?? null}</div>
         </div>

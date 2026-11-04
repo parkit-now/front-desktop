@@ -79,6 +79,60 @@ afterEach(async () => {
   localStorage.clear();
 });
 
+it('no cambia la cabecera de las tablas que no configuran pestañas', async () => {
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable
+          data={data}
+          columns={columns}
+          title="Historial"
+          headerAction={<button>Agregar</button>}
+        />,
+      ),
+    ),
+  );
+  const header = container.querySelector('.dt-card-header')!;
+  expect(header.children).toHaveLength(2);
+  expect(header.querySelector('h3')?.textContent).toBe('Historial');
+  expect(header.firstElementChild?.getAttribute('class')).toBeNull();
+  expect(
+    header.querySelector('.dt-card-header-right button')?.textContent,
+  ).toBe('Agregar');
+  expect(header.querySelector('[role="tablist"]')).toBeNull();
+});
+
+it('ubica las pestañas opcionales junto al título sin mover las acciones', async () => {
+  await act(() =>
+    Promise.resolve(
+      root.render(
+        <DataTable
+          data={data}
+          columns={columns}
+          title="Clientes"
+          headerTabs={
+            <div role="tablist" aria-label="Clientes">
+              <button role="tab" aria-selected>
+                Facturación
+              </button>
+            </div>
+          }
+          headerAction={<button>Agregar cliente</button>}
+        />,
+      ),
+    ),
+  );
+  const titleGroup = container.querySelector('.dt-card-header-with-tabs')!;
+  expect(titleGroup.querySelector('h3')?.textContent).toBe('Clientes');
+  expect(titleGroup.querySelector('[role="tablist"]')?.textContent).toBe(
+    'Facturación',
+  );
+  expect(
+    container.querySelector('.dt-card-header-right button')?.textContent,
+  ).toBe('Agregar cliente');
+  expect(rows()).toHaveLength(2);
+});
+
 it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async () => {
   const sizedColumns: ColumnDef<(typeof data)[number], unknown>[] = [
     { accessorKey: 'plate', header: 'Patente', size: 180 },

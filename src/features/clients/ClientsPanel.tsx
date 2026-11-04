@@ -1,4 +1,12 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -46,55 +54,72 @@ const dateLabel = (date: string) =>
 export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
   const [tab, setTab] = useState<'billing' | 'vehicles'>('billing');
   const id = useId();
+  const restoreTabFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!restoreTabFocus.current) return;
+    restoreTabFocus.current = false;
+    document.getElementById(`${id}-${tab}`)?.focus();
+  }, [id, tab]);
+  const selectTab = (next: typeof tab) => {
+    if (next === tab) {
+      document.getElementById(`${id}-${next}`)?.focus();
+      return;
+    }
+    restoreTabFocus.current = true;
+    setTab(next);
+  };
+  const tabs = (
+    <div
+      className="report-tabs clients-table-tabs"
+      role="tablist"
+      aria-label="Clientes"
+    >
+      {(
+        [
+          { value: 'billing', label: 'Facturación' },
+          { value: 'vehicles', label: 'Vehículos' },
+        ] as const
+      ).map((item, index) => (
+        <button
+          key={item.value}
+          type="button"
+          role="tab"
+          id={`${id}-${item.value}`}
+          aria-controls={`${id}-panel`}
+          aria-selected={tab === item.value}
+          tabIndex={tab === item.value ? 0 : -1}
+          className={tab === item.value ? 'active' : ''}
+          onClick={() => selectTab(item.value)}
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
+              return;
+            event.preventDefault();
+            const next =
+              event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - index;
+            selectTab(next === 0 ? 'billing' : 'vehicles');
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
   return (
     <div className="clients-panel">
-      <div className="report-tabs" role="tablist" aria-label="Clientes">
-        {(
-          [
-            { value: 'billing', label: 'Facturación' },
-            { value: 'vehicles', label: 'Vehículos' },
-          ] as const
-        ).map((item, index) => (
-          <button
-            key={item.value}
-            type="button"
-            role="tab"
-            id={`${id}-${item.value}`}
-            aria-controls={`${id}-panel`}
-            aria-selected={tab === item.value}
-            tabIndex={tab === item.value ? 0 : -1}
-            className={tab === item.value ? 'active' : ''}
-            onClick={() => setTab(item.value)}
-            onKeyDown={(event) => {
-              if (
-                !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
-              )
-                return;
-              event.preventDefault();
-              const next =
-                event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - index;
-              setTab(next === 0 ? 'billing' : 'vehicles');
-              event.currentTarget.parentElement
-                ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-                [next]?.focus();
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
       <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
         {tab === 'billing' ? (
           <BillingClientsPanel
             tenantId={tenantId}
             accessToken={accessToken}
             userId={userId}
+            headerTabs={tabs}
           />
         ) : (
           <PlateProfilesPanel
             tenantId={tenantId}
             accessToken={accessToken}
             userId={userId}
+            headerTabs={tabs}
           />
         )}
       </div>
@@ -102,7 +127,12 @@ export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
   );
 }
 
-function BillingClientsPanel({ tenantId, accessToken, userId }: Props) {
+function BillingClientsPanel({
+  tenantId,
+  accessToken,
+  userId,
+  headerTabs,
+}: Props & { headerTabs: ReactNode }) {
   const { isOnline } = useNetwork();
   const { triggerSync } = useSync();
   const { showToast } = useToast();
@@ -299,6 +329,7 @@ function BillingClientsPanel({ tenantId, accessToken, userId }: Props) {
             data={rows ?? []}
             columns={columns}
             title="Clientes"
+            headerTabs={headerTabs}
             isLoading={rows === undefined}
             emptyMessage="No hay clientes registrados."
             searchPlaceholder="Buscar por nombre, patente, CUIT o contacto..."

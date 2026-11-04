@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Plus, RotateCw, Trash2, X } from 'lucide-react';
@@ -27,7 +27,12 @@ import {
 } from './plateProfileMutations';
 import { emptyPlateProfile, profileToLocal } from './plateProfiles';
 
-type Props = { tenantId: string; accessToken: string; userId: string };
+type Props = {
+  tenantId: string;
+  accessToken: string;
+  userId: string;
+  headerTabs?: ReactNode;
+};
 type Form = {
   plate: string;
   vehicle: string;
@@ -52,7 +57,12 @@ const SEARCH_MODES = createVehicleSearchModes<LocalPlateProfile>({
   plate: (row) => row.plate,
 });
 
-export function PlateProfilesPanel({ tenantId, accessToken, userId }: Props) {
+export function PlateProfilesPanel({
+  tenantId,
+  accessToken,
+  userId,
+  headerTabs,
+}: Props) {
   const { isOnline } = useNetwork();
   const { triggerSync } = useSync();
   const { showToast } = useToast();
@@ -373,7 +383,8 @@ export function PlateProfilesPanel({ tenantId, accessToken, userId }: Props) {
           <DataTable
             data={rows ?? []}
             columns={columns}
-            title="Vehículos"
+            title="Clientes"
+            headerTabs={headerTabs}
             isLoading={rows === undefined}
             emptyMessage="No hay vehículos registrados."
             searchPlaceholder="Buscar por patente, vehículo, color o tarifa..."

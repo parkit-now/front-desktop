@@ -64,6 +64,7 @@ export type DataTableProps<TData> = {
   onRowClick?: (row: TData) => void;
   templateScope?: TableTemplateScope;
   headerAction?: ReactNode;
+  headerTabs?: ReactNode;
   toolbarExtra?: ReactNode;
   excelExport?: ExcelExportOptions<TData>;
   onRefresh?: () => void;
