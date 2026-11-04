@@ -458,6 +458,25 @@ describe('AuditPanel', () => {
     expect(pageText()).toContain('XYZ999');
   });
 
+  it('buscar por Evento no busca también en la patente del resumen', async () => {
+    const container = await render();
+    await waitForText('DEF456');
+
+    await change(field('Buscar en la tabla'), 'XYZ999');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      1,
+    );
+    await click('Campo de búsqueda');
+    await click('Evento');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      0,
+    );
+    await change(field('Buscar en la tabla'), '');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      2,
+    );
+  });
+
   it('abre el detalle de un evento', async () => {
     await render();
     await waitForText('DEF456');

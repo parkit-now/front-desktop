@@ -65,7 +65,7 @@ const SEARCH_MODES = createVehicleSearchModes<AuditRow>({
           normalizeText(auditFieldLabel(field)).includes(normalizeText(query)),
         ),
     },
-    { id: 'event', label: 'Evento', searchableKeys: ['label', 'summary'] },
+    { id: 'event', label: 'Evento', searchableKeys: ['label'] },
     { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
     { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
     { id: 'color', label: 'Color', searchableKeys: ['color'] },

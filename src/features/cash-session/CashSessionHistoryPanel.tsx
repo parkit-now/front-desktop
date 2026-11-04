@@ -200,6 +200,8 @@ export function CashSessionHistoryPanel({
       <DataTable
         columns={columns}
         data={sessions ?? []}
+        searchPlaceholder="Buscar por notas"
+        searchableKeys={['notes']}
         isLoading={
           sessions === undefined ||
           transactions === undefined ||

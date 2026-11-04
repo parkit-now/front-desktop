@@ -25,13 +25,9 @@ describe('opciones de búsqueda por campo', () => {
     });
   });
 
-  it('deduce las columnas buscables cuando no hay una lista, sin incluir acciones', () => {
-    expect(resolveSearchModes(columns)?.map((mode) => mode.id)).toEqual([
-      'all',
-      'name',
-      'email',
-      'plate',
-    ]);
+  it('no convierte las columnas en opciones si no hay campos buscables definidos', () => {
+    expect(resolveSearchModes(columns)).toBeUndefined();
+    expect(resolveSearchModes(columns, [])).toBeUndefined();
   });
 
   it('no agrega selector cuando solo se puede buscar un campo', () => {
@@ -41,11 +37,14 @@ describe('opciones de búsqueda por campo', () => {
 
   it('no publica campos deshabilitados ni nombres internos sin etiqueta', () => {
     expect(
-      resolveSearchModes([
-        ...columns,
-        { accessorKey: 'notes', header: 'Notas', enableGlobalFilter: false },
-        { id: 'privateSearch', accessorFn: () => 'interno' },
-      ])?.map((mode) => mode.id),
+      resolveSearchModes(
+        [
+          ...columns,
+          { accessorKey: 'notes', header: 'Notas', enableGlobalFilter: false },
+          { id: 'privateSearch', accessorFn: () => 'interno' },
+        ],
+        ['name', 'email', 'plate', 'notes', 'privateSearch'],
+      )?.map((mode) => mode.id),
     ).toEqual(['all', 'name', 'email', 'plate']);
   });
 

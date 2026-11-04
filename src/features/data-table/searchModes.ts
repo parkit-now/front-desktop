@@ -26,17 +26,7 @@ export function resolveSearchModes<TData>(
         definitions.set(column.accessorKey, column);
       }
     }
-    const keys = searchableKeys?.length
-      ? searchableKeys
-      : leaves.flatMap((column) => {
-          const key =
-            column.id ??
-            ('accessorKey' in column ? column.accessorKey : undefined);
-          return key && ('accessorKey' in column || 'accessorFn' in column)
-            ? [String(key)]
-            : [];
-        });
-    fields = keys.flatMap((key) => {
+    fields = (searchableKeys ?? []).flatMap((key) => {
       const column = definitions.get(key);
       if (!column || column.enableGlobalFilter === false) return [];
       const label =
