@@ -26,6 +26,7 @@ import {
   bucketLabel,
   chartScale,
   dateTime,
+  formatCashSessionLabel,
   groupByWeekday,
   GRANULARITIES,
   money,
@@ -283,7 +284,12 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
     'revenue',
   );
   const cashSessions = useLiveQuery(
-    () => localDb.cashSessions.where('tenantId').equals(tenantId).toArray(),
+    () =>
+      localDb.cashSessions
+        .where('tenantId')
+        .equals(tenantId)
+        .sortBy('openedAt')
+        .then((items) => items.reverse()),
     [tenantId],
   );
   const methods = useLiveQuery(
@@ -567,7 +573,7 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
             )}
             {preset === 'caja' && (
               <div className="statistics-filters-range">
-                <label>
+                <label className="statistics-cash-field">
                   Caja{' '}
                   <AppSelect
                     value={cashSessionId}
@@ -576,7 +582,7 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
                       { value: '', label: 'Elegí un turno' },
                       ...(cashSessions?.map((item) => ({
                         value: item.id,
-                        label: `${dateTime(item.openedAt)}${item.closedAt ? '' : ' · abierta'}`,
+                        label: formatCashSessionLabel(item),
                       })) ?? []),
                     ]}
                   />

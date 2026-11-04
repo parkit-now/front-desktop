@@ -346,6 +346,72 @@ describe('StatisticsPanel', () => {
     );
   });
 
+  it('lista las cajas por apertura descendente con sus horarios y conserva el recorte por id', async () => {
+    await localDb.cashSessions.clear();
+    const base = {
+      tenantId: 'tenant',
+      openingCash: 0,
+      version: 1,
+      syncSeq: 1,
+      updatedAt: NOW,
+    };
+    await localDb.cashSessions.bulkPut([
+      {
+        ...base,
+        id: 'a-closed',
+        openedAt: '2026-11-03T10:02:00Z',
+        closedAt: '2026-11-03T22:58:00Z',
+      },
+      { ...base, id: 'z-open', openedAt: '2026-11-04T10:09:00Z' },
+      {
+        ...base,
+        id: 'b-overnight',
+        openedAt: '2026-11-01T15:38:00Z',
+        closedAt: '2026-11-03T00:41:00Z',
+      },
+      {
+        ...base,
+        tenantId: 'other',
+        id: 'other',
+        openedAt: '2026-11-05T10:00:00Z',
+      },
+    ]);
+    await mount(<StatisticsPanel tenantId="tenant" bearer="token" />);
+    await waitForText('AB123CD');
+    await click('Por caja');
+    await click(
+      document.querySelector<HTMLElement>(
+        '.statistics-cash-field [role="combobox"]',
+      )!,
+    );
+    expect(
+      [...document.querySelectorAll('[role="option"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual([
+      'Elegí un turno',
+      '04/11 07:09 → abierta',
+      '03/11 07:02 → 19:58',
+      '01/11 12:38 → 02/11 21:41',
+    ]);
+    await click(
+      document.querySelector<HTMLElement>(
+        '.statistics-cash-field [role="combobox"]',
+      )!,
+    );
+    await choose('Caja', '01/11 12:38 → 02/11 21:41');
+    await waitForText('AB123CD');
+    expect(
+      document.querySelector('.statistics-cash-field .app-select-value')
+        ?.textContent,
+    ).toBe('01/11 12:38 → 02/11 21:41');
+    expect(
+      paths()
+        .filter((path) => path.includes('/metrics/revenue?'))
+        .at(-1),
+    ).toContain('cashSessionId=b-overnight');
+  });
+
   it('avisa si no se pudo cargar', async () => {
     http.request.mockRejectedValue(new ApiError(500, 'boom', null));
     await mount(<StatisticsPanel tenantId="tenant" bearer="token" />);

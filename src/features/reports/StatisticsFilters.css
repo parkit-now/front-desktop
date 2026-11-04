@@ -141,6 +141,21 @@
   font-size: 12px;
 }
 
+.statistics-filters .statistics-cash-field {
+  width: min(100%, 360px);
+}
+
+.statistics-filters .statistics-cash-field .app-select-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
+.statistics-filters .statistics-cash-field .app-select-trigger {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 640px) {
   .statistics-filters-primary,
   .statistics-filters-secondary {
@@ -162,6 +177,11 @@
 
   .statistics-filters-reset span {
     display: none;
+  }
+
+  .statistics-filters .statistics-filters-range .statistics-cash-field {
+    display: grid;
+    width: 100%;
   }
 
   .statistics-filters-range:has(input[type='time']) {

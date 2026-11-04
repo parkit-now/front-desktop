@@ -3,6 +3,7 @@ import {
   arDay,
   bucketLabel,
   chartScale,
+  formatCashSessionLabel,
   groupByWeekday,
   resolveReportRange,
   validGranularity,
@@ -10,6 +11,41 @@ import {
 } from './reportUtils';
 
 const now = new Date('2026-10-08T15:00:00.000Z');
+
+describe('etiquetas de cajas', () => {
+  it('muestra apertura y cierre del mismo día en hora argentina y formato 24 h', () => {
+    expect(
+      formatCashSessionLabel({
+        openedAt: '2026-11-03T10:02:00Z',
+        closedAt: '2026-11-03T22:58:00Z',
+      }),
+    ).toBe('03/11 07:02 → 19:58');
+  });
+
+  it('incluye la fecha de cierre cuando cambia el día', () => {
+    expect(
+      formatCashSessionLabel({
+        openedAt: '2026-11-01T15:38:00Z',
+        closedAt: '2026-11-03T00:41:00Z',
+      }),
+    ).toBe('01/11 12:38 → 02/11 21:41');
+  });
+
+  it('identifica las cajas abiertas sin inventar un cierre', () => {
+    expect(formatCashSessionLabel({ openedAt: '2026-11-04T10:09:00Z' })).toBe(
+      '04/11 07:09 → abierta',
+    );
+  });
+
+  it('respeta la medianoche argentina aunque la fecha UTC sea la siguiente', () => {
+    expect(
+      formatCashSessionLabel({
+        openedAt: '2026-11-01T02:00:00Z',
+        closedAt: '2026-11-01T03:00:00Z',
+      }),
+    ).toBe('31/10 23:00 → 01/11 00:00');
+  });
+});
 
 describe('ventanas de informes en hora argentina', () => {
   it('usa la medianoche local y no la fecha UTC para los presets', () => {
