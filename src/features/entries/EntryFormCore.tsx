@@ -503,6 +503,7 @@ export function EntryFormCore({
   }
 
   function triggerSubmitConfirm() {
+    if (saving) return;
     if (awaitingConfirm) {
       setAwaitingConfirm(false);
       if (confirmTimeoutRef.current) {
@@ -1031,6 +1032,9 @@ export function EntryFormCore({
     } else if (norm.length > 7) {
       setPlateError('Máximo 7 caracteres');
       ok = false;
+    } else if (plateHasActiveEntry) {
+      setPlateError(ACTIVE_ENTRY_MESSAGE);
+      ok = false;
     }
     if (!vehicleInput.trim()) {
       setVehicleError('Ingresá el vehículo');
@@ -1064,7 +1068,8 @@ export function EntryFormCore({
       ok = false;
     }
     if (!ok) {
-      if (norm.length < 3 || norm.length > 7) plateRef.current?.focus();
+      if (norm.length < 3 || norm.length > 7 || plateHasActiveEntry)
+        plateRef.current?.focus();
       else if (!vehicleInput.trim() || (hasCatalogMatches && !vehicleSelected))
         vehicleInputRef.current?.focus();
       else if (typeError || (vehicleInput.trim() && !vehicleTypeId))
@@ -1075,6 +1080,8 @@ export function EntryFormCore({
     return ok;
   }
 
+  // aria-disabled conserva el aspecto bloqueado sin impedir que un intento
+  // active validateAll. El disabled nativo queda reservado al guardado.
   const canSubmit =
     plate.trim().length >= 3 &&
     plate.trim().length <= 7 &&
@@ -1339,12 +1346,14 @@ export function EntryFormCore({
   // Button click: direct submit (no double-confirm, click is already intentional)
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
+    if (saving) return;
     if (!validateAll()) return;
     await submitEntry({ print: true });
   }
 
   // "Registrar sin imprimir": mismo registro, sin papel.
   async function handleSubmitWithoutPrinting(): Promise<void> {
+    if (saving) return;
     if (!validateAll()) return;
     resetConfirm();
     await submitEntry({ print: false });
@@ -1390,6 +1399,7 @@ export function EntryFormCore({
             onBlur={handlePlateBlur}
             onKeyDown={handlePlateKeyDown}
             className={`entry-form-plate${plateError ? ' input-error' : ''}`}
+            aria-invalid={!!plateError}
             maxLength={7}
             autoFocus={variant === 'manual'}
           />
@@ -1426,6 +1436,7 @@ export function EntryFormCore({
               maxLength={120}
               autoComplete="off"
               className={vehicleError ? 'input-error' : undefined}
+              aria-invalid={!!vehicleError}
             />
             <VehicleSuggestionsPortal
               inputRef={vehicleInputRef}
@@ -1486,6 +1497,7 @@ export function EntryFormCore({
               maxLength={50}
               autoComplete="off"
               className={colorError ? 'input-error' : undefined}
+              aria-invalid={!!colorError}
             />
             <ColorSuggestionsPortal
               inputRef={colorRef}
@@ -1516,6 +1528,7 @@ export function EntryFormCore({
               onKeyDown={handleRateKeyDown}
               autoComplete="off"
               className={rateError ? 'input-error' : undefined}
+              aria-invalid={!!rateError}
             />
             <RateSuggestionsPortal
               inputRef={rateRef}
@@ -1564,7 +1577,8 @@ export function EntryFormCore({
             type="button"
             className="entry-action-square"
             onClick={() => void handleSubmitWithoutPrinting()}
-            disabled={saving || !canSubmit}
+            disabled={saving}
+            aria-disabled={saving || !canSubmit}
             title="Registrar sin imprimir ticket"
             aria-label="Registrar sin imprimir ticket"
           >
@@ -1573,7 +1587,8 @@ export function EntryFormCore({
           <button
             type="submit"
             className={`primary-button${awaitingConfirm ? ' primary-button--confirm' : ''}`}
-            disabled={saving || !canSubmit}
+            disabled={saving}
+            aria-disabled={saving || !canSubmit}
             title="Registrar ingreso e imprimir ticket"
             aria-label="Registrar ingreso e imprimir ticket"
           >

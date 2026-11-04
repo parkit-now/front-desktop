@@ -3578,6 +3578,12 @@ h2 {
   white-space: nowrap;
 }
 
+.entry-form-actions .primary-button[aria-disabled='true'] {
+  opacity: 0.7;
+  cursor: not-allowed;
+  filter: none;
+}
+
 /* "Registrar sin imprimir": hermano compacto del submit. El alto sale del
    align-items: stretch de la fila, así que queda a la par del primary-button. */
 .entry-action-square {
@@ -3606,14 +3612,15 @@ h2 {
     color 140ms ease;
 }
 
-.entry-action-square:hover:not(:disabled) {
+.entry-action-square:hover:not(:disabled):not([aria-disabled='true']) {
   transform: translateY(-1px);
   border-color: #9eb8db;
   background: #eef6ff;
   color: var(--color-brand-strong);
 }
 
-.entry-action-square:disabled {
+.entry-action-square:disabled,
+.entry-action-square[aria-disabled='true'] {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
