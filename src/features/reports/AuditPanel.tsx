@@ -26,7 +26,7 @@ import { DateRangeFilter, type DateRange } from '../../lib/ui/DateRangeFilter';
 import { AppSelect } from '../../lib/ui/AppSelect';
 import { DataTable } from '../data-table/DataTable';
 import { createVehicleSearchModes } from '../data-table/vehicleSearch';
-import { textSorting } from '../data-table/utils';
+import { normalizeText, textSorting } from '../data-table/utils';
 import { Pagination } from '../data-table/components/Pagination';
 import { PlateCell } from '../data-table/components/PlateCell';
 import { VehicleCell } from '../data-table/components/VehicleCell';
@@ -54,6 +54,28 @@ type Props = {
 const SEARCH_MODES = createVehicleSearchModes<AuditRow>({
   ticket: (row) => row.ticket,
   plate: (row) => row.plate,
+  fields: [
+    { id: 'actor', label: 'Actor', searchableKeys: ['actor'] },
+    { id: 'reason', label: 'Razón', searchableKeys: ['reason'] },
+    {
+      id: 'field',
+      label: 'Campo modificado',
+      matches: (row, query) =>
+        row.changedFields.some((field) =>
+          normalizeText(auditFieldLabel(field)).includes(normalizeText(query)),
+        ),
+    },
+    { id: 'event', label: 'Evento', searchableKeys: ['label', 'summary'] },
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+    { id: 'color', label: 'Color', searchableKeys: ['color'] },
+    { id: 'rate', label: 'Tarifa', searchableKeys: ['rate'] },
+    {
+      id: 'paymentMethod',
+      label: 'Medio de pago',
+      searchableKeys: ['paymentMethod'],
+    },
+  ],
 });
 const statusLabels = { info: 'Info', warn: 'Advertencia', crit: 'Crítico' };
 const comparisonFields = [

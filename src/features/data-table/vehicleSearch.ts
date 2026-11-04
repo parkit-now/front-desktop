@@ -4,6 +4,7 @@ import { normalizeText } from './utils';
 type VehicleSearchFields<TData> = {
   ticket?: (row: TData) => string | number | null | undefined;
   plate?: (row: TData) => string | readonly string[] | null | undefined;
+  fields?: readonly DataTableSearchMode<TData>[];
 };
 
 function normalizedTicket(value: string | number | null | undefined) {
@@ -14,6 +15,7 @@ function normalizedTicket(value: string | number | null | undefined) {
 export function createVehicleSearchModes<TData>({
   ticket,
   plate,
+  fields = [],
 }: VehicleSearchFields<TData>): DataTableSearchMode<TData>[] {
   const modes: DataTableSearchMode<TData>[] = [{ id: 'all', label: 'Todos' }];
   if (ticket) {
@@ -41,5 +43,5 @@ export function createVehicleSearchModes<TData>({
       },
     });
   }
-  return modes;
+  return [...modes, ...fields];
 }

@@ -66,6 +66,13 @@ type ActiveRow = {
 const SEARCH_MODES = createVehicleSearchModes<ActiveRow>({
   ticket: (row) => row.ticketNumber,
   plate: (row) => row.plate,
+  fields: [
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+    { id: 'color', label: 'Color', searchableKeys: ['color'] },
+    { id: 'cochera', label: 'Cochera', searchableKeys: ['cochera'] },
+    { id: 'notes', label: 'Notas', searchableKeys: ['notes'] },
+  ],
 });
 
 function toRow(

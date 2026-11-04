@@ -9257,6 +9257,8 @@ export interface operations {
                 role?: "owner" | "operator";
                 /** @description Case-insensitive search matched against the person’s name and email. */
                 search?: string;
+                /** @description Field used by search. Omit or use all to match name and email. */
+                searchField?: "all" | "name" | "email";
                 /** @description Narrow to a single lot. Must be one the caller owns, otherwise the request is rejected. */
                 tenantId?: string;
             };

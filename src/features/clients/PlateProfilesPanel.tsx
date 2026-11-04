@@ -55,6 +55,13 @@ const empty: Form = {
 };
 const SEARCH_MODES = createVehicleSearchModes<LocalPlateProfile>({
   plate: (row) => row.plate,
+  fields: [
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+    { id: 'type', label: 'Tipo', searchableKeys: ['vehicleTypeName'] },
+    { id: 'color', label: 'Color', searchableKeys: ['color'] },
+    { id: 'rate', label: 'Tarifa', searchableKeys: ['rateName'] },
+  ],
 });
 
 export function PlateProfilesPanel({

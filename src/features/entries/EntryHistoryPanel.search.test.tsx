@@ -336,6 +336,24 @@ describe('búsqueda por campo del historial', () => {
     expect(sheet.getCell('B3').value).not.toBe('AB066CD');
   });
 
+  it('exporta solo las coincidencias de Modelo sin mezclar tickets, patentes o notas', async () => {
+    const container = await render();
+    await click('Campo de búsqueda');
+    await click('Modelo');
+    await change(search(container), '66');
+    expect(rowPlates(container)).toEqual(['VEHICULO']);
+    await act(async () => {
+      button('Descargar Excel').click();
+      await vi.waitFor(() => expect(mock.save).toHaveBeenCalledOnce());
+    });
+    const [blob] = mock.save.mock.calls[0] as [Blob];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await blob.arrayBuffer());
+    const sheet = workbook.worksheets[0];
+    expect(sheet.getCell('B2').value).toBe('VEHICULO');
+    expect(sheet.getCell('B3').value).toBeNull();
+  });
+
   it('ofrece el mismo selector en movimientos de caja, con Todos por defecto', async () => {
     const container = await render(true);
     expect(button('Campo de búsqueda').title).toBe('Buscar en: Todos');

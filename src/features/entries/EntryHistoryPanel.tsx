@@ -553,6 +553,17 @@ const SEARCHABLE_KEYS = [
 const SEARCH_MODES = createVehicleSearchModes<EntryHistoryRow>({
   ticket: (row) => row.ticketNumber,
   plate: (row) => row.plate,
+  fields: [
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+    { id: 'color', label: 'Color', searchableKeys: ['color'] },
+    {
+      id: 'invoiceReceiver',
+      label: 'Receptor de factura',
+      searchableKeys: ['invoiceReceiver'],
+    },
+    { id: 'notes', label: 'Notas', searchableKeys: ['notes'] },
+  ],
 });
 
 export function EntryHistoryPanel({

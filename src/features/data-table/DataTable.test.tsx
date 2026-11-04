@@ -183,8 +183,32 @@ it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async 
 });
 
 describe('filtro inicial de caja', () => {
-  it('no agrega modos de búsqueda a tablas que no los configuran', async () => {
+  it('genera el selector desde las columnas buscables y empieza en Todos', async () => {
     await render();
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Campo de búsqueda"]',
+    )!;
+    expect(trigger.title).toBe('Buscar en: Todos');
+    await act(() => Promise.resolve(trigger.click()));
+    expect(
+      [...container.querySelectorAll('[role="menuitemradio"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Todos', 'Patente', 'Caja', 'Notas']);
+  });
+
+  it('no agrega un selector a las búsquedas de un solo campo', async () => {
+    await act(() =>
+      Promise.resolve(
+        root.render(
+          <DataTable
+            data={data}
+            columns={columns}
+            searchableKeys={['notes']}
+          />,
+        ),
+      ),
+    );
     expect(
       container.querySelector('[aria-label="Campo de búsqueda"]'),
     ).toBeNull();

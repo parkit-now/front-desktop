@@ -44,6 +44,7 @@ export type DataTableProps<TData> = {
   emptyMessage?: string;
   searchPlaceholder?: string;
   searchableKeys?: string[];
+  /** Overrides the modes inferred from searchable keys and column labels. */
   searchModes?: readonly DataTableSearchMode<TData>[];
   filterableColumns?: string[];
   filterOptionsByColumn?: Record<string, DataTableFilterOption[]>;
