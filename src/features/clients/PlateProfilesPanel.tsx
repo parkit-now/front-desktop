@@ -383,7 +383,7 @@ export function PlateProfilesPanel({
           <DataTable
             data={rows ?? []}
             columns={columns}
-            title="Clientes"
+            title=""
             headerTabs={headerTabs}
             isLoading={rows === undefined}
             emptyMessage="No hay vehículos registrados."

@@ -328,7 +328,7 @@ function BillingClientsPanel({
           <DataTable
             data={rows ?? []}
             columns={columns}
-            title="Clientes"
+            title=""
             headerTabs={headerTabs}
             isLoading={rows === undefined}
             emptyMessage="No hay clientes registrados."

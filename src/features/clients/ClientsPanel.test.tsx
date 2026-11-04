@@ -29,7 +29,7 @@ vi.mock('../data-table', async (importOriginal) => ({
     <section className="dt-card">
       <div className="dt-card-header">
         <div>
-          <h3>{title}</h3>
+          {title ? <h3>{title}</h3> : null}
           {headerTabs}
         </div>
         <div className="dt-card-header-right">{headerAction}</div>
@@ -90,13 +90,14 @@ describe('diálogo de clientes', () => {
     expect(document.activeElement).toBe(tabs()[0]);
     expect(container.textContent).toContain('Agregar cliente');
   });
-  it('mantiene las pestañas y el alta dentro de la cabecera en ambas vistas', () => {
+  it('mantiene las pestañas y el alta sin repetir el título en ambas vistas', () => {
     for (const label of ['Vehículos', 'Facturación']) {
       const tab = Array.from(
         container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
       ).find((button) => button.textContent === label)!;
       act(() => tab.click());
       const header = container.querySelector('.dt-card-header')!;
+      expect(header.querySelector('h3')).toBeNull();
       expect(
         header.querySelector('.segmented-control[role="tablist"]'),
       ).not.toBeNull();
