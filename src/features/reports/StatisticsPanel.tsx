@@ -513,7 +513,7 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
               <div className="statistics-filters-period">
                 <CalendarDays size={18} aria-hidden="true" />
                 <div
-                  className="statistics-periods"
+                  className="segmented-control statistics-periods"
                   role="group"
                   aria-label="Período"
                 >
@@ -719,7 +719,7 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
           <section className="report-section">
             <div className="report-section-head">
               <h3>Serie temporal</h3>
-              <div className="report-segments">
+              <div className="segmented-control report-segments">
                 <button
                   className={seriesMode === 'revenue' ? 'active' : ''}
                   onClick={() => setSeriesMode('revenue')}
@@ -735,7 +735,7 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
               </div>
               {wantedGranularity === 'weekday' && (
                 <div
-                  className="report-segments"
+                  className="segmented-control report-segments"
                   role="group"
                   aria-label="Cálculo por día de semana"
                 >
@@ -868,7 +868,7 @@ export function StatisticsPanel({ tenantId, bearer }: Props) {
             <div className="report-section-head">
               <h3>Patentes frecuentes</h3>
               <div
-                className="report-segments report-order-segments"
+                className="segmented-control report-segments report-order-segments"
                 role="group"
                 aria-label="Ordenar patentes"
               >

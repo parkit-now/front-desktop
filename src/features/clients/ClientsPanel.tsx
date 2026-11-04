@@ -70,7 +70,7 @@ export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
   };
   const tabs = (
     <div
-      className="report-tabs clients-table-tabs"
+      className="segmented-control report-tabs clients-table-tabs"
       role="tablist"
       aria-label="Clientes"
     >

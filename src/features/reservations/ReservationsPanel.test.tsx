@@ -205,6 +205,9 @@ describe('ReservationsPanel', () => {
   it('muestra las de hoy y las próximas en sus pestañas', async () => {
     await mount(<Board />);
     await waitForText('PE123ND');
+    expect(
+      document.querySelector('.segmented-control[aria-label="Reservas"]'),
+    ).not.toBeNull();
 
     await click(/^Hoy/);
     await waitForText('CO123NF');

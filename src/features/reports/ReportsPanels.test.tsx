@@ -306,6 +306,15 @@ describe('StatisticsPanel', () => {
 
     await waitForText('AB123CD');
     expect(pageText()).toContain('Por medio de pago');
+    for (const selector of ['.statistics-periods', '.report-segments']) {
+      const groups = document.querySelectorAll(selector);
+      expect(groups.length).toBeGreaterThan(0);
+      expect(
+        [...groups].every((group) =>
+          group.classList.contains('segmented-control'),
+        ),
+      ).toBe(true);
+    }
     expect(paths().some((path) => path.includes('/metrics/revenue?'))).toBe(
       true,
     );
@@ -468,6 +477,9 @@ describe('AuditPanel', () => {
   it('muestra las patentes descartadas en su pestaña', async () => {
     await render();
     await waitForText('DEF456');
+    expect(
+      document.querySelector('.segmented-control[aria-label="Auditoría"]'),
+    ).not.toBeNull();
 
     const tabs = document.querySelectorAll<HTMLElement>('[role="tab"]');
     await click(tabs[tabs.length - 1]);

@@ -46,38 +46,6 @@
 
 .statistics-periods {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 3px;
-  min-width: 0;
-  border: 1px solid var(--stats-border);
-  border-radius: var(--radius-control);
-  background: var(--stats-tint);
-}
-
-.statistics-periods button {
-  min-height: 34px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--stats-muted);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.statistics-periods button.active {
-  background: var(--stats-surface);
-  color: var(--stats-brand);
-  box-shadow: 0 1px 4px rgba(19, 47, 93, 0.12);
-}
-
-.statistics-periods button:hover:not(.active) {
-  background: var(--stats-surface);
-  color: var(--stats-brand);
 }
 
 .statistics-filters-reset {
@@ -102,7 +70,6 @@
   color: var(--stats-brand);
 }
 
-.statistics-periods button:focus-visible,
 .statistics-filters-reset:focus-visible {
   outline: 2px solid var(--stats-brand);
   outline-offset: 2px;

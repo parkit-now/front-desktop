@@ -995,7 +995,11 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
           período para analizar otros eventos.
         </p>
       )}
-      <div className="report-tabs" role="tablist" aria-label="Auditoría">
+      <div
+        className="segmented-control report-tabs"
+        role="tablist"
+        aria-label="Auditoría"
+      >
         <button
           role="tab"
           aria-selected={tab === 'events'}

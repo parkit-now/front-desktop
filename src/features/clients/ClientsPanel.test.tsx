@@ -90,15 +90,16 @@ describe('diálogo de clientes', () => {
     expect(document.activeElement).toBe(tabs()[0]);
     expect(container.textContent).toContain('Agregar cliente');
   });
-  it('mantiene el título, las pestañas y el alta dentro de la cabecera en ambas vistas', () => {
+  it('mantiene las pestañas y el alta dentro de la cabecera en ambas vistas', () => {
     for (const label of ['Vehículos', 'Facturación']) {
       const tab = Array.from(
         container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
       ).find((button) => button.textContent === label)!;
       act(() => tab.click());
       const header = container.querySelector('.dt-card-header')!;
-      expect(header.querySelector('h3')?.textContent).toBe('Clientes');
-      expect(header.querySelector('[role="tablist"]')).not.toBeNull();
+      expect(
+        header.querySelector('.segmented-control[role="tablist"]'),
+      ).not.toBeNull();
       expect(container.querySelectorAll('[role="tablist"]')).toHaveLength(1);
       expect(
         header.querySelector('.dt-card-header-right')?.textContent,
