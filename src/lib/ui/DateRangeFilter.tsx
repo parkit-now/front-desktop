@@ -10,6 +10,7 @@ import {
 import {
   type CSSProperties,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -28,6 +29,7 @@ interface DateRangeFilterProps {
   onChange: (value: DateRange | undefined) => void;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 const PANEL_WIDTH = 300;
@@ -45,6 +47,7 @@ export function DateRangeFilter({
   onChange,
   placeholder = 'Elegir fecha',
   className,
+  disabled = false,
 }: DateRangeFilterProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -52,6 +55,9 @@ export function DateRangeFilter({
   const [panelStyle, setPanelStyle] = useState<CSSProperties>();
 
   const close = useCallback(() => setOpen(false), []);
+  useEffect(() => {
+    if (disabled) close();
+  }, [disabled, close]);
   useCloseOnOutsideClick(triggerRef, open, close);
 
   // El panel es `fixed`: si se sale de la ventana, scrollear no lo trae de
@@ -112,6 +118,7 @@ export function DateRangeFilter({
       <button
         ref={triggerRef}
         type="button"
+        disabled={disabled}
         className={`date-range-filter-trigger${label ? ' has-value' : ''}${className ? ` ${className}` : ''}`}
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
@@ -135,6 +142,7 @@ export function DateRangeFilter({
       </button>
 
       {open &&
+        !disabled &&
         createPortal(
           <div
             ref={panelRef}

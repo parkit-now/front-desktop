@@ -71,6 +71,26 @@ export function pullEntryChanges(input: {
   });
 }
 
+/**
+ * Ids de todas las estadías vivas del tenant, para la reconciliación.
+ *
+ * El tipo de la respuesta va escrito acá y no sale de `api-types.ts` porque
+ * el endpoint es nuevo y `bun run sync-types` necesita el backend corriendo.
+ * Cuando se regeneren los tipos, esto pasa a ser
+ * `components['schemas']['EntryIdsResponseDto']`.
+ */
+export async function listEntryIds(input: {
+  tenantId: string;
+  bearer: string;
+}): Promise<string[]> {
+  const response = await apiRequest<{ ids: string[] }>({
+    method: 'GET',
+    path: `/tenants/${encodeURIComponent(input.tenantId)}/entries/ids`,
+    bearer: input.bearer,
+  });
+  return response.ids;
+}
+
 export function closeEntry(input: {
   tenantId: string;
   entryId: string;

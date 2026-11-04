@@ -1,4 +1,9 @@
 import { classifyPushFailure } from './retryPolicy';
+import {
+  pullTemplateScope,
+  pushTemplateOp,
+  hasEarlierTemplateOp,
+} from '../../features/table-view-template/repository';
 import type { Table } from 'dexie';
 import { splitTombstones } from './tombstones';
 import {
@@ -18,6 +23,7 @@ import {
   type LocalVehicleType,
   type LocalLprIgnoredPlate,
   type LocalClient,
+  type LocalPlateProfile,
   type PendingOp,
   localDb,
 } from '../db/localDb';
@@ -25,6 +31,7 @@ import {
   createEntry,
   closeEntry,
   correctEntry,
+  listEntryIds,
   pullEntryChanges,
   type EntryDto,
 } from '../api/entries';
@@ -93,6 +100,11 @@ import {
   pullClientChanges,
 } from '../api/clients';
 import { ApiError } from '../api/client';
+import {
+  pullPlateProfileChanges,
+  writePlateProfile,
+} from '../api/plate-profiles';
+import { profileToLocal } from '../../features/clients/plateProfiles';
 import {
   CAMERA_BASE_URL,
   LPR_CLOUD_IMAGE_MAX_WIDTH,
@@ -342,12 +354,25 @@ function lprDetectionEventToLocal(
 class SyncService {
   private tenantId = '';
   private accessToken = '';
+  private templateUserId = '';
   /** Ver `recoverStalledOps`: el rescate de huérfanas depende de esto. */
   private pushInFlight = false;
+  private pushTask: Promise<void> | null = null;
 
-  setCredentials(tenantId: string, accessToken: string): void {
+  setCredentials(tenantId: string, accessToken: string, userId = ''): void {
     this.tenantId = tenantId;
     this.accessToken = accessToken;
+    this.templateUserId = userId;
+  }
+
+  async pullTableTemplates(): Promise<void> {
+    const { templateUserId: userId, tenantId, accessToken } = this;
+    if (!userId || !tenantId || !accessToken) return;
+    const scopes = await localDb.tableTemplateScopes
+      .where('[userId+tenantId]')
+      .equals([userId, tenantId])
+      .toArray();
+    for (const scope of scopes) await pullTemplateScope(scope, accessToken);
   }
 
   async pullRates(): Promise<void> {
@@ -569,6 +594,90 @@ class SyncService {
           await localDb.syncState.put({
             key,
             lastSeq: response.maxSeq,
+            lastSyncAt: new Date().toISOString(),
+          });
+        },
+      );
+      if (response.items.length < 1000 || response.maxSeq <= afterSeq) return;
+      afterSeq = response.maxSeq;
+    }
+  }
+
+  private async dirtyPlateProfilePlates(
+    tenantId: string,
+  ): Promise<Set<string>> {
+    const ops = await localDb.pendingOps
+      .filter((op) => op.tenantId === tenantId)
+      .toArray();
+    const dirty = new Set(
+      ops
+        .filter((op) => op.entityType === 'plateProfile')
+        .map((op) => op.entityId),
+    );
+    for (const op of ops.filter((op) => op.entityType === 'entry')) {
+      const payload = op.payload as {
+        kind?: string;
+        body?: Record<string, unknown>;
+      };
+      const relevant =
+        op.operation === 'create' ||
+        (payload.kind === 'correction' &&
+          [
+            'plate',
+            'vehicleBrand',
+            'vehicleModel',
+            'vehicleTypeId',
+            'color',
+            'rateId',
+          ].some((field) => field in (payload.body ?? {})));
+      if (relevant) {
+        const entry = await localDb.entries.get(op.entityId);
+        if (entry) dirty.add(entry.plate);
+      }
+    }
+    return dirty;
+  }
+
+  async pullPlateProfiles(): Promise<void> {
+    const tenantId = this.tenantId;
+    const bearer = this.accessToken;
+    if (!tenantId || !bearer) return;
+    const key = `plateProfiles:${tenantId}`;
+    let afterSeq = (await localDb.syncState.get(key))?.lastSeq ?? 0;
+    const startingSeq = afterSeq;
+    let heldCursor = Number.POSITIVE_INFINITY;
+    for (let page = 0; page < 20; page += 1) {
+      const response = await pullPlateProfileChanges({
+        tenantId,
+        bearer,
+        afterSeq,
+      });
+      await localDb.transaction(
+        'rw',
+        localDb.plateProfiles,
+        localDb.pendingOps,
+        localDb.entries,
+        localDb.syncState,
+        async () => {
+          const dirty = await this.dirtyPlateProfilePlates(tenantId);
+          for (const row of response.items) {
+            if (dirty.has(row.plate)) {
+              heldCursor = Math.min(heldCursor, row.syncSeq - 1);
+              continue;
+            }
+            const local = profileToLocal(row);
+            const current = await localDb.plateProfiles.get(local.key);
+            if (!current || current.syncSeq <= row.syncSeq)
+              await localDb.plateProfiles.put(local);
+          }
+          // Do not acknowledge skipped rows: entry acknowledgements don't contain
+          // a profile, so they must be fetched again after its pending edit clears.
+          await localDb.syncState.put({
+            key,
+            lastSeq: Math.max(
+              startingSeq,
+              Math.min(heldCursor, response.maxSeq),
+            ),
             lastSyncAt: new Date().toISOString(),
           });
         },
@@ -1160,21 +1269,36 @@ class SyncService {
    * "Sincronizar": si el operador lo aprieta, espera que salga algo ahora, no
    * que se respete un backoff que él no ve.
    */
-  async pushPendingOps(ignoreBackoff = false): Promise<void> {
+  async pushPendingOps(
+    ignoreBackoff = false,
+    onlyEntity?: PendingOp['entityType'],
+  ): Promise<void> {
     if (!this.tenantId || !this.accessToken) return;
     // El rescate de huérfanas de abajo asume que no hay otro push corriendo.
-    if (this.pushInFlight) return;
+    if (this.pushInFlight) {
+      if (onlyEntity) {
+        await this.pushTask;
+        return this.pushPendingOps(ignoreBackoff, onlyEntity);
+      }
+      return;
+    }
     this.pushInFlight = true;
 
-    try {
-      await this.recoverStalledOps();
-      await this.drainPendingOps(ignoreBackoff);
-    } finally {
-      this.pushInFlight = false;
-    }
+    this.pushTask = (async () => {
+      try {
+        await this.recoverStalledOps();
+        await this.drainPendingOps(ignoreBackoff, onlyEntity);
+      } finally {
+        this.pushInFlight = false;
+      }
+    })();
+    await this.pushTask;
   }
 
-  private async drainPendingOps(ignoreBackoff: boolean): Promise<void> {
+  private async drainPendingOps(
+    ignoreBackoff: boolean,
+    onlyEntity?: PendingOp['entityType'],
+  ): Promise<void> {
     // 'unreviewed' ops (audit-only LPR detections not yet acted on by the
     // operator) still need to reach the backend — they're just excluded from
     // the user-facing pending-changes count in SyncContext.
@@ -1197,9 +1321,37 @@ class SyncService {
 
     for (const op of pending) {
       if (op.localId === undefined) continue;
+      if (onlyEntity && op.entityType !== onlyEntity) continue;
+      if (
+        (op.entityType === 'tableTemplate' ||
+          op.entityType === 'plateProfile') &&
+        (!this.templateUserId || op.userId !== this.templateUserId)
+      )
+        continue;
+      // Keep one device's edits in order even when the oldest write is in backoff.
+      if (op.entityType === 'tableTemplate' && (await hasEarlierTemplateOp(op)))
+        continue;
+      if (
+        op.entityType === 'plateProfile' &&
+        (await localDb.pendingOps
+          .where('entityType')
+          .equals('plateProfile')
+          .filter(
+            (earlier) =>
+              earlier.tenantId === op.tenantId &&
+              earlier.entityId === op.entityId &&
+              earlier.localId! < op.localId!,
+          )
+          .first())
+      )
+        continue;
       await localDb.pendingOps.update(op.localId, { status: 'in-flight' });
 
       try {
+        if (op.entityType === 'tableTemplate') {
+          await pushTemplateOp(op, this.templateUserId, this.accessToken);
+          continue;
+        }
         let serverEntity:
           | LocalRate
           | LocalEntry
@@ -1208,6 +1360,7 @@ class SyncService {
           | LocalVehicleType
           | LocalLprIgnoredPlate
           | LocalClient
+          | LocalPlateProfile
           | LocalCashSession
           | LocalLprDetectionEvent
           | undefined;
@@ -1224,6 +1377,18 @@ class SyncService {
           serverEntity = await this.applyLprIgnoredPlateOp(op);
         } else if (op.entityType === 'client') {
           serverEntity = await this.applyClientOp(op);
+        } else if (op.entityType === 'plateProfile') {
+          serverEntity = profileToLocal(
+            await writePlateProfile({
+              tenantId: this.tenantId,
+              bearer: this.accessToken,
+              plate: op.entityId,
+              operation: op.operation,
+              body: op.payload as Parameters<
+                typeof writePlateProfile
+              >[0]['body'],
+            }),
+          );
         } else if (op.entityType === 'paymentMethod') {
           serverEntity = await this.applyPaymentMethodOp(op);
         } else if (op.entityType === 'cashSession') {
@@ -1242,6 +1407,7 @@ class SyncService {
             localDb.vehicleTypes,
             localDb.lprIgnoredPlates,
             localDb.clients,
+            localDb.plateProfiles,
             localDb.paymentMethods,
             localDb.cashSessions,
             localDb.lprDetectionEvents,
@@ -1279,6 +1445,13 @@ class SyncService {
                   if (row.deletedAt) await localDb.clients.delete(row.id);
                   else await localDb.clients.put(row);
                 }
+              } else if (op.entityType === 'plateProfile') {
+                const row = serverEntity as LocalPlateProfile;
+                const stillDirty = await this.dirtyPlateProfilePlates(
+                  op.tenantId,
+                );
+                if (!stillDirty.has(row.plate))
+                  await localDb.plateProfiles.put(row);
               } else if (op.entityType === 'cashSession') {
                 await localDb.cashSessions.put(
                   serverEntity as LocalCashSession,
@@ -1705,6 +1878,7 @@ class SyncService {
     await this.pullEntries();
     await this.pullLprIgnoredPlates();
     await this.pullClients();
+    await this.pullPlateProfiles();
   }
 
   /**
@@ -1798,6 +1972,37 @@ class SyncService {
     if (!bearer || !tenantId) return;
 
     const entities: [string, () => Promise<void>][] = [
+      [
+        'estadías',
+        () =>
+          this.reconcileEntity({
+            entity: 'entry',
+            entityType: 'entry',
+            table: localDb.entries,
+            // 24 h y no 6: es la lista más larga de todas y no cambia de
+            // golpe. El botón Sincronizar la fuerza igual cuando el operador
+            // ve algo que no debería estar.
+            intervalMs: RECONCILE_INTERVAL_MS.large,
+            force,
+            fetchServerIds: async () => {
+              // Podar estadías es más delicado que podar un catálogo: son
+              // cobros. Lo que lo hace seguro NO es este llamado, son las
+              // reglas de `decidePrune`: una fila con operación encolada
+              // nunca se toca (un alta local sin pushear se protege sola), un
+              // servidor que responde vacío no borra nada, y una poda que se
+              // pasa de la mitad del total se bloquea.
+              //
+              // El endpoint devuelve SÓLO las vivas, y eso es deliberado: así
+              // una estadía borrada en el servidor desaparece también acá. Si
+              // alguien le agrega un filtro del lado del backend —por fecha,
+              // por caja— todo lo que quede afuera se lee como fantasma y se
+              // borra del equipo. Es el mismo cuidado que `listRates` con
+              // `includeInactive`.
+              const ids = await listEntryIds({ tenantId, bearer });
+              return { ids, complete: true };
+            },
+          }),
+      ],
       [
         'clientes',
         () =>
@@ -1915,8 +2120,10 @@ class SyncService {
     const ignoreBackoff = options.ignoreBackoff ?? false;
     const stages: [string, () => Promise<void>][] = [
       ['cambios pendientes', () => this.pushPendingOps(ignoreBackoff)],
+      ['plantillas de tabla', () => this.pullTableTemplates()],
       ['lista blanca', () => this.pullLprIgnoredPlates()],
       ['clientes', () => this.pullClients()],
+      ['vehículos de clientes', () => this.pullPlateProfiles()],
       // Los dos catálogos que bloquean el alta de ingresos van primero.
       //
       // Los TIPOS van antes que el catálogo: los vehículos cargan `typeId`, así

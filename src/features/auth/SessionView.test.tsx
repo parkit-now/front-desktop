@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   listAdminParkings: vi.fn(),
   fetchEntityProfileSettings: vi.fn(),
   signOut: vi.fn(),
+  cameraStatus: vi.fn(),
+  failedServices: vi.fn(),
 }));
 
 vi.mock('../../lib/api/auth', async (importOriginal) => ({
@@ -37,14 +39,22 @@ vi.mock('../../lib/sync/SyncContext', async (importOriginal) => ({
   SyncProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock('../camera/useCameraStatus', () => ({
-  useCameraStatus: () => ({ state: 'idle' }),
+  useCameraStatus: api.cameraStatus,
+}));
+vi.mock('../system/useDesktopServiceFailures', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useDesktopServiceFailures: api.failedServices,
 }));
 
 // Los paneles tienen sus propios tests: acá sólo importa a cuál se navega.
 function stub(name: string) {
   return () => <section data-panel={name}>{`panel:${name}`}</section>;
 }
-vi.mock('../camera/CameraPanel', () => ({ CameraPanel: stub('camara') }));
+vi.mock('../camera/CameraPanel', () => ({
+  CameraPanel: ({ settingsOpen }: { settingsOpen: boolean }) => (
+    <section data-panel={settingsOpen ? 'camera-settings' : 'camara'} />
+  ),
+}));
 vi.mock('../camera/AutoEntriesColumns', () => ({
   AutoEntriesColumns: stub('auto-entries'),
 }));
@@ -133,6 +143,8 @@ describe('SessionView', () => {
     api.listAdminParkings.mockResolvedValue([]);
     api.fetchEntityProfileSettings.mockResolvedValue({});
     api.signOut.mockResolvedValue(undefined);
+    api.cameraStatus.mockReturnValue(null);
+    api.failedServices.mockReturnValue([]);
     await localDb.cashSessions.put({
       id: 'caja-1',
       tenantId: 'centro',
@@ -178,6 +190,58 @@ describe('SessionView', () => {
       expect.arrayContaining(['camara', 'historial', 'caja', 'estadisticas']),
     );
   });
+
+  it.each(['down', 'initializing', 'services', 'ok'])(
+    'ubica las acciones después de los avisos de cámara (%s)',
+    async (state) => {
+      api.cameraStatus.mockReturnValue({
+        camera:
+          state === 'initializing'
+            ? 'initializing'
+            : state === 'ok'
+              ? 'ok'
+              : 'down',
+        downSince: new Date(),
+        reconnectAttempts: 9,
+        source: null,
+      });
+      if (state === 'services') {
+        api.failedServices.mockReturnValue(['camera-service', 'lpr-service']);
+      }
+      await mount(<SessionView session={SESSION} />);
+      await waitForText('APEX Centro');
+      const cameraButton = [
+        ...document.querySelectorAll<HTMLElement>('.sidebar-nav button'),
+      ].find((button) => button.textContent?.trim().startsWith('Cámara'));
+      expect(cameraButton).toBeTruthy();
+      await click(cameraButton!);
+
+      const header = document.querySelector<HTMLElement>(
+        '.workspace-header-side',
+      )!;
+      const action = header.querySelector('.workspace-header-action');
+      expect(header.lastElementChild).toBe(action);
+      expect(action?.textContent).toBe('Ajustes');
+      if (state === 'ok') {
+        expect(header.children).toHaveLength(1);
+        expect(header.querySelector('.workspace-header-alerts')).toBeNull();
+      } else {
+        expect(header.firstElementChild?.className).toBe(
+          'workspace-header-alerts',
+        );
+        expect(header.querySelectorAll('[role="status"]')).toHaveLength(
+          state === 'services' ? 2 : 1,
+        );
+      }
+
+      await click('Ajustes', header);
+      expect(panel()).toBe('camera-settings');
+      expect(header.lastElementChild).toBe(action);
+      expect(action?.textContent).toBe('Ver cámara');
+      await click('Ver cámara', header);
+      expect(panel()).toBe('camara');
+    },
+  );
 
   it('abre las pantallas de configuración', async () => {
     await mount(<SessionView session={SESSION} />);

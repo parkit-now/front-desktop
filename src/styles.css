@@ -1489,6 +1489,7 @@ h2 {
 }
 
 .dt-search {
+  position: relative;
   flex: 1;
   min-width: 220px;
   min-height: 42px;
@@ -1502,6 +1503,10 @@ h2 {
     radial-gradient(circle at 0% 0%, rgba(32, 131, 255, 0.1), transparent 34%),
     #fff;
   color: #31506f;
+}
+
+.dt-search > svg {
+  flex: none;
 }
 
 .dt-search input {
@@ -1536,6 +1541,65 @@ h2 {
   border-color: #8fb4e7;
   background: #e6f1ff;
   color: var(--color-brand-strong);
+}
+
+.dt-search-clear:focus-visible {
+  outline: 2px solid #0e5fd8;
+  outline-offset: 2px;
+}
+
+.dt-search-mode-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.dt-search-mode-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(200px, 100%);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #c9d6e8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(31, 73, 125, 0.16);
+}
+
+.dt-search-mode-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #31506f;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dt-search-mode-option:hover,
+.dt-search-mode-option:focus-visible {
+  outline: none;
+  background: #eef4ff;
+}
+
+.dt-search-mode-option[aria-checked='true'] {
+  color: #0e5fd8;
+  font-weight: 600;
+}
+
+.dt-search-mode-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
 }
 
 .dt-mini-icon,
@@ -1907,6 +1971,73 @@ h2 {
   color: #1d2939;
   font-weight: 700;
   font-size: 13px;
+}
+
+.dt-filter-date-presence {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 10px 11px;
+  gap: 8px;
+}
+
+.dt-date-presence {
+  display: flex;
+  gap: 6px;
+}
+
+.dt-date-presence label {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.dt-date-presence label > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 4px;
+  border: 1px solid #c9d6e8;
+  border-radius: 10px;
+  background: #fff;
+  color: #31506f;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.dt-date-presence label:hover > span {
+  border-color: #9eb8db;
+  background: #f6faff;
+}
+
+.dt-date-presence input:checked + span {
+  border-color: var(--color-brand-strong);
+  background: linear-gradient(
+    150deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
+  color: #fff;
+}
+
+.dt-date-presence input:focus-visible + span {
+  outline: 2px solid #0e5fd8;
+  outline-offset: 2px;
+}
+
+.dt-filter-date-presence .date-range-filter,
+.dt-filter-date-presence .dr-filter,
+.dt-filter-date-presence .date-range-filter-trigger,
+.dt-filter-date-presence .dr-filter-trigger {
+  width: 100%;
+}
+
+.dt-filter-date-presence button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .dt-filter-section-header {
@@ -2600,6 +2731,12 @@ h2 {
   font-weight: inherit;
   text-transform: inherit;
   cursor: pointer;
+}
+
+/* Columna activa: la flecha y el rótulo toman el color de marca para que se
+   vea de un vistazo por cuál columna está ordenada la tabla. */
+.dt-sort-button.is-sorted {
+  color: var(--color-brand);
 }
 
 .dt-state {
@@ -3441,6 +3578,12 @@ h2 {
   white-space: nowrap;
 }
 
+.entry-form-actions .primary-button[aria-disabled='true'] {
+  opacity: 0.7;
+  cursor: not-allowed;
+  filter: none;
+}
+
 /* "Registrar sin imprimir": hermano compacto del submit. El alto sale del
    align-items: stretch de la fila, así que queda a la par del primary-button. */
 .entry-action-square {
@@ -3469,14 +3612,15 @@ h2 {
     color 140ms ease;
 }
 
-.entry-action-square:hover:not(:disabled) {
+.entry-action-square:hover:not(:disabled):not([aria-disabled='true']) {
   transform: translateY(-1px);
   border-color: #9eb8db;
   background: #eef6ff;
   color: var(--color-brand-strong);
 }
 
-.entry-action-square:disabled {
+.entry-action-square:disabled,
+.entry-action-square[aria-disabled='true'] {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;

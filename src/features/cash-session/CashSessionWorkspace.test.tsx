@@ -95,6 +95,15 @@ vi.mock('../../lib/db/localDb', () => {
   };
   return {
     localDb: {
+      tableTemplates: table([]),
+      tableTemplateScopes: {
+        get: () => Promise.resolve({ key: 'registered' }),
+      },
+      transaction: (
+        _mode: string,
+        _tables: unknown,
+        run: () => Promise<void>,
+      ) => run(),
       cashSessions: table([
         { id: 'active', tenantId: 'tenant', openedAt: date },
         {

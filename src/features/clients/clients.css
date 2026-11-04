@@ -1,3 +1,48 @@
+.clients-panel {
+  display: grid;
+  min-width: 0;
+}
+.clients-panel .dt-card-header-with-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+.clients-panel .dt-card-header-with-tabs h3 {
+  margin: 0;
+}
+.clients-panel .clients-table-tabs {
+  flex-wrap: nowrap;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.clients-panel .clients-table-tabs button {
+  border-radius: var(--radius-control);
+  font-size: 14px;
+}
+.clients-panel .clients-table-tabs button.active {
+  background: #eef5ff;
+  box-shadow: none;
+}
+@media (max-width: 560px) {
+  .clients-panel .dt-card-header {
+    flex-wrap: wrap;
+  }
+  .clients-panel .dt-card-header-right {
+    margin-left: auto;
+  }
+}
+.clients-panel > [role='tabpanel'] {
+  min-width: 0;
+}
+.client-profile-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
 .clients-dialog {
   width: min(92vw, 680px);
   max-height: min(90vh, 760px);

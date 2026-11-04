@@ -76,10 +76,12 @@ export function SyncProvider({
   // Toda op encolada desde acá queda con su autor. Ver `enqueuePendingOp`.
   useEffect(() => {
     setEnqueueUserId(userId);
+    syncService.setCredentials(tenantId ?? '', accessToken, userId);
     return () => {
       setEnqueueUserId(null);
+      syncService.setCredentials('', '', '');
     };
-  }, [userId]);
+  }, [userId, tenantId, accessToken]);
 
   // Pendientes "sanas": el sync las va a reintentar solo.
   const pendingCount =
@@ -149,7 +151,7 @@ export function SyncProvider({
         const { data } = await getSupabaseClient().auth.getSession();
         const freshToken = data.session?.access_token;
 
-        if (!freshToken) {
+        if (!freshToken || data.session?.user.id !== userId) {
           // El refresh no anda: sin red no hay nada que hacer (los cambios ya
           // están a salvo en Dexie), y si el refresh token murió hace falta
           // volver a iniciar sesión. En ningún caso tocamos la cola.
@@ -159,7 +161,7 @@ export function SyncProvider({
           return;
         }
 
-        syncService.setCredentials(tenantId, freshToken);
+        syncService.setCredentials(tenantId, freshToken, userId);
         await syncService.fullSync({
           ignoreBackoff: options?.ignoreBackoff ?? false,
           // El botón manual fuerza la poda de catálogos sin esperar la
@@ -180,7 +182,7 @@ export function SyncProvider({
         syncInFlightRef.current = false;
       }
     },
-    [tenantId, accessToken, showToast],
+    [tenantId, accessToken, userId, showToast],
   );
 
   // Sync when credentials change (login or tenant switch)
@@ -232,8 +234,8 @@ export function SyncProvider({
       try {
         const { data } = await getSupabaseClient().auth.getSession();
         const freshToken = data.session?.access_token;
-        if (!freshToken) return;
-        syncService.setCredentials(currentTenantId, freshToken);
+        if (!freshToken || data.session?.user.id !== userId) return;
+        syncService.setCredentials(currentTenantId, freshToken, userId);
         await syncService.pullOperationalChanges();
         setLastSyncAt(new Date());
       } catch (error) {
@@ -245,7 +247,7 @@ export function SyncProvider({
 
     const id = setInterval(() => void pull(), BACKGROUND_PULL_MS);
     return () => clearInterval(id);
-  }, [tenantId, accessToken, isOnline]);
+  }, [tenantId, accessToken, userId, isOnline]);
 
   return (
     <SyncContext.Provider
