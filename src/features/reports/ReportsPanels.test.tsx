@@ -4,9 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../lib/api/client';
 import { localDb } from '../../lib/db/localDb';
 import {
+  button,
+  change,
   choose,
   cleanup,
   click,
+  field,
   mount,
   pageText,
   waitForText,
@@ -247,6 +250,57 @@ afterEach(async () => {
 });
 
 describe('StatisticsPanel', () => {
+  it('separa el período principal de los filtros secundarios', async () => {
+    await mount(<StatisticsPanel tenantId="tenant" bearer="token" />);
+    await waitForText('AB123CD');
+    const panel = document.querySelector('.statistics-filters')!;
+    expect(
+      panel.querySelector('.statistics-filters-primary [aria-label="Período"]'),
+    ).toBeTruthy();
+    expect(
+      panel.querySelectorAll('.statistics-filters-secondary [role="combobox"]'),
+    ).toHaveLength(3);
+    expect(button('7 días').getAttribute('aria-pressed')).toBe('true');
+    await click('Personalizado');
+    expect(
+      panel.querySelector('.statistics-filters-primary .date-range-filter'),
+    ).toBeTruthy();
+    expect(button('Personalizado').getAttribute('aria-pressed')).toBe('true');
+    await click('Por caja');
+    expect(
+      panel.querySelector('.statistics-filters-range [role="combobox"]'),
+    ).toBeTruthy();
+    expect(panel.querySelector('.date-range-filter')).toBeNull();
+  });
+
+  it('restablece período, caja, filtros, agrupación y horarios', async () => {
+    await mount(<StatisticsPanel tenantId="tenant" bearer="token" />);
+    await waitForText('AB123CD');
+    await choose('Medio de pago', 'Efectivo');
+    await choose('Categoría', 'Auto');
+    await click('Personalizado');
+    await change(field('Desde'), '09:00');
+    await change(field('Hasta'), '18:00');
+    await click('Por caja');
+    await choose('Caja', /abierta$/);
+    await choose('Agrupar', 'Por semana');
+    await click('Restablecer filtros');
+    expect(button('7 días').getAttribute('aria-pressed')).toBe('true');
+    const revenue = paths()
+      .filter((path) => path.includes('/metrics/revenue?'))
+      .at(-1)!;
+    expect(revenue).not.toContain('paymentMethod=');
+    expect(revenue).not.toContain('vehicleCategory=');
+    expect(revenue).not.toContain('cashSessionId=');
+    expect(revenue).toContain('granularity=day');
+    await click('Personalizado');
+    expect(field<HTMLInputElement>('Desde').value).toBe('00:00');
+    expect(field<HTMLInputElement>('Hasta').value).toBe('23:59');
+    expect(pageText()).toContain('Rango de fechas');
+    await click('Por caja');
+    expect(pageText()).toContain('Elegí un turno');
+  });
+
   it('muestra la serie, los medios de pago y las patentes top', async () => {
     await mount(<StatisticsPanel tenantId="tenant" bearer="token" />);
 
