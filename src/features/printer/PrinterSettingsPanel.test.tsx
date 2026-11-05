@@ -79,6 +79,7 @@ describe('plantilla de cierre en Impresora', () => {
     const tablists = container.querySelectorAll('[role="tablist"]');
     expect(tablists).toHaveLength(2);
     for (const tabs of tablists) {
+      expect(tabs.classList.contains('segmented-control')).toBe(true);
       expect(
         [...tabs.querySelectorAll('button')].map((button) =>
           button.textContent?.trim(),

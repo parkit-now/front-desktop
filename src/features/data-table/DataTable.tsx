@@ -39,6 +39,7 @@ import { ExcelExportButton } from './components/ExcelExportButton';
 import { FilterPanel } from './components/FilterPanel';
 import { Pagination } from './components/Pagination';
 import { TableSearch } from './components/TableSearch';
+import { resolveSearchModes } from './searchModes';
 import { Switch } from '../../lib/ui/Switch';
 import type { DataTableProps, DataTableSearchMode } from './types';
 import {
@@ -291,10 +292,10 @@ export function DataTable<TData>({
   refreshDisabled,
   serverState,
 }: DataTableProps<TData>) {
-  const searchModes =
-    (configuredSearchModes?.filter((mode) => mode.id !== 'all').length ?? 0) > 1
-      ? configuredSearchModes
-      : undefined;
+  const searchModes = useMemo(
+    () => resolveSearchModes(columns, searchableKeys, configuredSearchModes),
+    [columns, searchableKeys, configuredSearchModes],
+  );
   const initialKnownColumnIds = useMemo(
     () => columnIdsFromDefinitions(columns),
     [columns],

@@ -66,6 +66,11 @@ type ActiveRow = {
 const SEARCH_MODES = createVehicleSearchModes<ActiveRow>({
   ticket: (row) => row.ticketNumber,
   plate: (row) => row.plate,
+  fields: [
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+    { id: 'notes', label: 'Notas', searchableKeys: ['notes'] },
+  ],
 });
 
 function toRow(
@@ -469,15 +474,13 @@ export function ActiveVehiclesDialog({
               allLprDetections === undefined
             }
             emptyMessage="No hay vehículos estacionados en este momento."
-            searchPlaceholder="Buscar por ticket, patente, vehículo, color o notas…"
+            searchPlaceholder="Buscar por ticket, patente, marca, modelo o notas…"
             searchModes={SEARCH_MODES}
             searchableKeys={[
               'ticketNumber',
               'plate',
               'vehicleBrand',
               'vehicleModel',
-              'color',
-              'cochera',
               'notes',
             ]}
             filterableColumns={[

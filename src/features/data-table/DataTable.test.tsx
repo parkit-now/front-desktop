@@ -183,8 +183,49 @@ it('mantiene anchos proporcionales y un mínimo para las columnas fijas', async 
 });
 
 describe('filtro inicial de caja', () => {
-  it('no agrega modos de búsqueda a tablas que no los configuran', async () => {
+  it('no ofrece columnas como campos de búsqueda sin una configuración explícita', async () => {
     await render();
+    expect(
+      container.querySelector('[aria-label="Campo de búsqueda"]'),
+    ).toBeNull();
+  });
+
+  it('genera el selector solo desde los campos buscables y empieza en Todos', async () => {
+    await act(() =>
+      Promise.resolve(
+        root.render(
+          <DataTable
+            data={data}
+            columns={columns}
+            searchableKeys={['plate', 'notes']}
+          />,
+        ),
+      ),
+    );
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Campo de búsqueda"]',
+    )!;
+    expect(trigger.title).toBe('Buscar en: Todos');
+    await act(() => Promise.resolve(trigger.click()));
+    expect(
+      [...container.querySelectorAll('[role="menuitemradio"]')].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['Todos', 'Patente', 'Notas']);
+  });
+
+  it('no agrega un selector a las búsquedas de un solo campo', async () => {
+    await act(() =>
+      Promise.resolve(
+        root.render(
+          <DataTable
+            data={data}
+            columns={columns}
+            searchableKeys={['notes']}
+          />,
+        ),
+      ),
+    );
     expect(
       container.querySelector('[aria-label="Campo de búsqueda"]'),
     ).toBeNull();

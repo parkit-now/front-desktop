@@ -1040,7 +1040,7 @@ export function PrinterSettingsPanel({
           <div className="printer-panel-title-row">
             <h2>Vista previa</h2>
             <div
-              className="printer-template-tabs"
+              className="segmented-control printer-template-tabs"
               role="tablist"
               aria-label="Vista previa"
             >
@@ -1106,7 +1106,7 @@ export function PrinterSettingsPanel({
           <p className="muted">{templateDescription}</p>
         </div>
         <div
-          className="printer-template-tabs printer-template-tabs--wide"
+          className="segmented-control printer-template-tabs printer-template-tabs--wide"
           role="tablist"
           aria-label="Plantillas de impresión"
         >

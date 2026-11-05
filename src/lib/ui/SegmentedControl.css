@@ -1,0 +1,54 @@
+.segmented-control {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #f7faff;
+}
+
+.segmented-control > button,
+.dt-card .segmented-control > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segmented-control > button.active {
+  background: #fff;
+  color: var(--color-brand-strong);
+  box-shadow: 0 1px 4px rgba(19, 47, 93, 0.12);
+}
+
+.segmented-control > button:hover:not(.active):not(:disabled) {
+  background: #fff;
+  color: var(--color-brand-strong);
+}
+
+.segmented-control > button:focus-visible {
+  outline: 2px solid var(--color-brand-strong);
+  outline-offset: 2px;
+}
+
+.segmented-control > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -36,6 +36,7 @@ const emptyForm = {
 };
 const SEARCH_MODES = createVehicleSearchModes<LocalLprIgnoredPlate>({
   plate: (row) => row.plate,
+  fields: [{ id: 'notes', label: 'Nota', searchableKeys: ['notes'] }],
 });
 
 export function LprWhitelistPanel({

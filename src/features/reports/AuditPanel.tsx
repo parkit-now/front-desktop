@@ -54,6 +54,12 @@ type Props = {
 const SEARCH_MODES = createVehicleSearchModes<AuditRow>({
   ticket: (row) => row.ticket,
   plate: (row) => row.plate,
+  fields: [
+    { id: 'actor', label: 'Actor', searchableKeys: ['actor'] },
+    { id: 'reason', label: 'Razón', searchableKeys: ['reason'] },
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+  ],
 });
 const statusLabels = { info: 'Info', warn: 'Advertencia', crit: 'Crítico' };
 const comparisonFields = [
@@ -850,6 +856,15 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
       { id: 'actorRole', header: 'Rol', accessorKey: 'actorRole' },
       { id: 'origin', header: 'Origen', accessorKey: 'origin' },
       {
+        accessorKey: 'changedFields',
+        header: 'Campo modificado',
+        enableHiding: false,
+        meta: { filterOnly: true },
+        filterFn: (row, _columnId, values: string[]) =>
+          !values?.length ||
+          values.some((value) => row.original.changedFields.includes(value)),
+      },
+      {
         id: 'plate',
         header: 'Patente / ticket',
         accessorKey: 'plate',
@@ -995,7 +1010,11 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
           período para analizar otros eventos.
         </p>
       )}
-      <div className="report-tabs" role="tablist" aria-label="Auditoría">
+      <div
+        className="segmented-control report-tabs"
+        role="tablist"
+        aria-label="Auditoría"
+      >
         <button
           role="tab"
           aria-selected={tab === 'events'}
@@ -1042,13 +1061,21 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
                 columns={columns}
                 isLoading={audit.isLoading}
                 emptyMessage="No hay eventos de auditoría para mostrar."
-                searchPlaceholder="Buscar por patente, actor, ticket, razón o campo"
+                searchPlaceholder="Buscar por patente, ticket, actor, razón, marca o modelo"
                 searchModes={SEARCH_MODES}
-                searchableKeys={['searchText']}
+                searchableKeys={[
+                  'plate',
+                  'ticket',
+                  'actor',
+                  'reason',
+                  'vehicleBrand',
+                  'vehicleModel',
+                ]}
                 filterableColumns={[
                   'severity',
                   'action',
                   'origin',
+                  'changedFields',
                   'cashSessionId',
                   'paymentMethod',
                   'rate',
@@ -1060,6 +1087,11 @@ export function AuditPanel({ tenantId, bearer, userId, parkingName }: Props) {
                   'leftAt',
                 ]}
                 filterOptionsByColumn={{
+                  changedFields: [
+                    ...new Set(allRows.flatMap((row) => row.changedFields)),
+                  ]
+                    .sort()
+                    .map((value) => ({ value, label: auditFieldLabel(value) })),
                   severity: [
                     { value: 'info', label: 'Info' },
                     { value: 'warn', label: 'Advertencia' },

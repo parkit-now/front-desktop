@@ -545,7 +545,6 @@ const SEARCHABLE_KEYS = [
   'plate',
   'vehicleBrand',
   'vehicleModel',
-  'color',
   'invoiceReceiver',
   'notes',
 ];
@@ -553,6 +552,16 @@ const SEARCHABLE_KEYS = [
 const SEARCH_MODES = createVehicleSearchModes<EntryHistoryRow>({
   ticket: (row) => row.ticketNumber,
   plate: (row) => row.plate,
+  fields: [
+    { id: 'brand', label: 'Marca', searchableKeys: ['vehicleBrand'] },
+    { id: 'model', label: 'Modelo', searchableKeys: ['vehicleModel'] },
+    {
+      id: 'invoiceReceiver',
+      label: 'Receptor de factura',
+      searchableKeys: ['invoiceReceiver'],
+    },
+    { id: 'notes', label: 'Notas', searchableKeys: ['notes'] },
+  ],
 });
 
 export function EntryHistoryPanel({
@@ -967,7 +976,7 @@ export function EntryHistoryPanel({
       columns={columns}
       isLoading={entries === undefined}
       emptyMessage="No hay movimientos registrados todavía."
-      searchPlaceholder="Buscar por ticket, patente, vehículo o notas…"
+      searchPlaceholder="Buscar por ticket, patente, marca, modelo, receptor o notas…"
       searchableKeys={SEARCHABLE_KEYS}
       searchModes={SEARCH_MODES}
       filterableColumns={filterableColumns}

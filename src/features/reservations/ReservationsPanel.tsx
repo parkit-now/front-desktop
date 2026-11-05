@@ -197,7 +197,7 @@ export function ReservationsPanel({ tenantId, accessToken, feed }: Props) {
         ) : null}
 
         <div
-          className="printer-template-tabs reservations-tabs"
+          className="segmented-control printer-template-tabs reservations-tabs"
           role="tablist"
           aria-label="Reservas"
         >

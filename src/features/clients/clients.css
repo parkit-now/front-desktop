@@ -14,17 +14,6 @@
 }
 .clients-panel .clients-table-tabs {
   flex-wrap: nowrap;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-.clients-panel .clients-table-tabs button {
-  border-radius: var(--radius-control);
-  font-size: 14px;
-}
-.clients-panel .clients-table-tabs button.active {
-  background: #eef5ff;
-  box-shadow: none;
 }
 @media (max-width: 560px) {
   .clients-panel .dt-card-header {

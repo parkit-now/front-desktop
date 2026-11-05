@@ -28,6 +28,12 @@ import { PlateProfilesPanel } from './PlateProfilesPanel';
 type Props = { tenantId: string; accessToken: string; userId: string };
 const SEARCH_MODES = createVehicleSearchModes<LocalClient>({
   plate: (row) => row.plates,
+  fields: [
+    { id: 'name', label: 'Nombre', searchableKeys: ['name'] },
+    { id: 'cuit', label: 'CUIT', searchableKeys: ['cuit'] },
+    { id: 'email', label: 'Email', searchableKeys: ['email'] },
+    { id: 'phone', label: 'Teléfono', searchableKeys: ['phone'] },
+  ],
 });
 type Form = {
   plates: string[];
@@ -70,7 +76,7 @@ export function ClientsPanel({ tenantId, accessToken, userId }: Props) {
   };
   const tabs = (
     <div
-      className="report-tabs clients-table-tabs"
+      className="segmented-control report-tabs clients-table-tabs"
       role="tablist"
       aria-label="Clientes"
     >
@@ -328,7 +334,7 @@ function BillingClientsPanel({
           <DataTable
             data={rows ?? []}
             columns={columns}
-            title="Clientes"
+            title=""
             headerTabs={headerTabs}
             isLoading={rows === undefined}
             emptyMessage="No hay clientes registrados."

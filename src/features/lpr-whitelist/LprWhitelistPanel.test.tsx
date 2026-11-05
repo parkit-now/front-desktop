@@ -117,19 +117,32 @@ describe('LprWhitelistPanel', () => {
     expect(pageText()).toContain('01/01/2026');
   });
 
-  it('oculta el selector con un solo campo y conserva la búsqueda general', async () => {
+  it('conserva Todos por defecto y permite separar patentes de notas', async () => {
     await localDb.lprIgnoredPlates.put(
       plate({ id: 'vieja', plate: 'XYZ999', notes: 'AB123' }),
     );
     const container = await render();
     await waitForText('XYZ999');
     expect(
-      container.querySelector('[aria-label="Campo de búsqueda"]'),
-    ).toBeNull();
+      container
+        .querySelector('[aria-label="Campo de búsqueda"]')
+        ?.getAttribute('title'),
+    ).toBe('Buscar en: Todos');
     await change(field('Buscar en la tabla'), 'ab123');
     expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
       2,
     );
+    await click('Campo de búsqueda');
+    await click('Patente');
+    expect(container.querySelectorAll('tbody .dt-plate__number')).toHaveLength(
+      1,
+    );
+    expect(container.querySelector('tbody')?.textContent).not.toContain(
+      'XYZ999',
+    );
+    await click('Campo de búsqueda');
+    await click('Nota');
+    expect(container.querySelector('tbody')?.textContent).toContain('XYZ999');
   });
 
   it('agrega una patente online', async () => {
