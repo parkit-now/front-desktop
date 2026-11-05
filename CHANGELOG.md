@@ -1,3 +1,19 @@
+# [1.28.0](https://github.com/parkit-now/front-desktop/compare/v1.27.0...v1.28.0) (2026-11-05)
+
+
+### Bug Fixes
+
+* **clientes:** quitar título redundante de las tablas ([102b5aa](https://github.com/parkit-now/front-desktop/commit/102b5aa6c2b65ad1596d309f63056d58aedbe52e))
+* **sync:** conservar causas de errores por etapa ([6706ae2](https://github.com/parkit-now/front-desktop/commit/6706ae2d6bfcf1ea4df8da7bb3c35186b6b0b049))
+* **tablas:** limitar búsqueda a campos configurados ([3c54632](https://github.com/parkit-now/front-desktop/commit/3c54632042a790e80196cab9d149930a530bd723))
+* **tablas:** reservar opciones categóricas a filtros ([23b43fe](https://github.com/parkit-now/front-desktop/commit/23b43fe0c45356c181319b909be847aae303d866))
+* **ui:** unificar selectores redondeados ([cbf0211](https://github.com/parkit-now/front-desktop/commit/cbf02115ee163f338cf37c094c38594e808876da))
+
+
+### Features
+
+* **tablas:** ampliar búsqueda por campo ([d3e0f05](https://github.com/parkit-now/front-desktop/commit/d3e0f053e82723bff64911c61b760527a3e0f511))
+
 # [1.27.0](https://github.com/parkit-now/front-desktop/compare/v1.26.0...v1.27.0) (2026-11-04)
 
 
