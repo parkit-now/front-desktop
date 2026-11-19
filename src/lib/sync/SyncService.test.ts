@@ -153,7 +153,12 @@ const h = vi.hoisted(() => {
       },
     },
     pendingOps: {
-      where() {
+      get(localId: number): Promise<PendingOp | undefined> {
+        return Promise.resolve(
+          pendingOps.find((item) => item.localId === localId),
+        );
+      },
+      where(field?: string) {
         return {
           // `anyOf([[tenantId, status], ...])` sobre el índice compuesto.
           anyOf(keys: string[][]) {
@@ -175,12 +180,21 @@ const h = vi.hoisted(() => {
               },
             };
           },
-          equals([tenantId, status]: string[]) {
+          equals(value: string | string[]) {
+            const matching = () =>
+              pendingOps.filter((op) =>
+                field === 'entityType'
+                  ? op.entityType === value
+                  : op.tenantId === value[0] && op.status === value[1],
+              );
             return {
+              filter(predicate: (op: PendingOp) => boolean) {
+                return {
+                  first: () => Promise.resolve(matching().find(predicate)),
+                };
+              },
               modify(changes: (op: PendingOp) => void): Promise<number> {
-                const rows = pendingOps.filter(
-                  (op) => op.tenantId === tenantId && op.status === status,
-                );
+                const rows = matching();
                 rows.forEach(changes);
                 return Promise.resolve(rows.length);
               },
@@ -200,8 +214,8 @@ const h = vi.hoisted(() => {
       },
     },
     // El scope de tablas no importa acá: se ejecuta el cuerpo y listo.
-    transaction(_mode: string, ...rest: unknown[]): Promise<void> {
-      const body = rest[rest.length - 1] as () => Promise<void>;
+    transaction<T>(_mode: string, ...rest: unknown[]): Promise<T> {
+      const body = rest[rest.length - 1] as () => Promise<T>;
       return body();
     },
   };

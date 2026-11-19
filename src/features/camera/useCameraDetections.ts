@@ -361,7 +361,8 @@ async function upsertCreateOp(
       (op) =>
         op.tenantId === tenantId &&
         op.entityId === event.id &&
-        op.operation === 'create',
+        op.operation === 'create' &&
+        op.status !== 'in-flight',
     )
     .first();
 
@@ -380,6 +381,7 @@ async function upsertCreateOp(
     return;
   }
 
+  // Un envío en curso conserva su payload; los cambios nuevos se coalescen aparte.
   await enqueuePendingOp({
     entityType: 'lprDetectionEvent',
     operation: 'create',
