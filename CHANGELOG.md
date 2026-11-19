@@ -1,3 +1,10 @@
+## [1.28.1](https://github.com/parkit-now/front-desktop/compare/v1.28.0...v1.28.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **sync:** sincronizar estadías antes de sus detecciones LPR ([1a23256](https://github.com/parkit-now/front-desktop/commit/1a2325696a5822aa0b7ce685500ed8a86484d5e8))
+
 # [1.28.0](https://github.com/parkit-now/front-desktop/compare/v1.27.0...v1.28.0) (2026-11-05)
 
 
