@@ -1174,6 +1174,7 @@ class SyncService {
       .equals(tenantId)
       .filter(
         (event) =>
+          event.syncSeq > 0 && // El evento debe existir en el servidor antes de subir su foto.
           !event.imageStoragePath &&
           !event.imageDeletedAt &&
           !!event.bestCaptureId &&
@@ -1320,7 +1321,14 @@ class SyncService {
           (op) => op.nextAttemptAt === undefined || op.nextAttemptAt <= now,
         );
 
-    for (const op of pending) {
+    // La detección nace antes que su ingreso, pero puede terminar referenciándolo.
+    // Conservamos el orden de las operaciones de negocio y procesamos LPR después.
+    const ordered = [
+      ...pending.filter((op) => op.entityType !== 'lprDetectionEvent'),
+      ...pending.filter((op) => op.entityType === 'lprDetectionEvent'),
+    ];
+
+    for (let op of ordered) {
       if (op.localId === undefined) continue;
       if (onlyEntity && op.entityType !== onlyEntity) continue;
       if (
@@ -1346,7 +1354,13 @@ class SyncService {
           .first())
       )
         continue;
-      await localDb.pendingOps.update(op.localId, { status: 'in-flight' });
+      if (op.entityType === 'lprDetectionEvent') {
+        const claimed = await this.claimLprOp(op.localId, ignoreBackoff);
+        if (!claimed) continue;
+        op = claimed;
+      } else {
+        await localDb.pendingOps.update(op.localId, { status: 'in-flight' });
+      }
 
       try {
         if (op.entityType === 'tableTemplate') {
@@ -1474,7 +1488,7 @@ class SyncService {
         const retryCount = op.retryCount ?? 0;
         const outcome = classifyPushFailure(error, retryCount);
 
-        await localDb.pendingOps.update(op.localId, {
+        await localDb.pendingOps.update(op.localId!, {
           status: outcome.status,
           error: error instanceof Error ? error.message : String(error),
           retryCount: retryCount + (outcome.consumesAttempt ? 1 : 0),
@@ -1482,6 +1496,58 @@ class SyncService {
         });
       }
     }
+  }
+
+  private async claimLprOp(
+    localId: number,
+    ignoreBackoff: boolean,
+  ): Promise<PendingOp | undefined> {
+    // La revisión del operador puede cambiar el payload desde que leímos la cola.
+    // Leer, comprobar dependencias y reservar el envío debe ser una sola transacción.
+    return localDb.transaction('rw', localDb.pendingOps, async () => {
+      const op = await localDb.pendingOps.get(localId);
+      if (
+        !op ||
+        op.tenantId !== this.tenantId ||
+        op.entityType !== 'lprDetectionEvent' ||
+        (op.status !== 'pending' && op.status !== 'unreviewed') ||
+        (!ignoreBackoff && (op.nextAttemptAt ?? 0) > Date.now())
+      )
+        return;
+
+      const earlier = await localDb.pendingOps
+        .where('entityType')
+        .equals('lprDetectionEvent')
+        .filter(
+          (other) =>
+            other.tenantId === op.tenantId &&
+            other.entityId === op.entityId &&
+            other.localId! < localId,
+        )
+        .first();
+      if (earlier) return;
+
+      const payload = op.payload as Parameters<
+        typeof upsertLprDetectionEvent
+      >[0]['body'];
+      if (payload.entryId) {
+        const entryCreate = await localDb.pendingOps
+          .where('entityType')
+          .equals('entry')
+          .filter(
+            (other) =>
+              other.tenantId === op.tenantId &&
+              other.entityId === payload.entryId &&
+              other.operation === 'create',
+          )
+          .first();
+        // Incluye backoff, fallos y conflictos: esperar al padre no es un intento.
+        if (entryCreate) return;
+      }
+
+      await localDb.pendingOps.update(localId, { status: 'in-flight' });
+      return op;
+    });
   }
 
   private async applyVehicleOp(
